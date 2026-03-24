@@ -20,6 +20,20 @@ IMAGES_DIR = os.path.join(SCRIPT_DIR, 'images')
 IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.bmp')
 VIDEO_EXTS = ('.mp4', '.avi', '.mov', '.mkv', '.webm')
 
+# Computer keyboard -> MIDI note mapping (piano layout)
+# Lower octave: Z-M = C3-B3, Upper octave: Q-P = C4-E5
+# Sharps on S,D,G,H,J (lower) and 2,3,5,6,7,9,0 (upper)
+KEY_TO_NOTE = {
+    pygame.K_z: 48, pygame.K_s: 49, pygame.K_x: 50, pygame.K_d: 51,
+    pygame.K_c: 52, pygame.K_v: 53, pygame.K_g: 54, pygame.K_b: 55,
+    pygame.K_h: 56, pygame.K_n: 57, pygame.K_j: 58, pygame.K_m: 59,
+    pygame.K_q: 60, pygame.K_2: 61, pygame.K_w: 62, pygame.K_3: 63,
+    pygame.K_e: 64, pygame.K_r: 65, pygame.K_5: 66, pygame.K_t: 67,
+    pygame.K_6: 68, pygame.K_y: 69, pygame.K_7: 70, pygame.K_u: 71,
+    pygame.K_i: 72, pygame.K_9: 73, pygame.K_o: 74, pygame.K_0: 75,
+    pygame.K_p: 76,
+}
+
 
 def load_media(start_note, end_note):
     """Load all media files and distribute them evenly across the note range.
@@ -65,14 +79,6 @@ def load_media(start_note, end_note):
     print(f"Video notes: {sorted(n for n, m in note_to_media.items() if m['type'] == 'video')}")
     return note_to_media
 
-
-def choose_midi_input():
-    """Attempt to choose a MIDI input. On Mac/Linux, this may need adjustment."""
-    inputs = mido.get_input_names()
-    if not inputs:
-        print("No MIDI input devices found.")
-        sys.exit(1)
-    return mido.open_input(inputs[0])
 
 
 def choose_landscape_display():
@@ -139,9 +145,10 @@ class VideoPlayer:
 
 
 def process_midi_messages(msg_source, start_note, end_note, note_to_media, target_size,
-                          current_state):
+                          current_state, channel=None):
     """Process MIDI messages and update current display state.
-    Returns updated current_state dict with 'surface', 'video_player', 'note_active'."""
+    Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
+    If channel is set, only messages on that channel are processed."""
     messages = []
     if isinstance(msg_source, queue.Queue):
         while not msg_source.empty():
@@ -151,6 +158,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             messages.append(msg)
 
     for msg in messages:
+        if channel is not None and msg.channel != channel:
+            continue
         note = msg.note
         if not (start_note <= note <= end_note):
             continue
@@ -188,27 +197,37 @@ def main():
     parser = argparse.ArgumentParser(description="MIDI Note Image Display")
     parser.add_argument('--midi-file', '-f', help="Path to a MIDI file to play back")
     parser.add_argument('--loop', '-l', action='store_true', help="Loop MIDI file playback")
+    parser.add_argument('--channel', '-c', type=int, choices=range(1, 17), metavar='1-16',
+                        help="MIDI channel to listen on (1-16, default: all)")
+    parser.add_argument('--windowed', '-w', action='store_true',
+                        help="Run in a window instead of fullscreen")
+    parser.add_argument('--size', type=str, default='1280x720', metavar='WxH',
+                        help="Window size in windowed mode (default: 1280x720)")
     args = parser.parse_args()
 
     pygame.init()
 
-    # Attempt to pick a landscape display
-    display_index, display_w, display_h = choose_landscape_display()
+    if args.windowed:
+        w, h = (int(d) for d in args.size.split('x'))
+        screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
+        display_w, display_h = w, h
+    else:
+        display_index, display_w, display_h = choose_landscape_display()
+        flags = pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
+        screen = pygame.display.set_mode((display_w, display_h), flags, display=display_index)
+        pygame.mouse.set_visible(False)
 
-    # Attempt a hardware-accelerated fullscreen display on chosen monitor
-    flags = pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
-    screen = pygame.display.set_mode((display_w, display_h), flags, display=display_index)
-    pygame.mouse.set_visible(False)
-    pygame.display.set_caption("MIDI Note Image Display")
+    pygame.display.set_caption("Keyframes")
 
     target_size = (display_w, display_h)
 
     # Load media
     note_to_media = load_media(START_NOTE, END_NOTE)
 
-    # Set up MIDI source: file playback or live input
+    # Set up MIDI sources: file playback, live input, and/or keyboard
     msg_queue = queue.Queue()
     stop_event = threading.Event()
+    inport = None
 
     if args.midi_file:
         if not os.path.exists(args.midi_file):
@@ -220,12 +239,20 @@ def main():
             daemon=True
         )
         playback_thread.start()
-        msg_source = msg_queue
     else:
-        msg_source = choose_midi_input()
+        # Try to open a MIDI device, but don't require one (keyboard always works)
+        inputs = mido.get_input_names()
+        if inputs:
+            inport = mido.open_input(inputs[0])
+            print(f"MIDI input: {inputs[0]}")
+        else:
+            print("No MIDI input devices found — using keyboard only.")
+
+    print("Keyboard: Z-M (lower octave), Q-P (upper octave). ESC to quit.")
 
     state = {'surface': None, 'video_player': None, 'note_active': None}
 
+    midi_channel = args.channel - 1 if args.channel else None
     clock = pygame.time.Clock()
     running = True
     while running:
@@ -235,9 +262,21 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                elif event.key in KEY_TO_NOTE:
+                    note = KEY_TO_NOTE[event.key]
+                    msg_queue.put(mido.Message('note_on', note=note, velocity=100))
+            elif event.type == pygame.KEYUP:
+                if event.key in KEY_TO_NOTE:
+                    note = KEY_TO_NOTE[event.key]
+                    msg_queue.put(mido.Message('note_off', note=note, velocity=0))
 
-        state = process_midi_messages(msg_source, START_NOTE, END_NOTE,
-                                      note_to_media, target_size, state)
+        # Process keyboard/file messages from queue
+        state = process_midi_messages(msg_queue, START_NOTE, END_NOTE,
+                                      note_to_media, target_size, state, midi_channel)
+        # Process live MIDI device messages
+        if inport:
+            state = process_midi_messages(inport, START_NOTE, END_NOTE,
+                                          note_to_media, target_size, state, midi_channel)
 
         # Draw current frame
         if state['video_player']:

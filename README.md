@@ -1,6 +1,6 @@
 # Keyframes
 
-Real-time MIDI-triggered image and video display using pygame, mido, and OpenCV. Press a key on your MIDI controller and the corresponding media fills the screen. Designed for live performance and VJ setups.
+Real-time MIDI-triggered image and video display using pygame, mido, and OpenCV. Press a key on your MIDI controller — or your computer keyboard — and the corresponding media fills the screen. Designed for live performance and VJ setups.
 
 ## How it works
 
@@ -12,12 +12,13 @@ Real-time MIDI-triggered image and video display using pygame, mido, and OpenCV.
 - If a note is held past the end of a video, it freezes on the last frame
 - Displays fullscreen on the first landscape monitor it finds
 - 60 FPS render loop, hardware-accelerated
+- No MIDI hardware required — built-in computer keyboard works as a piano
 
 ## Requirements
 
 - Python 3 (any recent version — tested with 3.13)
-- A MIDI input device (keyboard, controller, DAW output) — or use `--midi-file` to play back a `.mid` file
 - `pip` (comes with Python on most systems)
+- Optional: a MIDI input device (keyboard, controller, DAW output)
 
 ## Setup
 
@@ -67,10 +68,6 @@ pip install -r requirements.txt
 
 This installs pygame, mido, python-rtmidi, opencv-python-headless, and numpy.
 
-### 4. MIDI driver (Windows only)
-
-Windows doesn't have built-in virtual MIDI support. If you want to use `test_midi.py` (the virtual test keyboard), install [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) first. macOS and Linux work natively.
-
 ## Usage
 
 ```bash
@@ -78,17 +75,44 @@ Windows doesn't have built-in virtual MIDI support. If you want to use `test_mid
 # macOS/Linux: source venv/bin/activate
 # Windows: venv\Scripts\activate
 
-# Live MIDI input (auto-detects first available device and landscape monitor)
+# Run the display (auto-detects MIDI devices and landscape monitor)
 python main.py
 
-# Play back a MIDI file instead of live input
+# Play back a MIDI file
 python main.py --midi-file path/to/song.mid
 
 # Loop a MIDI file
 python main.py --midi-file path/to/song.mid --loop
 
+# Listen on a specific MIDI channel only (1-16)
+python main.py --channel 1
+
+# Run in a window instead of fullscreen
+python main.py --windowed
+
+# Custom window size
+python main.py --windowed --size 1920x1080
+
 # Press ESC to quit
 ```
+
+### Computer keyboard controls
+
+No MIDI hardware needed — your computer keyboard works as a piano:
+
+```
+Upper octave (C4-E5):
+ 2 3   5 6 7   9 0
+Q W E R T Y U I O P
+
+Lower octave (C3-B3):
+ S D   G H J
+Z X C V B N M
+```
+
+White keys are on the letter rows, black keys (sharps/flats) are on the row above. Hold a key to sustain, release to stop.
+
+If a MIDI device is connected, both the device and keyboard work simultaneously.
 
 ## Media folder
 
@@ -98,20 +122,6 @@ Drop any images or videos into the `images/` directory — any filenames, any or
 - **Videos**: `.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`
 
 Files are sorted and distributed evenly across the 64-note range. Videos are interleaved with images so they don't cluster together. The more files you add, the more variety per key.
-
-## Testing
-
-`test_midi.py` creates a virtual MIDI output that cycles through all notes. Use it to test without a physical controller:
-
-```bash
-# In one terminal — start the virtual keyboard
-python test_midi.py
-
-# In another terminal — run the display (it will auto-connect to "Virtual Keyboard")
-python main.py
-```
-
-Requires a virtual MIDI driver on Windows (e.g., loopMIDI). Works natively on macOS/Linux.
 
 ## Configuration
 
