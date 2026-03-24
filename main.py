@@ -35,15 +35,54 @@ KEY_TO_NOTE = {
 }
 
 
+def show_instructions(screen, width, height):
+    """Display setup instructions when no media files are found."""
+    screen.fill((20, 20, 20))
+    font_large = pygame.font.SysFont(None, 48)
+    font = pygame.font.SysFont(None, 32)
+
+    lines = [
+        ("Keyframes", font_large, (255, 255, 255)),
+        ("", font, (180, 180, 180)),
+        ("No media files found in the images/ folder.", font, (255, 180, 80)),
+        ("", font, (180, 180, 180)),
+        ("To get started:", font, (200, 200, 200)),
+        ("  1. Drop images or videos into the images/ folder", font, (180, 180, 180)),
+        ("     Supported: .png .jpg .jpeg .bmp .mp4 .avi .mov .mkv .webm", font, (140, 140, 140)),
+        ("  2. Restart this program", font, (180, 180, 180)),
+        ("", font, (180, 180, 180)),
+        ("Press ESC to quit.", font, (140, 140, 140)),
+    ]
+
+    y = height // 2 - len(lines) * 20
+    for text, f, color in lines:
+        if text:
+            rendered = f.render(text, True, color)
+            screen.blit(rendered, (width // 2 - rendered.get_width() // 2, y))
+        y += f.get_height() + 8
+
+    pygame.display.flip()
+
+    # Wait for ESC or quit
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return
+
+
 def load_media(start_note, end_note):
     """Load all media files and distribute them evenly across the note range.
     Videos are interleaved with images so they spread across the full range."""
+    if not os.path.exists(IMAGES_DIR):
+        os.makedirs(IMAGES_DIR)
+
     all_files = [f for f in os.listdir(IMAGES_DIR)
                  if f.lower().endswith(IMAGE_EXTS + VIDEO_EXTS)]
 
     if not all_files:
-        print("No media files found in images/ directory.")
-        sys.exit(1)
+        return None
 
     # Separate images and videos, then interleave videos evenly among images
     images = sorted(f for f in all_files if f.lower().endswith(IMAGE_EXTS))
@@ -223,6 +262,10 @@ def main():
 
     # Load media
     note_to_media = load_media(START_NOTE, END_NOTE)
+    if note_to_media is None:
+        show_instructions(screen, display_w, display_h)
+        pygame.quit()
+        return
 
     # Set up MIDI sources: file playback, live input, and/or keyboard
     msg_queue = queue.Queue()
