@@ -3,6 +3,7 @@ import os
 import queue
 import sys
 import threading
+import time
 
 import cv2
 import numpy as np
@@ -32,6 +33,55 @@ KEY_TO_NOTE = {
     pygame.K_i: 72, pygame.K_9: 73, pygame.K_o: 74, pygame.K_0: 75,
     pygame.K_p: 76,
 }
+
+# Musical note lengths as fractions of a whole note
+NOTE_LENGTHS = {
+    'whole': 4.0, '1': 4.0,
+    'half': 2.0, '1/2': 2.0,
+    'quarter': 1.0, '1/4': 1.0,
+    'eighth': 0.5, '1/8': 0.5,
+    'sixteenth': 0.25, '1/16': 0.25,
+    'thirtysecond': 0.125, '1/32': 0.125,
+}
+
+DEFAULT_BPM = 120
+
+
+class MidiClockTracker:
+    """Tracks MIDI clock messages (24 PPQ) to derive BPM in real time."""
+
+    def __init__(self, fallback_bpm=DEFAULT_BPM):
+        self.fallback_bpm = fallback_bpm
+        self._clock_times = []
+        self._bpm = None
+        self._max_samples = 48  # 2 beats worth of clocks
+
+    def tick(self):
+        """Call on each MIDI clock message."""
+        now = time.monotonic()
+        self._clock_times.append(now)
+        if len(self._clock_times) > self._max_samples:
+            self._clock_times = self._clock_times[-self._max_samples:]
+        if len(self._clock_times) >= 6:
+            # Average interval over recent clocks
+            intervals = [self._clock_times[i] - self._clock_times[i - 1]
+                         for i in range(1, len(self._clock_times))]
+            avg_interval = sum(intervals) / len(intervals)
+            if avg_interval > 0:
+                # 24 clocks per quarter note
+                self._bpm = 60.0 / (avg_interval * 24)
+
+    @property
+    def bpm(self):
+        return self._bpm if self._bpm else self.fallback_bpm
+
+    def quarter_note_duration(self):
+        """Duration of one quarter note in seconds."""
+        return 60.0 / self.bpm
+
+    def note_duration(self, note_length_beats):
+        """Duration in seconds for a given note length (in quarter-note beats)."""
+        return self.quarter_note_duration() * note_length_beats
 
 
 def show_instructions(screen, width, height):
@@ -141,7 +191,7 @@ def play_midi_file(filepath, msg_queue, stop_event, loop=False):
         for msg in midi_file.play():
             if stop_event.is_set():
                 return
-            if msg.type in ('note_on', 'note_off'):
+            if msg.type in ('note_on', 'note_off', 'clock'):
                 msg_queue.put(msg)
         if not loop:
             break
@@ -183,10 +233,12 @@ class VideoPlayer:
 
 
 def process_midi_messages(msg_source, start_note, end_note, note_to_media, target_size,
-                          current_state, channel=None):
+                          current_state, channel=None, clock_tracker=None,
+                          min_note_beats=None):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
-    If channel is set, only messages on that channel are processed."""
+    If channel is set, only messages on that channel are processed.
+    If min_note_beats is set, note-off is deferred until minimum duration elapses."""
     messages = []
     if isinstance(msg_source, queue.Queue):
         while not msg_source.empty():
@@ -195,8 +247,15 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
         for msg in msg_source.iter_pending():
             messages.append(msg)
 
+    now = time.monotonic()
+
     for msg in messages:
-        if msg.type not in ('note_on', 'note_off'):
+        # Handle MIDI clock regardless of channel filter
+        if msg.type == 'clock' and clock_tracker:
+            clock_tracker.tick()
+            continue
+
+        if not hasattr(msg, 'note'):
             continue
         if channel is not None and msg.channel != channel:
             continue
@@ -213,22 +272,45 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                 current_state['video_player'].release()
                 current_state['video_player'] = None
 
+            # Clear any pending hold
+            current_state['hold_until'] = None
+
             media = note_to_media.get(note)
             if media and media['type'] == 'video':
                 current_state['video_player'] = VideoPlayer(media['path'], target_size)
                 current_state['surface'] = None
                 current_state['note_active'] = note
+                current_state['note_on_time'] = now
             elif media and media['type'] == 'image':
                 current_state['surface'] = media['surface']
                 current_state['note_active'] = note
+                current_state['note_on_time'] = now
 
         elif is_note_off and note == current_state['note_active']:
-            # Stop video on note-off, go to black
+            if min_note_beats and clock_tracker:
+                min_dur = clock_tracker.note_duration(min_note_beats)
+                elapsed = now - current_state.get('note_on_time', now)
+                remaining = min_dur - elapsed
+                if remaining > 0:
+                    # Defer the note-off
+                    current_state['hold_until'] = now + remaining
+                    continue
+
+            # Immediate note-off
             if current_state['video_player']:
                 current_state['video_player'].release()
                 current_state['video_player'] = None
             current_state['surface'] = None
             current_state['note_active'] = None
+
+    # Check if held display should expire
+    if current_state.get('hold_until') and now >= current_state['hold_until']:
+        if current_state['video_player']:
+            current_state['video_player'].release()
+            current_state['video_player'] = None
+        current_state['surface'] = None
+        current_state['note_active'] = None
+        current_state['hold_until'] = None
 
     return current_state
 
@@ -265,6 +347,12 @@ def main():
                         help=f"Lowest MIDI note number (default: {DEFAULT_START_NOTE})")
     parser.add_argument('--num-keys', type=int, default=DEFAULT_NUM_KEYS,
                         help=f"Number of keys/notes (default: {DEFAULT_NUM_KEYS})")
+    parser.add_argument('--min-note', type=str, default=None, metavar='LENGTH',
+                        help="Minimum display duration as note length: "
+                             "whole, half, quarter, eighth, sixteenth, thirtysecond "
+                             "(or 1, 1/2, 1/4, 1/8, 1/16, 1/32)")
+    parser.add_argument('--bpm', type=float, default=DEFAULT_BPM,
+                        help=f"Fallback BPM when no MIDI clock is present (default: {DEFAULT_BPM})")
     parser.add_argument('--windowed', '-w', action='store_true',
                         help="Run in a window instead of fullscreen")
     parser.add_argument('--size', type=str, default='1280x720', metavar='WxH',
@@ -274,6 +362,17 @@ def main():
     start_note = args.start_note
     num_keys = args.num_keys
     end_note = start_note + num_keys - 1
+
+    # Parse minimum note duration
+    min_note_beats = None
+    if args.min_note:
+        if args.min_note.lower() not in NOTE_LENGTHS:
+            print(f"Unknown note length: {args.min_note}")
+            print(f"  Valid values: {', '.join(sorted(NOTE_LENGTHS.keys()))}")
+            sys.exit(1)
+        min_note_beats = NOTE_LENGTHS[args.min_note.lower()]
+
+    clock_tracker = MidiClockTracker(fallback_bpm=args.bpm)
 
     pygame.init()
 
@@ -330,7 +429,13 @@ def main():
 
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). ESC to quit.")
 
-    state = {'surface': None, 'video_player': None, 'note_active': None}
+    state = {'surface': None, 'video_player': None, 'note_active': None,
+             'note_on_time': None, 'hold_until': None}
+
+    if min_note_beats:
+        dur = clock_tracker.note_duration(min_note_beats)
+        print(f"Minimum display: {args.min_note} note = {dur:.3f}s at {clock_tracker.bpm:.0f} BPM"
+              f" (live MIDI clock will override)")
 
     midi_channel = args.channel - 1 if args.channel else None
     clock = pygame.time.Clock()
@@ -352,11 +457,13 @@ def main():
 
         # Process keyboard/file messages from queue
         state = process_midi_messages(msg_queue, start_note, end_note,
-                                      note_to_media, target_size, state, midi_channel)
+                                      note_to_media, target_size, state, midi_channel,
+                                      clock_tracker, min_note_beats)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
-                                          note_to_media, target_size, state, midi_channel)
+                                          note_to_media, target_size, state, midi_channel,
+                                          clock_tracker, min_note_beats)
 
         # Draw current frame
         if state['video_player']:
