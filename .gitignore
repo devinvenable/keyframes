@@ -4,6 +4,10 @@ __pycache__/
 *.swp
 logs/
 *.zip
+*.mkv
+*.mp3
 .agent-tasks.db
+canon/
+worktrees/
 images/*
 !images/.gitkeep
