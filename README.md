@@ -90,6 +90,9 @@ python main.py --channel 1
 # Run in a window instead of fullscreen
 python main.py --windowed
 
+# Enable per-note zoom ring (16 repeat-hit positions)
+python main.py --zoom-ring
+
 # Custom window size
 python main.py --windowed --size 1920x1080
 
@@ -127,3 +130,4 @@ Files are sorted and distributed evenly across the 64-note range. Videos are int
 
 - `START_NOTE` and `NUM_KEYS` in `main.py` can be adjusted for your keyboard layout
 - Multi-monitor aware — automatically picks a landscape display
+- `--zoom-ring` gives each MIDI note its own 16-step repeat-hit cycle: first hit is normal size, then each hit on that note scales slightly larger until it wraps back to normal
