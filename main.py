@@ -307,16 +307,17 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # Clear any pending hold
             current_state['hold_until'] = None
 
-            current_state['zoom_scale'] = get_zoom_ring_scale(
-                note, note_hit_counts, zoom_ring_enabled
-            )
             media = note_to_media.get(note)
             if media and media['type'] == 'video':
+                current_state['zoom_scale'] = 1.0
                 current_state['video_player'] = VideoPlayer(media['path'], target_size)
                 current_state['surface'] = None
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
             elif media and media['type'] == 'image':
+                current_state['zoom_scale'] = get_zoom_ring_scale(
+                    note, note_hit_counts, zoom_ring_enabled
+                )
                 current_state['surface'] = media['surface']
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
