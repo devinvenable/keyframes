@@ -45,6 +45,8 @@ NOTE_LENGTHS = {
 }
 
 DEFAULT_BPM = 120
+ZOOM_RING_SIZE = 16
+ZOOM_RING_STEP = 0.03
 
 
 class MidiClockTracker:
@@ -232,13 +234,43 @@ class VideoPlayer:
             self.cap = None
 
 
+def get_zoom_ring_scale(note, note_hit_counts, enabled):
+    """Return the current zoom scale for a note and advance its ring position."""
+    if not enabled:
+        return 1.0
+
+    hit_index = note_hit_counts.get(note, 0)
+    note_hit_counts[note] = (hit_index + 1) % ZOOM_RING_SIZE
+    return 1.0 + (hit_index * ZOOM_RING_STEP)
+
+
+def zoom_surface_to_screen(surface, target_size, zoom_scale):
+    """Scale a surface to fill the target area, optionally enlarging from center."""
+    fitted = pygame.transform.scale(surface, target_size)
+    if zoom_scale <= 1.0:
+        return fitted
+
+    zoomed_size = (
+        max(1, int(round(target_size[0] * zoom_scale))),
+        max(1, int(round(target_size[1] * zoom_scale))),
+    )
+    zoomed = pygame.transform.smoothscale(fitted, zoomed_size)
+    x_offset = (zoomed_size[0] - target_size[0]) // 2
+    y_offset = (zoomed_size[1] - target_size[1]) // 2
+    return zoomed.subsurface((x_offset, y_offset, target_size[0], target_size[1]))
+
+
 def process_midi_messages(msg_source, start_note, end_note, note_to_media, target_size,
                           current_state, channel=None, clock_tracker=None,
-                          min_note_beats=None):
+                          min_note_beats=None, zoom_ring_enabled=False,
+                          note_hit_counts=None):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
     If min_note_beats is set, note-off is deferred until minimum duration elapses."""
+    if note_hit_counts is None:
+        note_hit_counts = {}
+
     messages = []
     if isinstance(msg_source, queue.Queue):
         while not msg_source.empty():
@@ -275,6 +307,9 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # Clear any pending hold
             current_state['hold_until'] = None
 
+            current_state['zoom_scale'] = get_zoom_ring_scale(
+                note, note_hit_counts, zoom_ring_enabled
+            )
             media = note_to_media.get(note)
             if media and media['type'] == 'video':
                 current_state['video_player'] = VideoPlayer(media['path'], target_size)
@@ -302,6 +337,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                 current_state['video_player'] = None
             current_state['surface'] = None
             current_state['note_active'] = None
+            current_state['zoom_scale'] = 1.0
 
     # Check if held display should expire
     if current_state.get('hold_until') and now >= current_state['hold_until']:
@@ -311,6 +347,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
         current_state['surface'] = None
         current_state['note_active'] = None
         current_state['hold_until'] = None
+        current_state['zoom_scale'] = 1.0
 
     return current_state
 
@@ -353,6 +390,9 @@ def main():
                              "(or 1, 1/2, 1/4, 1/8, 1/16, 1/32)")
     parser.add_argument('--bpm', type=float, default=DEFAULT_BPM,
                         help=f"Fallback BPM when no MIDI clock is present (default: {DEFAULT_BPM})")
+    parser.add_argument('--zoom-ring', action='store_true',
+                        help="Give each note a 16-step zoom ring: repeated hits on the same "
+                             "note grow slightly larger before wrapping to normal size")
     parser.add_argument('--windowed', '-w', action='store_true',
                         help="Run in a window instead of fullscreen")
     parser.add_argument('--size', type=str, default='1280x720', metavar='WxH',
@@ -430,12 +470,15 @@ def main():
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). ESC to quit.")
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
-             'note_on_time': None, 'hold_until': None}
+             'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0}
+    note_hit_counts = {}
 
     if min_note_beats:
         dur = clock_tracker.note_duration(min_note_beats)
         print(f"Minimum display: {args.min_note} note = {dur:.3f}s at {clock_tracker.bpm:.0f} BPM"
               f" (live MIDI clock will override)")
+    if args.zoom_ring:
+        print(f"Zoom ring enabled: {ZOOM_RING_SIZE} positions, +{ZOOM_RING_STEP:.2f} scale per hit")
 
     midi_channel = args.channel - 1 if args.channel else None
     clock = pygame.time.Clock()
@@ -458,22 +501,27 @@ def main():
         # Process keyboard/file messages from queue
         state = process_midi_messages(msg_queue, start_note, end_note,
                                       note_to_media, target_size, state, midi_channel,
-                                      clock_tracker, min_note_beats)
+                                      clock_tracker, min_note_beats, args.zoom_ring,
+                                      note_hit_counts)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel,
-                                          clock_tracker, min_note_beats)
+                                          clock_tracker, min_note_beats, args.zoom_ring,
+                                          note_hit_counts)
 
         # Draw current frame
         if state['video_player']:
             frame_surface = state['video_player'].get_frame()
             if frame_surface:
-                screen.blit(frame_surface, (0, 0))
+                screen.blit(
+                    zoom_surface_to_screen(frame_surface, target_size, state['zoom_scale']),
+                    (0, 0)
+                )
             else:
                 screen.fill((0, 0, 0))
         elif state['surface']:
-            scaled = pygame.transform.scale(state['surface'], target_size)
+            scaled = zoom_surface_to_screen(state['surface'], target_size, state['zoom_scale'])
             screen.blit(scaled, (0, 0))
         else:
             screen.fill((0, 0, 0))

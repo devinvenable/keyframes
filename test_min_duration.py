@@ -6,7 +6,14 @@ from unittest.mock import patch
 import mido
 import pytest
 
-from main import MidiClockTracker, NOTE_LENGTHS, process_midi_messages
+from main import (
+    MidiClockTracker,
+    NOTE_LENGTHS,
+    ZOOM_RING_SIZE,
+    ZOOM_RING_STEP,
+    get_zoom_ring_scale,
+    process_midi_messages,
+)
 
 
 class TestMidiClockTracker:
@@ -61,7 +68,7 @@ class TestNoteLengths:
 class TestMinDurationProcessing:
     def _make_state(self):
         return {'surface': None, 'video_player': None, 'note_active': None,
-                'note_on_time': None, 'hold_until': None}
+                'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0}
 
     def test_note_on_off_without_min_duration(self):
         """Without min-note, note-off immediately clears display."""
@@ -141,3 +148,76 @@ class TestMinDurationProcessing:
                                           clock_tracker=tracker, min_note_beats=1.0)
         assert state['surface'] == 'surface_62'
         assert state['hold_until'] is None
+
+
+class TestZoomRing:
+    def test_get_zoom_ring_scale_advances_and_wraps(self):
+        note_hit_counts = {}
+
+        first = get_zoom_ring_scale(60, note_hit_counts, enabled=True)
+        second = get_zoom_ring_scale(60, note_hit_counts, enabled=True)
+
+        assert first == pytest.approx(1.0)
+        assert second == pytest.approx(1.0 + ZOOM_RING_STEP)
+
+        for _ in range(ZOOM_RING_SIZE - 2):
+            get_zoom_ring_scale(60, note_hit_counts, enabled=True)
+
+        wrapped = get_zoom_ring_scale(60, note_hit_counts, enabled=True)
+        assert wrapped == pytest.approx(1.0)
+
+    def test_process_midi_messages_tracks_per_note_zoom_scale(self):
+        q = queue.Queue()
+        state = TestMinDurationProcessing()._make_state()
+        note_to_media = {60: {'type': 'image', 'surface': 'fake_surface'}}
+        note_hit_counts = {}
+
+        q.put(mido.Message('note_on', note=60, velocity=100))
+        state = process_midi_messages(
+            q, 36, 99, note_to_media, (100, 100), state,
+            zoom_ring_enabled=True, note_hit_counts=note_hit_counts
+        )
+        assert state['zoom_scale'] == pytest.approx(1.0)
+
+        q.put(mido.Message('note_on', note=60, velocity=100))
+        state = process_midi_messages(
+            q, 36, 99, note_to_media, (100, 100), state,
+            zoom_ring_enabled=True, note_hit_counts=note_hit_counts
+        )
+        assert state['zoom_scale'] == pytest.approx(1.0 + ZOOM_RING_STEP)
+
+    def test_zoom_scale_persists_during_hold_then_resets(self):
+        q = queue.Queue()
+        state = TestMinDurationProcessing()._make_state()
+        tracker = MidiClockTracker(fallback_bpm=120)
+        note_to_media = {60: {'type': 'image', 'surface': 'fake_surface'}}
+        note_hit_counts = {60: 1}
+        base = time.monotonic()
+
+        with patch('time.monotonic', return_value=base):
+            q.put(mido.Message('note_on', note=60, velocity=100))
+            state = process_midi_messages(
+                q, 36, 99, note_to_media, (100, 100), state,
+                clock_tracker=tracker, min_note_beats=1.0,
+                zoom_ring_enabled=True, note_hit_counts=note_hit_counts
+            )
+        assert state['zoom_scale'] == pytest.approx(1.0 + ZOOM_RING_STEP)
+
+        with patch('time.monotonic', return_value=base + 0.1):
+            q.put(mido.Message('note_off', note=60, velocity=0))
+            state = process_midi_messages(
+                q, 36, 99, note_to_media, (100, 100), state,
+                clock_tracker=tracker, min_note_beats=1.0,
+                zoom_ring_enabled=True, note_hit_counts=note_hit_counts
+            )
+        assert state['hold_until'] is not None
+        assert state['zoom_scale'] == pytest.approx(1.0 + ZOOM_RING_STEP)
+
+        with patch('time.monotonic', return_value=base + 0.6):
+            state = process_midi_messages(
+                q, 36, 99, note_to_media, (100, 100), state,
+                clock_tracker=tracker, min_note_beats=1.0,
+                zoom_ring_enabled=True, note_hit_counts=note_hit_counts
+            )
+        assert state['surface'] is None
+        assert state['zoom_scale'] == pytest.approx(1.0)
