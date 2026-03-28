@@ -9,10 +9,9 @@ import numpy as np
 import pygame
 import mido
 
-# Configure the note range for your 64-key keyboard
-START_NOTE = 36  # C2
-NUM_KEYS = 64
-END_NOTE = START_NOTE + NUM_KEYS - 1  # inclusive
+# Default note range for a 64-key keyboard
+DEFAULT_START_NOTE = 36  # C2
+DEFAULT_NUM_KEYS = 64
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.join(SCRIPT_DIR, 'images')
@@ -232,17 +231,49 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
     return current_state
 
 
+def select_midi_port(available_ports, port_filter=None):
+    """Select a MIDI port. If port_filter is given, match by substring.
+    Otherwise auto-select, preferring hardware ports over virtual ones."""
+    if not available_ports:
+        return None
+
+    if port_filter:
+        matches = [p for p in available_ports if port_filter.lower() in p.lower()]
+        if matches:
+            return matches[0]
+        return None
+
+    # Auto-select: prefer hardware ports (skip common virtual/software ports)
+    virtual_keywords = ['through', 'virtual', 'midi through', 'rtpmidi']
+    hardware = [p for p in available_ports
+                if not any(kw in p.lower() for kw in virtual_keywords)]
+    if hardware:
+        return hardware[0]
+
+    return available_ports[0]
+
+
 def main():
     parser = argparse.ArgumentParser(description="MIDI Note Image Display")
     parser.add_argument('--midi-file', '-f', help="Path to a MIDI file to play back")
     parser.add_argument('--loop', '-l', action='store_true', help="Loop MIDI file playback")
     parser.add_argument('--channel', '-c', type=int, choices=range(1, 17), metavar='1-16',
                         help="MIDI channel to listen on (1-16, default: all)")
+    parser.add_argument('--port', '-p', type=str, default=None,
+                        help="MIDI port name substring to match (e.g. 'KeyStep')")
+    parser.add_argument('--start-note', type=int, default=DEFAULT_START_NOTE,
+                        help=f"Lowest MIDI note number (default: {DEFAULT_START_NOTE})")
+    parser.add_argument('--num-keys', type=int, default=DEFAULT_NUM_KEYS,
+                        help=f"Number of keys/notes (default: {DEFAULT_NUM_KEYS})")
     parser.add_argument('--windowed', '-w', action='store_true',
                         help="Run in a window instead of fullscreen")
     parser.add_argument('--size', type=str, default='1280x720', metavar='WxH',
                         help="Window size in windowed mode (default: 1280x720)")
     args = parser.parse_args()
+
+    start_note = args.start_note
+    num_keys = args.num_keys
+    end_note = start_note + num_keys - 1
 
     pygame.init()
 
@@ -261,7 +292,7 @@ def main():
     target_size = (display_w, display_h)
 
     # Load media
-    note_to_media = load_media(START_NOTE, END_NOTE)
+    note_to_media = load_media(start_note, end_note)
     if note_to_media is None:
         show_instructions(screen, display_w, display_h)
         pygame.quit()
@@ -286,8 +317,13 @@ def main():
         # Try to open a MIDI device, but don't require one (keyboard always works)
         inputs = mido.get_input_names()
         if inputs:
-            inport = mido.open_input(inputs[0])
-            print(f"MIDI input: {inputs[0]}")
+            port_name = select_midi_port(inputs, args.port)
+            if port_name:
+                inport = mido.open_input(port_name)
+                print(f"MIDI input: {port_name}")
+            else:
+                print("No matching MIDI input found — using keyboard only.")
+                print(f"  Available ports: {inputs}")
         else:
             print("No MIDI input devices found — using keyboard only.")
 
@@ -314,11 +350,11 @@ def main():
                     msg_queue.put(mido.Message('note_off', note=note, velocity=0))
 
         # Process keyboard/file messages from queue
-        state = process_midi_messages(msg_queue, START_NOTE, END_NOTE,
+        state = process_midi_messages(msg_queue, start_note, end_note,
                                       note_to_media, target_size, state, midi_channel)
         # Process live MIDI device messages
         if inport:
-            state = process_midi_messages(inport, START_NOTE, END_NOTE,
+            state = process_midi_messages(inport, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel)
 
         # Draw current frame
