@@ -196,6 +196,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             messages.append(msg)
 
     for msg in messages:
+        if msg.type not in ('note_on', 'note_off'):
+            continue
         if channel is not None and msg.channel != channel:
             continue
         note = msg.note
@@ -231,26 +233,24 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
     return current_state
 
 
-def select_midi_port(available_ports, port_filter=None):
-    """Select a MIDI port. If port_filter is given, match by substring.
-    Otherwise auto-select, preferring hardware ports over virtual ones."""
+def select_midi_ports(available_ports, port_filter=None):
+    """Select MIDI ports. If port_filter is given, return all substring matches.
+    Otherwise auto-select all hardware ports (skip virtual ones)."""
     if not available_ports:
-        return None
+        return []
 
     if port_filter:
         matches = [p for p in available_ports if port_filter.lower() in p.lower()]
-        if matches:
-            return matches[0]
-        return None
+        return matches
 
     # Auto-select: prefer hardware ports (skip common virtual/software ports)
     virtual_keywords = ['through', 'virtual', 'midi through', 'rtpmidi']
     hardware = [p for p in available_ports
                 if not any(kw in p.lower() for kw in virtual_keywords)]
     if hardware:
-        return hardware[0]
+        return hardware
 
-    return available_ports[0]
+    return [available_ports[0]]
 
 
 def main():
@@ -301,7 +301,7 @@ def main():
     # Set up MIDI sources: file playback, live input, and/or keyboard
     msg_queue = queue.Queue()
     stop_event = threading.Event()
-    inport = None
+    inports = []
 
     if args.midi_file:
         if not os.path.exists(args.midi_file):
@@ -314,13 +314,14 @@ def main():
         )
         playback_thread.start()
     else:
-        # Try to open a MIDI device, but don't require one (keyboard always works)
+        # Try to open MIDI devices, but don't require them (keyboard always works)
         inputs = mido.get_input_names()
         if inputs:
-            port_name = select_midi_port(inputs, args.port)
-            if port_name:
-                inport = mido.open_input(port_name)
-                print(f"MIDI input: {port_name}")
+            port_names = select_midi_ports(inputs, args.port)
+            if port_names:
+                for pn in port_names:
+                    inports.append(mido.open_input(pn))
+                    print(f"MIDI input: {pn}")
             else:
                 print("No matching MIDI input found — using keyboard only.")
                 print(f"  Available ports: {inputs}")
@@ -353,7 +354,7 @@ def main():
         state = process_midi_messages(msg_queue, start_note, end_note,
                                       note_to_media, target_size, state, midi_channel)
         # Process live MIDI device messages
-        if inport:
+        for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel)
 
