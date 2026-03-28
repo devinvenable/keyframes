@@ -48,6 +48,16 @@ DEFAULT_BPM = 120
 ZOOM_RING_SIZE = 16
 ZOOM_RING_STEP = 0.03
 
+SIZE_PRESETS = {
+    'hd': (1920, 1080),
+    '4k': (3840, 2160),
+    'tiktok': (1080, 1920),
+    'tiktok-sm': (720, 1280),
+    'square': (1080, 1080),
+    'ig-story': (1080, 1920),
+    'reel': (1080, 1350),
+}
+
 
 class MidiClockTracker:
     """Tracks MIDI clock messages (24 PPQ) to derive BPM in real time."""
@@ -396,8 +406,12 @@ def main():
                              "note grow slightly larger before wrapping to normal size")
     parser.add_argument('--windowed', '-w', action='store_true',
                         help="Run in a window instead of fullscreen")
-    parser.add_argument('--size', type=str, default='1280x720', metavar='WxH',
-                        help="Window size in windowed mode (default: 1280x720)")
+    parser.add_argument('--size', type=str, default='1280x720', metavar='WxH|PRESET',
+                        help="Window size: WxH or preset name — "
+                             "hd (1920x1080), 4k (3840x2160), "
+                             "tiktok (1080x1920), tiktok-sm (720x1280), "
+                             "square (1080x1080), ig-story (1080x1920), "
+                             "reel (1080x1350) (default: 1280x720)")
     args = parser.parse_args()
 
     start_note = args.start_note
@@ -418,7 +432,10 @@ def main():
     pygame.init()
 
     if args.windowed:
-        w, h = (int(d) for d in args.size.split('x'))
+        if args.size.lower() in SIZE_PRESETS:
+            w, h = SIZE_PRESETS[args.size.lower()]
+        else:
+            w, h = (int(d) for d in args.size.split('x'))
         screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
         display_w, display_h = w, h
     else:
