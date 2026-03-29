@@ -11,3 +11,4 @@ canon/
 worktrees/
 images/*
 !images/.gitkeep
+keep/
