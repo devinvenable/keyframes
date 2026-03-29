@@ -233,7 +233,21 @@ class VideoPlayer:
             return self.last_surface
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame = cv2.resize(frame, self.target_size)
+        # Crop-to-fill: scale to cover target, then center-crop
+        th, tw = self.target_size[1], self.target_size[0]
+        fh, fw = frame.shape[:2]
+        src_ratio = fw / fh
+        tgt_ratio = tw / th
+        if src_ratio > tgt_ratio:
+            new_h = th
+            new_w = int(fw * th / fh)
+        else:
+            new_w = tw
+            new_h = int(fh * tw / fw)
+        frame = cv2.resize(frame, (new_w, new_h))
+        x_off = (new_w - tw) // 2
+        y_off = (new_h - th) // 2
+        frame = frame[y_off:y_off+th, x_off:x_off+tw]
         surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
         self.last_surface = surface
         return surface
@@ -254,9 +268,30 @@ def get_zoom_ring_scale(note, note_hit_counts, enabled):
     return 1.0 + (hit_index * ZOOM_RING_STEP)
 
 
+def crop_to_fill(surface, target_size):
+    """Scale surface to cover target_size, cropping edges to preserve aspect ratio."""
+    sw, sh = surface.get_size()
+    tw, th = target_size
+    src_ratio = sw / sh
+    tgt_ratio = tw / th
+    if src_ratio > tgt_ratio:
+        # Source is wider — scale by height, crop width
+        new_h = th
+        new_w = int(sw * th / sh)
+    else:
+        # Source is taller — scale by width, crop height
+        new_w = tw
+        new_h = int(sh * tw / sw)
+    scaled = pygame.transform.smoothscale(surface, (new_w, new_h))
+    x_offset = (new_w - tw) // 2
+    y_offset = (new_h - th) // 2
+    cropped = scaled.subsurface((x_offset, y_offset, tw, th)).copy()
+    return cropped
+
+
 def zoom_surface_to_screen(surface, target_size, zoom_scale):
     """Scale a surface to fill the target area, optionally enlarging from center."""
-    fitted = pygame.transform.scale(surface, target_size)
+    fitted = crop_to_fill(surface, target_size)
     if zoom_scale <= 1.0:
         return fitted
 
