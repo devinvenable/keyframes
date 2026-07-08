@@ -12,3 +12,16 @@ worktrees/
 images/*
 !images/.gitkeep
 keep/
+
+# axon runtime artifacts
+.agent-tasks.db*
+.agent-registry.*
+.unanswered-questions
+.axon-prompts/
+.monitor_state.json
+canon/
+logs/
+worktrees/
+decision_trees/
+knowledge-graph.db
+icon.png
