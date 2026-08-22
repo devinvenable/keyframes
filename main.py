@@ -187,10 +187,13 @@ def draw_startup_help(screen, width, height):
         ("  Any mapped key triggers its image or video", font_small, (140, 140, 140)),
         ("", font_small, (180, 180, 180)),
         ("Tab    Grid manager: view, rearrange, replace media", font_small, (180, 180, 180)),
+        ("F11 or Alt+Enter   Toggle fullscreen / windowed", font_small, (180, 180, 180)),
         ("Esc    Quit", font_small, (180, 180, 180)),
         ("", font_small, (180, 180, 180)),
         ("Press any key to start playing.", font, (255, 220, 120)),
         ("Press F1 or ? anytime to show this help again.", font_small, (140, 185, 225)),
+        ("Run with --help for more options (window size, MIDI channel, zoom ring, MIDI file)",
+         font_small, (140, 185, 225)),
     ]
     _blit_overlay_lines(screen, width, height, lines)
 
@@ -218,6 +221,12 @@ def is_help_reshow_key(event):
     if event.key == pygame.K_SLASH and (event.mod & pygame.KMOD_SHIFT):
         return True
     return False
+
+
+def is_fullscreen_toggle_key(event):
+    """True for the F11 and Alt+Enter fullscreen/windowed bindings."""
+    return (event.key == pygame.K_F11
+            or (event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT))
 
 
 def update_help_visibility(show_help, *, reshow_key=False, note_started=False,
@@ -441,6 +450,41 @@ def choose_landscape_display():
             return i, w, h
 
     return 0, desktop_sizes[0][0], desktop_sizes[0][1]
+
+
+def parse_window_size(size):
+    """Resolve a ``--size`` value to concrete window dimensions."""
+    if size.lower() in SIZE_PRESETS:
+        return SIZE_PRESETS[size.lower()]
+    return tuple(int(d) for d in size.split('x'))
+
+
+def update_display_target_size(state, width, height):
+    """Return the current render target and retarget an active video player."""
+    target_size = (width, height)
+    if state.get('video_player'):
+        state['video_player'].target_size = target_size
+    return target_size
+
+
+def set_display_mode(fullscreen, windowed_size, state):
+    """Create the requested display mode and update the active render target.
+
+    ``pygame.display.toggle_fullscreen()`` is unreliable on several backends,
+    so every transition explicitly recreates the display surface instead.
+    """
+    if fullscreen:
+        display_index, display_w, display_h = choose_landscape_display()
+        flags = pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
+        screen = pygame.display.set_mode((display_w, display_h), flags,
+                                         display=display_index)
+        pygame.mouse.set_visible(False)
+    else:
+        display_w, display_h = windowed_size
+        screen = pygame.display.set_mode((display_w, display_h), pygame.RESIZABLE)
+        pygame.mouse.set_visible(True)
+    target_size = update_display_target_size(state, display_w, display_h)
+    return screen, display_w, display_h, target_size
 
 
 def play_midi_file(filepath, msg_queue, stop_event, loop=False):
@@ -1182,11 +1226,10 @@ def main():
     pygame.init()
     enable_all_events()
 
+    last_windowed_size = parse_window_size(args.size)
+    fullscreen = not args.windowed
     if args.windowed:
-        if args.size.lower() in SIZE_PRESETS:
-            w, h = SIZE_PRESETS[args.size.lower()]
-        else:
-            w, h = (int(d) for d in args.size.split('x'))
+        w, h = last_windowed_size
         screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
         display_w, display_h = w, h
     else:
@@ -1277,6 +1320,12 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.VIDEORESIZE and not fullscreen:
+                display_w, display_h = event.w, event.h
+                last_windowed_size = (display_w, display_h)
+                screen = pygame.display.set_mode(last_windowed_size, pygame.RESIZABLE)
+                target_size = update_display_target_size(
+                    state, display_w, display_h)
             elif event.type == pygame.KEYDOWN:
                 # Any key dismisses the startup help overlay and returns to the
                 # normal view — matching "press any key to continue". The F1/?
@@ -1290,6 +1339,12 @@ def main():
                         continue  # consumed: closed the overlay, don't also quit
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                elif is_fullscreen_toggle_key(event):
+                    if not fullscreen:
+                        last_windowed_size = (display_w, display_h)
+                    fullscreen = not fullscreen
+                    screen, display_w, display_h, target_size = set_display_mode(
+                        fullscreen, last_windowed_size, state)
                 elif is_help_reshow_key(event):
                     # Reshow the startup help overlay. Handled ahead of
                     # KEY_TO_NOTE so F1/? never doubles as a played note; it
