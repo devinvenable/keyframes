@@ -5,6 +5,10 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 windows_vm=${KEYFRAMES_WINDOWS_VM:-devin@192.168.1.225}
 windows_repo=${KEYFRAMES_WINDOWS_REPO:-/mnt/c/Users/devin/src/keyframes}
+windows_repo_url=${KEYFRAMES_WINDOWS_REPO_URL:-$(git -C "$repo_root" remote get-url origin)}
+# powershell.exe is not on PATH for a non-login SSH shell into WSL, so invoke it
+# by its stable absolute path.  Override if the box installs it elsewhere.
+windows_powershell=${KEYFRAMES_WINDOWS_POWERSHELL:-/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe}
 branch=$(git -C "$repo_root" branch --show-current)
 skip_deps=false
 clean=false
@@ -36,6 +40,9 @@ if [[ -z "$branch" ]]; then
 fi
 
 git -C "$repo_root" push origin "HEAD:$branch"
+# Clone the repo on first use so a fresh box is self-healing rather than failing
+# at the cd below.
+ssh "$windows_vm" "test -d '$windows_repo/.git' || git clone '$windows_repo_url' '$windows_repo'"
 ssh "$windows_vm" "cd '$windows_repo' && git fetch origin && git checkout '$branch' && git pull --ff-only origin '$branch'"
 
 windows_repo_win=${windows_repo#/mnt/c/}
@@ -43,7 +50,7 @@ windows_repo_win="C:\\${windows_repo_win//\//\\}"
 ps_args=''
 [[ "$skip_deps" == true ]] && ps_args+=' -SkipDeps'
 [[ "$clean" == true ]] && ps_args+=' -Clean'
-ssh "$windows_vm" "powershell.exe -NoProfile -ExecutionPolicy Bypass -File '$windows_repo_win\\scripts\\build_windows.ps1'$ps_args"
+ssh "$windows_vm" "'$windows_powershell' -NoProfile -ExecutionPolicy Bypass -File '$windows_repo_win\\scripts\\build_windows.ps1'$ps_args"
 
 "$repo_root/scripts/verify-windows-build.sh" "$windows_vm" "$windows_repo"
 mkdir -p "$repo_root/dist"
