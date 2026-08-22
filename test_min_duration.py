@@ -70,19 +70,21 @@ class TestMinDurationProcessing:
         return {'surface': None, 'video_player': None, 'note_active': None,
                 'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0}
 
-    def test_note_on_off_without_min_duration(self):
-        """Without min-note, note-off immediately clears display."""
+    def test_note_on_off_without_latch(self):
+        """The --no-latch behavior clears display immediately on note-off."""
         q = queue.Queue()
         state = self._make_state()
         note_to_media = {60: {'type': 'image', 'surface': 'fake_surface'}}
 
         q.put(mido.Message('note_on', note=60, velocity=100))
-        state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state)
+        state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state,
+                                      latch_mode=False)
         assert state['surface'] == 'fake_surface'
         assert state['note_active'] == 60
 
         q.put(mido.Message('note_off', note=60, velocity=0))
-        state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state)
+        state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state,
+                                      latch_mode=False)
         assert state['surface'] is None
         assert state['note_active'] is None
 
@@ -99,21 +101,24 @@ class TestMinDurationProcessing:
         with patch('time.monotonic', return_value=base):
             q.put(mido.Message('note_on', note=60, velocity=100))
             state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state,
-                                          clock_tracker=tracker, min_note_beats=1.0)
+                                          clock_tracker=tracker, min_note_beats=1.0,
+                                          latch_mode=False)
         assert state['surface'] == 'fake_surface'
 
         # Note off after 0.1s (quarter note at 120bpm = 0.5s, so should hold)
         with patch('time.monotonic', return_value=base + 0.1):
             q.put(mido.Message('note_off', note=60, velocity=0))
             state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state,
-                                          clock_tracker=tracker, min_note_beats=1.0)
+                                          clock_tracker=tracker, min_note_beats=1.0,
+                                          latch_mode=False)
         assert state['surface'] == 'fake_surface'  # Still showing
         assert state['hold_until'] is not None
 
         # After minimum duration elapses
         with patch('time.monotonic', return_value=base + 0.6):
             state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state,
-                                          clock_tracker=tracker, min_note_beats=1.0)
+                                          clock_tracker=tracker, min_note_beats=1.0,
+                                          latch_mode=False)
         assert state['surface'] is None
         assert state['note_active'] is None
 
@@ -132,20 +137,23 @@ class TestMinDurationProcessing:
         with patch('time.monotonic', return_value=base):
             q.put(mido.Message('note_on', note=60, velocity=100))
             state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state,
-                                          clock_tracker=tracker, min_note_beats=1.0)
+                                          clock_tracker=tracker, min_note_beats=1.0,
+                                          latch_mode=False)
 
         # Quick note-off sets hold
         with patch('time.monotonic', return_value=base + 0.1):
             q.put(mido.Message('note_off', note=60, velocity=0))
             state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state,
-                                          clock_tracker=tracker, min_note_beats=1.0)
+                                          clock_tracker=tracker, min_note_beats=1.0,
+                                          latch_mode=False)
         assert state['hold_until'] is not None
 
         # New note cancels hold
         with patch('time.monotonic', return_value=base + 0.2):
             q.put(mido.Message('note_on', note=62, velocity=100))
             state = process_midi_messages(q, 36, 99, note_to_media, (100, 100), state,
-                                          clock_tracker=tracker, min_note_beats=1.0)
+                                          clock_tracker=tracker, min_note_beats=1.0,
+                                          latch_mode=False)
         assert state['surface'] == 'surface_62'
         assert state['hold_until'] is None
 
@@ -199,7 +207,8 @@ class TestZoomRing:
             state = process_midi_messages(
                 q, 36, 99, note_to_media, (100, 100), state,
                 clock_tracker=tracker, min_note_beats=1.0,
-                zoom_ring_enabled=True, note_hit_counts=note_hit_counts
+                zoom_ring_enabled=True, note_hit_counts=note_hit_counts,
+                latch_mode=False
             )
         assert state['zoom_scale'] == pytest.approx(1.0 + ZOOM_RING_STEP)
 
@@ -208,7 +217,8 @@ class TestZoomRing:
             state = process_midi_messages(
                 q, 36, 99, note_to_media, (100, 100), state,
                 clock_tracker=tracker, min_note_beats=1.0,
-                zoom_ring_enabled=True, note_hit_counts=note_hit_counts
+                zoom_ring_enabled=True, note_hit_counts=note_hit_counts,
+                latch_mode=False
             )
         assert state['hold_until'] is not None
         assert state['zoom_scale'] == pytest.approx(1.0 + ZOOM_RING_STEP)
@@ -217,7 +227,8 @@ class TestZoomRing:
             state = process_midi_messages(
                 q, 36, 99, note_to_media, (100, 100), state,
                 clock_tracker=tracker, min_note_beats=1.0,
-                zoom_ring_enabled=True, note_hit_counts=note_hit_counts
+                zoom_ring_enabled=True, note_hit_counts=note_hit_counts,
+                latch_mode=False
             )
         assert state['surface'] is None
         assert state['zoom_scale'] == pytest.approx(1.0)

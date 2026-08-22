@@ -70,6 +70,8 @@ NOTE_LENGTHS = {
 DEFAULT_BPM = 120
 ZOOM_RING_SIZE = 16
 ZOOM_RING_STEP = 0.03
+DEFAULT_STROBE_MS = 40
+LATCH_NOTICE_SECONDS = 1.5
 
 SIZE_PRESETS = {
     'hd': (1920, 1080),
@@ -187,6 +189,7 @@ def draw_startup_help(screen, width, height):
         ("  Any mapped key triggers its image or video", font_small, (140, 140, 140)),
         ("", font_small, (180, 180, 180)),
         ("Tab    Grid manager: assign keys and replace media", font_small, (180, 180, 180)),
+        ("L    Toggle latch mode (last hit stays on screen)", font_small, (180, 180, 180)),
         ("F11 or Alt+Enter   Toggle fullscreen / windowed", font_small, (180, 180, 180)),
         ("Esc    Quit", font_small, (180, 180, 180)),
         ("", font_small, (180, 180, 180)),
@@ -244,6 +247,18 @@ def update_help_visibility(show_help, *, reshow_key=False, note_started=False,
     if note_started or key_pressed:
         return False
     return show_help
+
+
+def toggle_latch_mode(latch_enabled):
+    """Return the opposite of the current note-release mode."""
+    return not latch_enabled
+
+
+def strobe_is_active(current_state, now=None):
+    """Whether the current trigger should temporarily render as black."""
+    if now is None:
+        now = time.monotonic()
+    return now < current_state.get('strobe_until', 0)
 
 
 def list_media_files():
@@ -576,14 +591,39 @@ def zoom_surface_to_screen(surface, target_size, zoom_scale):
     return zoomed.subsurface((x_offset, y_offset, target_size[0], target_size[1]))
 
 
+def draw_performance_frame(screen, current_state, target_size, now=None):
+    """Draw the media selected by MIDI, including its optional retrigger gap."""
+    if strobe_is_active(current_state, now):
+        screen.fill((0, 0, 0))
+    elif current_state['video_player']:
+        frame_surface = current_state['video_player'].get_frame()
+        if frame_surface:
+            screen.blit(
+                zoom_surface_to_screen(
+                    frame_surface, target_size, current_state['zoom_scale']),
+                (0, 0)
+            )
+        else:
+            screen.fill((0, 0, 0))
+    elif current_state['surface']:
+        scaled = zoom_surface_to_screen(
+            current_state['surface'], target_size, current_state['zoom_scale'])
+        screen.blit(scaled, (0, 0))
+    else:
+        screen.fill((0, 0, 0))
+
+
 def process_midi_messages(msg_source, start_note, end_note, note_to_media, target_size,
                           current_state, channel=None, clock_tracker=None,
                           min_note_beats=None, zoom_ring_enabled=False,
-                          note_hit_counts=None, assign_callback=None):
+                          note_hit_counts=None, assign_callback=None,
+                          latch_mode=True, strobe_seconds=DEFAULT_STROBE_MS / 1000):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
-    If min_note_beats is set, note-off is deferred until minimum duration elapses."""
+    If latch_mode is false and min_note_beats is set, note-off is deferred
+    until the minimum duration elapses. Every displayed note-on optionally
+    starts a short black retrigger gap."""
     if note_hit_counts is None:
         note_hit_counts = {}
 
@@ -632,6 +672,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                 current_state['surface'] = None
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
+                current_state['strobe_until'] = now + strobe_seconds
             elif media and media['type'] == 'image':
                 current_state['zoom_scale'] = get_zoom_ring_scale(
                     note, note_hit_counts, zoom_ring_enabled
@@ -639,8 +680,10 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                 current_state['surface'] = media['surface']
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
+                current_state['strobe_until'] = now + strobe_seconds
 
-        elif is_note_off and note == current_state['note_active']:
+        elif (is_note_off and not latch_mode
+              and note == current_state['note_active']):
             if min_note_beats and clock_tracker:
                 min_dur = clock_tracker.note_duration(min_note_beats)
                 elapsed = now - current_state.get('note_on_time', now)
@@ -659,7 +702,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             current_state['zoom_scale'] = 1.0
 
     # Check if held display should expire
-    if current_state.get('hold_until') and now >= current_state['hold_until']:
+    if (not latch_mode and current_state.get('hold_until')
+            and now >= current_state['hold_until']):
         if current_state['video_player']:
             current_state['video_player'].release()
             current_state['video_player'] = None
@@ -1180,6 +1224,10 @@ def main():
                         help="Minimum display duration as note length: "
                              "whole, half, quarter, eighth, sixteenth, thirtysecond "
                              "(or 1, 1/2, 1/4, 1/8, 1/16, 1/32)")
+    parser.add_argument('--no-latch', action='store_true',
+                        help="Release media on note-off instead of latching the last hit")
+    parser.add_argument('--strobe-ms', type=int, default=DEFAULT_STROBE_MS, metavar='MS',
+                        help=f"Black retrigger gap in milliseconds (default: {DEFAULT_STROBE_MS}; 0 disables)")
     parser.add_argument('--bpm', type=float, default=DEFAULT_BPM,
                         help=f"Fallback BPM when no MIDI clock is present (default: {DEFAULT_BPM})")
     parser.add_argument('--zoom-ring', action='store_true',
@@ -1196,6 +1244,9 @@ def main():
                              "square (1080x1080), ig-story (1080x1920), "
                              "reel (1080x1350) (default: 1280x720)")
     args = parser.parse_args()
+
+    if args.strobe_ms < 0:
+        parser.error('--strobe-ms must be zero or greater')
 
     if args.packaging_smoke_test:
         run_packaging_smoke_test()
@@ -1272,13 +1323,16 @@ def main():
         else:
             print("No MIDI input devices found — using keyboard only.")
 
-    print("Keyboard: Z-M (lower octave), Q-P (upper octave). ESC to quit.")
+    print("Keyboard: Z-M (lower octave), Q-P (upper octave). L: toggle latch. ESC to quit.")
     print("Tab: toggle grid/media-manager view (Up/Down or mouse wheel to scroll).")
     print("F1 or ?: show the on-screen help overlay again.")
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
-             'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0}
+             'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0,
+             'strobe_until': 0}
     note_hit_counts = {}
+    latch_enabled = not args.no_latch
+    latch_notice_until = 0
 
     # Startup help overlay: shown on launch (performance view, media present),
     # dismissed on the first note played, reshowable via F1/?.
@@ -1355,6 +1409,14 @@ def main():
                     # which has its own on-screen controls header.
                     if not grid_mode:
                         show_help = update_help_visibility(show_help, reshow_key=True)
+                elif event.key == pygame.K_l:
+                    latch_enabled = toggle_latch_mode(latch_enabled)
+                    if latch_enabled:
+                        # A pending minimum-duration release belongs to the
+                        # non-latch mode that just ended.
+                        state['hold_until'] = None
+                    latch_notice_until = time.monotonic() + LATCH_NOTICE_SECONDS
+                    print(f"Latch mode: {'on' if latch_enabled else 'off'}")
                 elif event.key == pygame.K_TAB:
                     grid_mode = not grid_mode
                     if grid_mode and grid_cells is None:
@@ -1460,13 +1522,15 @@ def main():
         state = process_midi_messages(msg_queue, start_note, end_note,
                                       note_to_media, target_size, state, midi_channel,
                                       clock_tracker, min_note_beats, args.zoom_ring,
-                                      note_hit_counts, assign_if_selected)
+                                      note_hit_counts, assign_if_selected,
+                                      latch_enabled, args.strobe_ms / 1000)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel,
                                           clock_tracker, min_note_beats, args.zoom_ring,
-                                          note_hit_counts, assign_if_selected)
+                                          note_hit_counts, assign_if_selected,
+                                          latch_enabled, args.strobe_ms / 1000)
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()
@@ -1508,20 +1572,15 @@ def main():
                                       cur_active, flash_times, now, selected_index)
             draw_drop_flash(screen, grid_cells, grid_scroll, drop_flash, now)
             draw_grid_preview(screen, grid_cells, grid_scroll, grid_preview)
-        elif state['video_player']:
-            frame_surface = state['video_player'].get_frame()
-            if frame_surface:
-                screen.blit(
-                    zoom_surface_to_screen(frame_surface, target_size, state['zoom_scale']),
-                    (0, 0)
-                )
-            else:
-                screen.fill((0, 0, 0))
-        elif state['surface']:
-            scaled = zoom_surface_to_screen(state['surface'], target_size, state['zoom_scale'])
-            screen.blit(scaled, (0, 0))
         else:
-            screen.fill((0, 0, 0))
+            draw_performance_frame(screen, state, target_size, now)
+
+        if now < latch_notice_until:
+            notice_font = pygame.font.SysFont(None, 36)
+            draw_text_outlined(
+                screen, f"Latch: {'ON' if latch_enabled else 'OFF'}", notice_font,
+                (24, 20), color=(255, 220, 120), outline_w=1
+            )
 
         # Startup/help overlay draws on top of the current frame in performance
         # view only (grid view has its own controls header).
