@@ -144,9 +144,14 @@ def test_no_preview_without_a_gesture():
 # --- draw_grid_preview + VideoPlayer end-to-end -----------------------------
 
 def _video_path():
-    for name in os.listdir(main.IMAGES_DIR):
-        if name.lower().endswith('.mp4'):
-            return os.path.join(main.IMAGES_DIR, name)
+    # Prefer the committed starter clip: it is short (so the freeze test reaches
+    # the end) and non-black (so the decode test sees pixels). Falling back to an
+    # arbitrary user video in images/ makes these tests non-portable — a long or
+    # fade-from-black clip fails assumptions that starter-pulse.mp4 guarantees.
+    names = sorted(os.listdir(main.IMAGES_DIR))
+    preferred = [n for n in names if n.lower() == 'starter-pulse.mp4']
+    for name in preferred + [n for n in names if n.lower().endswith('.mp4')]:
+        return os.path.join(main.IMAGES_DIR, name)
     return None
 
 
