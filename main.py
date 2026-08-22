@@ -1100,6 +1100,69 @@ def draw_drop_flash(screen, cells, scroll_y, drop_flash, now):
 GRID_DRAG_THRESHOLD = 6  # pixels of travel before a mouse-down becomes a drag
 
 
+def begin_grid_gesture(cells, scroll_y, screen_size, pos):
+    """Mouse-down in the grid: start a PENDING gesture on the cell under ``pos``.
+
+    The same gesture serves both interactions the grid supports on a held
+    button: it becomes a rearrange DRAG once the pointer travels past
+    GRID_DRAG_THRESHOLD (see :func:`update_grid_gesture`), or drives an in-place
+    video PREVIEW while it stays put on a video cell (see
+    :func:`gesture_previews`). Returns None if ``pos`` hit no cell, so a click
+    on padding/header starts nothing."""
+    idx = grid_cell_at(cells, scroll_y, screen_size, pos)
+    if idx is None:
+        return None
+    return {'from_index': idx,
+            'thumb': cells[idx]['thumb'],
+            'start': pos,
+            'moved': False,
+            'is_video': cells[idx]['type'] == 'video'}
+
+
+def update_grid_gesture(gesture, pos):
+    """Mouse-motion: promote a pending gesture to a rearrange drag once it
+    travels past GRID_DRAG_THRESHOLD. Once ``moved`` latches True it stays True,
+    so a gesture that becomes a drag never reverts to previewing even if the
+    pointer wanders back onto the origin cell."""
+    if gesture and not gesture['moved']:
+        sx, sy = gesture['start']
+        if abs(pos[0] - sx) + abs(pos[1] - sy) > GRID_DRAG_THRESHOLD:
+            gesture['moved'] = True
+    return gesture
+
+
+def gesture_previews(gesture, cells, scroll_y, screen_size, pos):
+    """True while the held gesture should show an in-place video preview.
+
+    Requires: a video cell, still within the drag threshold (not a rearrange),
+    and the pointer still over the originating cell. The last clause stops the
+    preview the instant the pointer leaves the cell it started on (T31)."""
+    if not gesture or gesture['moved'] or not gesture.get('is_video'):
+        return False
+    return grid_cell_at(cells, scroll_y, screen_size, pos) == gesture['from_index']
+
+
+def draw_grid_preview(screen, cells, scroll_y, preview):
+    """Blit the live preview frame over its cell during press-and-hold playback.
+
+    The VideoPlayer decodes straight to the cell's thumb size (crop-to-fill), so
+    the frame drops in exactly where the still thumbnail sat. Uses the shared
+    grid_layout()/cell_rect() geometry, and skips a cell scrolled out of view."""
+    if not preview:
+        return
+    index = preview['index']
+    if index >= len(cells):
+        return
+    frame = preview['player'].get_frame()
+    if frame is None:
+        return
+    layout = grid_layout(len(cells), scroll_y, screen.get_size())
+    x, y = cell_rect(index, layout)
+    if y + GRID_THUMB_H < layout['top'] or y > screen.get_height():
+        return
+    screen.blit(frame, (x, y))
+
+
 def draw_drag_feedback(screen, cells, scroll_y, drag, mouse_pos):
     """Draw the in-progress rearrange: highlight the drop target and float a
     ghost of the dragged thumbnail under the cursor.
@@ -1297,7 +1360,8 @@ def main():
     grid_scroll = 0
     flash_times = {}  # note -> monotonic time it was last triggered
     drop_flash = None  # {'note', 'until', 'ok'} border feedback for last drop
-    grid_drag = None  # {'from_index', 'thumb', 'start', 'moved'} in-grid rearrange
+    grid_drag = None  # {'from_index','thumb','start','moved','is_video'} gesture
+    grid_preview = None  # {'index', 'player'} live press-and-hold video preview
     undo_stack = []   # snapshots {'mapping', 'note_to_media'} for Ctrl+Z
     prev_active = None
     grid_fonts = {
@@ -1358,6 +1422,9 @@ def main():
                         grid_cells = build_grid_cells(
                             note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
                     grid_scroll = 0
+                    # Leaving the grid mid-hold: drop the gesture so it can't
+                    # keep a preview alive off-screen (reconcile releases it).
+                    grid_drag = None
                 elif grid_mode and event.key in (pygame.K_UP, pygame.K_DOWN,
                                                  pygame.K_PAGEUP, pygame.K_PAGEDOWN,
                                                  pygame.K_HOME, pygame.K_END):
@@ -1396,20 +1463,16 @@ def main():
                 grid_scroll -= event.y * 60
             elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
                   and grid_mode and grid_cells):
-                # Begin a potential in-grid rearrange. Not a drag yet — it only
-                # becomes one once the cursor travels past GRID_DRAG_THRESHOLD,
-                # so a plain click never swaps anything.
-                idx = grid_cell_at(grid_cells, grid_scroll,
-                                   screen.get_size(), event.pos)
-                if idx is not None:
-                    grid_drag = {'from_index': idx,
-                                 'thumb': grid_cells[idx]['thumb'],
-                                 'start': event.pos, 'moved': False}
+                # Begin a pending gesture on the cell under the cursor. It's not
+                # a drag yet — it becomes a rearrange only once the cursor
+                # travels past GRID_DRAG_THRESHOLD (so a plain click never
+                # swaps), and drives an in-place video preview while it stays put
+                # on a video cell. The preview itself is started/stopped by the
+                # reconcile below the event loop, keyed off gesture_previews().
+                grid_drag = begin_grid_gesture(grid_cells, grid_scroll,
+                                               screen.get_size(), event.pos)
             elif event.type == pygame.MOUSEMOTION and grid_drag:
-                sx, sy = grid_drag['start']
-                if (abs(event.pos[0] - sx) + abs(event.pos[1] - sy)
-                        > GRID_DRAG_THRESHOLD):
-                    grid_drag['moved'] = True
+                grid_drag = update_grid_gesture(grid_drag, event.pos)
             elif (event.type == pygame.MOUSEBUTTONUP and event.button == 1
                   and grid_drag):
                 # Drop the dragged thumbnail: if it lands on a different cell,
@@ -1507,11 +1570,33 @@ def main():
         # since both surface here as a newly-active note.
         show_help = update_help_visibility(show_help, note_started=note_started)
 
+        # Reconcile the press-and-hold preview with the current gesture. Runs
+        # every frame (not just on events) so playback starts the moment a video
+        # cell is pressed and stops on release, on becoming a drag, or when the
+        # pointer leaves the cell — all folded into gesture_previews(). Only one
+        # preview lives at a time; switching to a different held cell releases
+        # the old VideoPlayer before opening the new one.
+        if grid_mode and grid_cells and gesture_previews(
+                grid_drag, grid_cells, grid_scroll,
+                screen.get_size(), pygame.mouse.get_pos()):
+            hold_idx = grid_drag['from_index']
+            if grid_preview is None or grid_preview['index'] != hold_idx:
+                if grid_preview:
+                    grid_preview['player'].release()
+                media = grid_cells[hold_idx]['media']
+                grid_preview = {'index': hold_idx,
+                                'player': VideoPlayer(
+                                    media['path'], (GRID_THUMB_W, GRID_THUMB_H))}
+        elif grid_preview:
+            grid_preview['player'].release()
+            grid_preview = None
+
         # Draw current frame
         if grid_mode:
             grid_scroll = render_grid(screen, grid_cells, grid_scroll, grid_fonts,
                                       cur_active, flash_times, now)
             draw_drop_flash(screen, grid_cells, grid_scroll, drop_flash, now)
+            draw_grid_preview(screen, grid_cells, grid_scroll, grid_preview)
             draw_drag_feedback(screen, grid_cells, grid_scroll, grid_drag,
                                pygame.mouse.get_pos())
         elif state['video_player']:
@@ -1540,6 +1625,8 @@ def main():
     stop_event.set()
     if state['video_player']:
         state['video_player'].release()
+    if grid_preview:
+        grid_preview['player'].release()
     pygame.quit()
 
 
