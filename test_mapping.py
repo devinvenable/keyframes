@@ -111,18 +111,37 @@ def test_reconcile_surfaces_new_file(media_dir):
     assert 'new.png' in result.values()   # new file surfaced
 
 
-def test_reconcile_preserves_out_of_range_stored(media_dir):
-    present = ['a.png', 'b.png']
-    stored = {200: 'b.png'}  # outside 36-99, file still exists
-    result = main.reconcile_mapping(stored, present, 36, 99)
-    assert result[200] == 'b.png'
-
-
 def test_reconcile_drops_out_of_range_missing_file(media_dir):
     present = ['a.png']
     stored = {200: 'gone.png'}
     result = main.reconcile_mapping(stored, present, 36, 99)
     assert 200 not in result
+
+
+def test_assign_steals_note_and_previous_cell():
+    mapping = {36: 'a.png', 40: 'b.png'}
+    assert main.assign_mapping(mapping, 36, 'b.png') == {36: 'b.png'}
+
+
+def test_unmap_removes_only_selected_media():
+    assert main.unmap_mapping({36: 'a.png', 40: 'b.png'}, 'a.png') == {40: 'b.png'}
+
+
+def test_seed_is_one_to_one():
+    assert main.reconcile_mapping({}, ['a.png', 'b.png', 'c.png'], 36, 39,
+                                  seed=True) == {36: 'a.png', 37: 'b.png', 38: 'c.png'}
+
+
+def test_reconcile_later_file_uses_free_note_or_stays_unmapped():
+    assert main.reconcile_mapping({36: 'a.png'}, ['a.png', 'b.png'], 36, 37) == {
+        36: 'a.png', 37: 'b.png'}
+    assert main.reconcile_mapping({36: 'a.png'}, ['a.png', 'b.png'], 36, 36) == {
+        36: 'a.png'}
+
+
+def test_reconcile_keeps_explicitly_unmapped_files_unmapped():
+    assert main.reconcile_mapping({36: 'a.png'}, ['a.png', 'b.png'], 36, 37,
+                                  new_files=[]) == {36: 'a.png'}
 
 
 # --- load_media integration --------------------------------------------------

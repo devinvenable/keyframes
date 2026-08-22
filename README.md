@@ -138,19 +138,21 @@ If a MIDI device is connected, both the device and keyboard work simultaneously.
 ### Grid / media-manager view
 
 Press **Tab** to toggle between the performance display and a scrollable grid of
-every loaded media file. Each thumbnail is labeled with the MIDI note (or note
-range) it maps to, and videos are marked with a `VID` badge and their first frame.
+every media file. Each thumbnail is labeled with its one MIDI note, or `—` when
+unmapped; unmapped thumbnails are dimmed. Videos are marked with a `VID` badge
+and their first frame.
 
 MIDI stays live in grid view: playing a note flashes its thumbnail, so you can
 see at a glance which media is bound to which key. Scroll with **Up/Down**,
 **PageUp/PageDown**, **Home/End**, or the **mouse wheel**. Press **Tab** again to
 return to the performance view, or **Esc** to quit.
 
-Each thumbnail owns one contiguous key zone. Click a thumbnail to select it,
-then use **Left/Right** to move its trailing divider one key, or
-**Shift+Left/Right** for its leading divider. The adjacent zone grows or shrinks
-with it; neither can be reduced below one key. The labels update live and
-**Ctrl+Z** restores the previous divider position.
+Each thumbnail maps to exactly one key or none. Click a thumbnail to select it,
+then press **A** or plain **Enter** to arm assignment. The next computer-piano
+or incoming MIDI note maps to that media and steals the note from its prior
+media; **Esc** cancels. Press **Delete** or **Backspace** to unmap the selected
+media without deleting its file. Playing keys outside assignment mode only
+previews/flashes media and never changes mappings.
 
 **Click-to-replace:** drag an image or video from your file manager
 (Explorer/Finder) and drop it onto a grid cell to reassign that note to the new
@@ -166,11 +168,13 @@ Drop any images or videos into the `images/` directory — any filenames, any or
 - **Images**: `.png`, `.jpg`, `.jpeg`, `.bmp`
 - **Videos**: `.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`
 
-Files are sorted and distributed evenly across the 64-note range. Videos are interleaved with images so they don't cluster together. The more files you add, the more variety per key.
+On a first launch, files are sorted and each receives one distinct key in order.
+Videos are interleaved with images so they don't cluster together. Later files
+take the next free key when one exists, otherwise remain unmapped.
 
 ### `mapping.json`
 
-The note→file assignment is remembered in a `mapping.json` manifest beside the `images/` folder (next to the executable in a packaged build). On first launch it is seeded from the even-distribution above and written out; after that it is the source of truth, so zone boundaries survive restarts. The file is plain, human-readable JSON (`{"36": "sunrise.png", ...}`) you can hand-edit. The active note range is always normalized into contiguous, gap-free, non-overlapping zones: each file gets one run of keys. On launch, deleted files are removed; new files append at the high-key end by taking one key from the rightmost zone with a spare key. If every key is already its own zone, surplus files simply remain off-grid.
+The note→file assignment is remembered in a sparse `mapping.json` manifest beside the `images/` folder (next to the executable in a packaged build). It is plain, human-readable JSON (`{"36": "sunrise.png"}`) you can hand-edit: only mapped notes appear. Each note and each media file can occur at most once. On launch, deleted files are removed; later-added files get the next free key if possible, otherwise remain visible but unmapped.
 
 ## Configuration
 
