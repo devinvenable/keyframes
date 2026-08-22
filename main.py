@@ -842,7 +842,8 @@ def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now,
     pygame.draw.rect(screen, (30, 30, 30), (0, 0, sw, top))
     pygame.draw.line(screen, (70, 70, 70), (0, top), (sw, top), 2)
     header = (f"GRID VIEW  |  {len(cells)} media  |  "
-              f"Click: select   A/Enter: assign key   Delete: unmap   "
+              f"Click: select, then play a key/MIDI note to map it   "
+              f"Delete: unmap   "
               f"Drop file: replace   Tab: perform   Esc: quit")
     draw_text_outlined(screen, header, fonts['header'], (GRID_PAD, 15),
                        color=(230, 230, 230), outline_w=1)
@@ -1019,6 +1020,21 @@ def assign_cell_note(cell, note, note_to_media):
         if old_note == note or media['name'] == name:
             del note_to_media[old_note]
     note_to_media[note] = cell['media']
+
+
+def grid_assign_note(cells, selected_index, note, note_to_media):
+    """One-shot remap: assign ``note`` to the selected cell, consuming the
+    selection.
+
+    Selection *is* the arm step — while a cell is selected, the next played
+    note (computer-piano key or incoming MIDI) remaps it via
+    assign_cell_note's exclusive steal. Returns ``(rebuilt_cells, None)`` so
+    one selection yields exactly one remap; further playing just previews.
+    With no selection, returns the arguments unchanged."""
+    if not cells or selected_index is None:
+        return cells, selected_index
+    assign_cell_note(cells[selected_index], note, note_to_media)
+    return build_grid_cells(note_to_media, (GRID_THUMB_W, GRID_THUMB_H)), None
 
 
 def unmap_cell(cell, note_to_media):
@@ -1277,7 +1293,6 @@ def main():
     grid_drag = None  # {'from_index','thumb','start','moved','is_video'} gesture
     grid_preview = None  # {'index', 'player'} live press-and-hold video preview
     selected_index = None
-    assign_armed = False
     prev_active = None
     grid_fonts = {
         'note': pygame.font.SysFont(None, 40),
@@ -1285,14 +1300,12 @@ def main():
         'header': pygame.font.SysFont(None, 30),
     }
 
-    def assign_if_armed(note):
-        nonlocal assign_armed, grid_cells
-        if not (assign_armed and grid_mode and grid_cells
-                and selected_index is not None):
+    def assign_if_selected(note):
+        nonlocal selected_index, grid_cells
+        if not (grid_mode and grid_cells and selected_index is not None):
             return False
-        assign_cell_note(grid_cells[selected_index], note, note_to_media)
-        grid_cells = build_grid_cells(note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
-        assign_armed = False
+        grid_cells, selected_index = grid_assign_note(
+            grid_cells, selected_index, note, note_to_media)
         print(f"Mapped selected media to key {note}")
         return True
 
@@ -1328,11 +1341,7 @@ def main():
                     if event.key == pygame.K_ESCAPE:
                         continue  # consumed: closed the overlay, don't also quit
                 if event.key == pygame.K_ESCAPE:
-                    if assign_armed:
-                        assign_armed = False
-                        print("Key assignment cancelled")
-                    else:
-                        running = False
+                    running = False
                 elif is_fullscreen_toggle_key(event):
                     if not fullscreen:
                         last_windowed_size = (display_w, display_h)
@@ -1356,16 +1365,12 @@ def main():
                     # keep a preview alive off-screen (reconcile releases it).
                     grid_drag = None
                     selected_index = None
-                    assign_armed = False
-                elif (grid_mode and selected_index is not None and grid_cells
-                      and event.key in (pygame.K_a, pygame.K_RETURN)):
-                    assign_armed = True
-                    print("Press the key to map to this media (Esc cancels)")
                 elif (grid_mode and selected_index is not None and grid_cells
                       and event.key in (pygame.K_DELETE, pygame.K_BACKSPACE)):
                     unmap_cell(grid_cells[selected_index], note_to_media)
                     grid_cells = build_grid_cells(
                         note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
+                    selected_index = None
                     print("Unmapped selected media")
                 elif grid_mode and event.key in (pygame.K_UP, pygame.K_DOWN,
                                                  pygame.K_PAGEUP, pygame.K_PAGEDOWN,
@@ -1383,15 +1388,11 @@ def main():
                     elif event.key == pygame.K_END:
                         grid_scroll = 10 ** 9  # clamped during render
                 elif event.key in KEY_TO_NOTE:
+                    # Piano keys always enqueue; assign_if_selected (the queue's
+                    # assign_callback) turns the note into a remap when a grid
+                    # cell is selected, so keyboard and MIDI share one path.
                     note = KEY_TO_NOTE[event.key]
-                    if assign_armed and grid_mode and selected_index is not None:
-                        assign_cell_note(grid_cells[selected_index], note, note_to_media)
-                        grid_cells = build_grid_cells(
-                            note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
-                        assign_armed = False
-                        print(f"Mapped selected media to key {note}")
-                    else:
-                        msg_queue.put(mido.Message('note_on', note=note, velocity=100))
+                    msg_queue.put(mido.Message('note_on', note=note, velocity=100))
             elif event.type == pygame.KEYUP:
                 if event.key in KEY_TO_NOTE:
                     note = KEY_TO_NOTE[event.key]
@@ -1404,12 +1405,11 @@ def main():
                 grid_drag = begin_grid_gesture(grid_cells, grid_scroll,
                                                screen.get_size(), event.pos)
             elif (event.type == pygame.MOUSEBUTTONUP and event.button == 1
-                  and grid_drag):
-                if grid_cells:
-                    idx = grid_cell_at(grid_cells, grid_scroll,
-                                       screen.get_size(), event.pos)
-                    if idx is not None:
-                        selected_index = idx
+                  and grid_mode and grid_cells):
+                # Release over a cell selects it (arming the next played note);
+                # release over the header/padding deselects (grid_cell_at None).
+                selected_index = grid_cell_at(grid_cells, grid_scroll,
+                                              screen.get_size(), event.pos)
                 grid_drag = None
             elif event.type in (pygame.DROPBEGIN, pygame.DROPCOMPLETE):
                 # Diagnostic: proves the window is receiving the drop-event
@@ -1460,13 +1460,13 @@ def main():
         state = process_midi_messages(msg_queue, start_note, end_note,
                                       note_to_media, target_size, state, midi_channel,
                                       clock_tracker, min_note_beats, args.zoom_ring,
-                                      note_hit_counts, assign_if_armed)
+                                      note_hit_counts, assign_if_selected)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel,
                                           clock_tracker, min_note_beats, args.zoom_ring,
-                                          note_hit_counts, assign_if_armed)
+                                          note_hit_counts, assign_if_selected)
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()
