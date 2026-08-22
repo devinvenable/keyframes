@@ -67,10 +67,25 @@ def test_dismiss_on_first_note():
     assert show_help is False
 
 
-def test_non_note_key_does_not_dismiss():
-    # No note started this frame -> overlay stays up (e.g. Tab, arrows).
+def test_no_input_keeps_overlay():
+    # A frame with no input signal at all -> overlay stays up.
     show_help = True
     show_help = main.update_help_visibility(show_help, note_started=False)
+    assert show_help is True
+
+
+def test_any_key_dismisses():
+    # Any key press hides the overlay, even a non-note key (space, a letter,
+    # Tab). This is the fix for "pressing a key didn't dismiss it".
+    show_help = True
+    show_help = main.update_help_visibility(show_help, key_pressed=True)
+    assert show_help is False
+
+
+def test_reshow_wins_over_simultaneous_key():
+    # F1/? is excepted from the any-key dismissal (it reshows instead).
+    show_help = False
+    show_help = main.update_help_visibility(show_help, reshow_key=True, key_pressed=True)
     assert show_help is True
 
 

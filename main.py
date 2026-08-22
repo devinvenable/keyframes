@@ -206,15 +206,19 @@ def is_help_reshow_key(event):
     return False
 
 
-def update_help_visibility(show_help, *, reshow_key=False, note_started=False):
+def update_help_visibility(show_help, *, reshow_key=False, note_started=False,
+                           key_pressed=False):
     """Return the help-overlay visibility after one input.
 
-    Reshow (F1/?) wins and shows the overlay; otherwise the first note played
-    (a KEY_TO_NOTE press or an incoming MIDI note) hides it. Called from the
-    main loop for both the keyboard and live-MIDI paths."""
+    Reshow (F1/?) wins and shows the overlay; otherwise ANY key press
+    (``key_pressed``) or the first note played (a KEY_TO_NOTE press or an
+    incoming MIDI note, ``note_started``) hides it. Called from the main loop
+    for the keyboard, any-key, and live-MIDI paths. Dismissing on any key —
+    not just playable notes — matches "press any key to continue" and avoids
+    depending on the note being mapped or the note plumbing being reached."""
     if reshow_key:
         return True
-    if note_started:
+    if note_started or key_pressed:
         return False
     return show_help
 
@@ -1165,6 +1169,16 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
+                # Any key dismisses the startup help overlay and returns to the
+                # normal view — matching "press any key to continue". The F1/?
+                # reshow bindings are excepted (handled below). While the overlay
+                # is up, Escape closes it instead of quitting, so it can't
+                # surprise-exit the app. The key still performs its normal action
+                # (a piano key also plays its note, Tab still opens the grid).
+                if show_help and not grid_mode and not is_help_reshow_key(event):
+                    show_help = update_help_visibility(show_help, key_pressed=True)
+                    if event.key == pygame.K_ESCAPE:
+                        continue  # consumed: closed the overlay, don't also quit
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 elif is_help_reshow_key(event):
