@@ -1274,38 +1274,112 @@ def draw_drag_feedback(screen, cells, scroll_y, drag, mouse_pos):
     screen.blit(ghost, (mx - GRID_THUMB_W // 2, my - GRID_THUMB_H // 2))
 
 
+def assign_projection(cells, selected_index, captured_notes):
+    """Compute — without mutating anything — what applying ``captured_notes`` to
+    the selected cell WOULD do, so assign mode can preview it before Enter.
+
+    Pure and headless-testable. Returns::
+
+        {'selected': None | {'index', 'current', 'projected'},
+         'donors':   {index: {'losing', 'remaining', 'emptied'}}}
+
+    * ``selected.projected`` is the target cell's current notes UNION the
+      captured ones (the range it GROWS to) — sorted; ``current`` is its notes
+      today.
+    * Each DONOR is a non-selected cell that currently holds one or more
+      captured notes: ``losing`` are exactly those notes (they get taken over),
+      ``remaining`` is what it keeps, and ``emptied`` is True when it loses every
+      note it had (its file becomes unreferenced).
+
+    Returns empty ``selected``/``donors`` when nothing is selected, the index is
+    out of range, or no notes are captured — i.e. there is nothing to preview."""
+    result = {'selected': None, 'donors': {}}
+    captured = set(captured_notes)
+    if (selected_index is None or not captured
+            or not (0 <= selected_index < len(cells))):
+        return result
+    sel_cell = cells[selected_index]
+    result['selected'] = {
+        'index': selected_index,
+        'current': sorted(sel_cell['notes']),
+        'projected': sorted(set(sel_cell['notes']) | captured),
+    }
+    for i, cell in enumerate(cells):
+        if i == selected_index:
+            continue
+        losing = sorted(captured.intersection(cell['notes']))
+        if not losing:
+            continue
+        remaining = sorted(set(cell['notes']) - captured)
+        result['donors'][i] = {
+            'losing': losing,
+            'remaining': remaining,
+            'emptied': not remaining,
+        }
+    return result
+
+
 def draw_assign_overlay(screen, cells, scroll_y, assign_state, fonts):
     """Draw the play-to-assign UI: selected-cell highlight, capture marks, banner.
 
     * The selected cell gets a steady cyan border — distinct from the orange
       note-trigger flash — so it's clear which media assignment mode targets.
-    * While active, any cell currently holding a captured note gets a magenta
-      border, and a banner names the controls plus the captured notes so far.
-    Uses the same grid_layout()/cell_rect() as rendering so borders land exactly
-    on their cells."""
+    * While active, the projection (see :func:`assign_projection`) is previewed
+      in place: the selected cell shows the range it will GROW to
+      (``current -> projected``), and every donor cell is dimmed and labelled
+      with the notes it will LOSE (``-losing``), an ``EMPTY`` hint when it loses
+      all of them. A banner names the controls plus the captured notes so far.
+    Nothing here mutates state — the preview vanishes on Esc and is only written
+    on Enter (apply_assign). Uses the same grid_layout()/cell_rect() as
+    rendering so borders and labels land exactly on their cells."""
     if not cells or assign_state['selected'] is None:
         return
     layout = grid_layout(len(cells), scroll_y, screen.get_size())
 
+    def on_screen(y):
+        return y + GRID_THUMB_H >= layout['top'] and y <= screen.get_height()
+
     sel = assign_state['selected']
     if 0 <= sel < len(cells):
         x, y = cell_rect(sel, layout)
-        if y + GRID_THUMB_H >= layout['top'] and y <= screen.get_height():
+        if on_screen(y):
             pygame.draw.rect(screen, (80, 210, 255),
                              (x - 4, y - 4, GRID_THUMB_W + 8, GRID_THUMB_H + 8), 4)
 
     if not assign_state['active']:
         return
 
-    captured = set(assign_state['captured'])
-    if captured:
-        for i, cell in enumerate(cells):
-            if captured.intersection(cell['notes']):
-                x, y = cell_rect(i, layout)
-                if y + GRID_THUMB_H < layout['top'] or y > screen.get_height():
-                    continue
-                pygame.draw.rect(screen, (230, 90, 230),
-                                 (x - 2, y - 2, GRID_THUMB_W + 4, GRID_THUMB_H + 4), 3)
+    proj = assign_projection(cells, sel, assign_state['captured'])
+
+    # Donor cells: dim the thumbnail and stamp the loss so it's clear this media
+    # is about to have those notes stolen from it.
+    for i, donor in proj['donors'].items():
+        x, y = cell_rect(i, layout)
+        if not on_screen(y):
+            continue
+        dim = pygame.Surface((GRID_THUMB_W, GRID_THUMB_H))
+        dim.set_alpha(150)
+        dim.fill((10, 10, 10))
+        screen.blit(dim, (x, y))
+        pygame.draw.rect(screen, (230, 90, 230),
+                         (x - 2, y - 2, GRID_THUMB_W + 4, GRID_THUMB_H + 4), 3)
+        loss = f"-{format_notes(donor['losing'])}"
+        draw_text_outlined(screen, loss, fonts['note'], (x + 6, y + 4),
+                           color=(255, 150, 150))
+        tag = ('EMPTY' if donor['emptied']
+               else f"keeps {format_notes(donor['remaining'])}")
+        draw_text_outlined(screen, tag, fonts['small'],
+                           (x + 6, y + GRID_THUMB_H - 24),
+                           color=(255, 200, 120))
+
+    # Selected cell: show the range it GROWS to (current -> projected).
+    if proj['selected'] is not None and 0 <= sel < len(cells):
+        x, y = cell_rect(sel, layout)
+        if on_screen(y):
+            grow = (f"{format_notes(proj['selected']['current'])} -> "
+                    f"{format_notes(proj['selected']['projected'])}")
+            draw_text_outlined(screen, grow, fonts['note'], (x + 6, y + 4),
+                               color=(150, 255, 200))
 
     sw = screen.get_width()
     band_h = 40

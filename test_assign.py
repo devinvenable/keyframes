@@ -209,6 +209,78 @@ def test_apply_assign_can_leave_a_file_unreferenced(media_dir):
     assert victim_name not in saved.values()
 
 
+# --- assign_projection: the pure preview (no mutation) ----------------------
+
+def _cell(name, notes):
+    return {'media': _img(name), 'type': 'image', 'notes': list(notes)}
+
+
+def test_projection_empty_when_nothing_captured():
+    cells = [_cell('a.png', [36, 37]), _cell('b.png', [40])]
+    proj = main.assign_projection(cells, 0, [])
+    assert proj == {'selected': None, 'donors': {}}
+
+
+def test_projection_empty_when_nothing_selected():
+    cells = [_cell('a.png', [36]), _cell('b.png', [40])]
+    assert main.assign_projection(cells, None, [40]) == {'selected': None,
+                                                         'donors': {}}
+
+
+def test_projection_selected_grows_by_captured():
+    cells = [_cell('a.png', [36, 37]), _cell('b.png', [40, 41])]
+    proj = main.assign_projection(cells, 0, [40])
+    assert proj['selected'] == {'index': 0,
+                                'current': [36, 37],
+                                'projected': [36, 37, 40]}
+
+
+def test_projection_donor_loses_exactly_the_captured_notes_it_held():
+    # b holds 40,41,42; capturing 41 for cell a: b loses ONLY 41, keeps 40,42.
+    cells = [_cell('a.png', [36]), _cell('b.png', [40, 41, 42])]
+    proj = main.assign_projection(cells, 0, [41])
+    assert proj['donors'] == {1: {'losing': [41],
+                                  'remaining': [40, 42],
+                                  'emptied': False}}
+
+
+def test_projection_flags_donor_emptied_when_all_notes_taken():
+    cells = [_cell('a.png', [36]), _cell('b.png', [40, 41])]
+    proj = main.assign_projection(cells, 0, [40, 41])
+    assert proj['donors'][1]['emptied'] is True
+    assert proj['donors'][1]['remaining'] == []
+    assert proj['donors'][1]['losing'] == [40, 41]
+
+
+def test_projection_spans_multiple_donors_and_ignores_unheld_notes():
+    cells = [_cell('a.png', [36]),
+             _cell('b.png', [40, 41]),
+             _cell('c.png', [50])]
+    # Capture one note from b, all of c, plus 99 which no cell holds.
+    proj = main.assign_projection(cells, 0, [40, 50, 99])
+    assert proj['selected']['projected'] == [36, 40, 50, 99]
+    assert set(proj['donors']) == {1, 2}
+    assert proj['donors'][1] == {'losing': [40], 'remaining': [41],
+                                 'emptied': False}
+    assert proj['donors'][2] == {'losing': [50], 'remaining': [],
+                                 'emptied': True}
+
+
+def test_projection_does_not_list_selected_cell_as_its_own_donor():
+    # Capturing a note the selected cell already holds: no donor, no change.
+    cells = [_cell('a.png', [36, 37]), _cell('b.png', [40])]
+    proj = main.assign_projection(cells, 0, [36])
+    assert proj['donors'] == {}
+    assert proj['selected']['projected'] == [36, 37]
+
+
+def test_projection_does_not_mutate_cells():
+    cells = [_cell('a.png', [36]), _cell('b.png', [40, 41])]
+    before = [list(c['notes']) for c in cells]
+    main.assign_projection(cells, 0, [40])
+    assert [c['notes'] for c in cells] == before
+
+
 # --- end-to-end via the shared apply path -----------------------------------
 
 def test_capture_then_apply_full_flow(media_dir):
