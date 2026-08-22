@@ -769,11 +769,20 @@ def make_thumbnail(media, thumb_size):
 
 
 def build_grid_cells(note_to_media, thumb_size):
-    """Build one grid cell for every media file, with zero or one note label."""
+    """Build one grid cell for every media file, with zero or one note label.
+
+    Cells are ordered by their KEY (mapped cells first, in note order), then any
+    unmapped files. Key-order keeps the grid stable across edits: replacing a
+    cell by drag-drop hands its key to the new file, so the new thumbnail lands
+    in the SAME spot rather than jumping to an alphabetical position."""
     media_by_name = {media['name']: media for media in note_to_media.values()}
     note_by_name = {media['name']: note for note, media in note_to_media.items()}
+    all_files = list_media_files()
+    mapped = sorted((n for n in all_files if n in note_by_name),
+                    key=lambda n: note_by_name[n])
+    unmapped = [n for n in order_media_files(all_files) if n not in note_by_name]
     cells = []
-    for name in order_media_files(list_media_files()):
+    for name in mapped + unmapped:
         media = media_by_name.get(name)
         if media is None:
             media = make_media_entry(name)

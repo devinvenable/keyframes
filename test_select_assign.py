@@ -70,7 +70,11 @@ def test_assignment_steals_note_from_prior_cell(media):
     new_cells, selected = main.grid_assign_note(cells, 1, 36, note_to_media)
     assert selected is None
     assert main.load_mapping() == {36: 'b.png'}  # a.png lost its key
-    assert new_cells[0]['notes'] == []
+    # Cells are key-ordered, so check by content rather than position.
+    a_cell = next(c for c in new_cells if c['media']['name'] == 'a.png')
+    b_cell = next(c for c in new_cells if c['media']['name'] == 'b.png')
+    assert a_cell['notes'] == []      # a.png lost its key
+    assert b_cell['notes'] == [36]    # b.png now holds it
 
 
 def test_no_selection_means_no_remap(media):
