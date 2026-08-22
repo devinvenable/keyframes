@@ -413,6 +413,144 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
     return current_state
 
 
+# --- Grid / media-manager view ---------------------------------------------
+
+GRID_THUMB_W = 200
+GRID_THUMB_H = 112  # 16:9
+GRID_PAD = 16
+GRID_TOP = 56  # header band height
+GRID_FLASH_FADE = 0.5  # seconds a note-trigger highlight lingers after release
+
+
+def make_thumbnail(media, thumb_size):
+    """Build a small pygame surface for a media item.
+    Videos use their first frame; images use their loaded surface."""
+    if media['type'] == 'image':
+        return crop_to_fill(media['surface'], thumb_size)
+
+    cap = cv2.VideoCapture(media['path'])
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        placeholder = pygame.Surface(thumb_size)
+        placeholder.fill((40, 40, 40))
+        return placeholder
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+    return crop_to_fill(surface, thumb_size)
+
+
+def build_grid_cells(note_to_media, thumb_size):
+    """Collapse note_to_media into one cell per unique media item, recording
+    every note that maps to it. Cells are ordered by their first (lowest) note."""
+    cells = []
+    seen = {}  # id(media) -> index into cells
+    for note in sorted(note_to_media):
+        media = note_to_media[note]
+        key = id(media)
+        if key in seen:
+            cells[seen[key]]['notes'].append(note)
+        else:
+            seen[key] = len(cells)
+            cells.append({
+                'media': media,
+                'type': media['type'],
+                'thumb': make_thumbnail(media, thumb_size),
+                'notes': [note],
+            })
+    return cells
+
+
+def format_notes(notes):
+    """Compact label for the note(s) a cell maps to (e.g. '36' or '36-39')."""
+    if len(notes) == 1:
+        return str(notes[0])
+    return f"{min(notes)}-{max(notes)}"
+
+
+def draw_text_outlined(surface, text, font, pos, color=(255, 255, 255),
+                       outline=(0, 0, 0), outline_w=2):
+    """Blit text with a black stroke so it stays legible over any thumbnail."""
+    x, y = pos
+    stroke = font.render(text, True, outline)
+    for dx in (-outline_w, 0, outline_w):
+        for dy in (-outline_w, 0, outline_w):
+            if dx or dy:
+                surface.blit(stroke, (x + dx, y + dy))
+    base = font.render(text, True, color)
+    surface.blit(base, (x, y))
+    return base.get_size()
+
+
+def cell_highlight(cell, active_note, flash_times, now):
+    """Return highlight strength 0..1 for a cell: 1.0 while one of its notes is
+    held, fading to 0 over GRID_FLASH_FADE seconds after the last trigger."""
+    strength = 0.0
+    for n in cell['notes']:
+        if n == active_note:
+            return 1.0
+        t = flash_times.get(n)
+        if t is not None:
+            age = now - t
+            if age < GRID_FLASH_FADE:
+                strength = max(strength, 1.0 - age / GRID_FLASH_FADE)
+    return strength
+
+
+def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
+    """Draw the media-manager grid. Returns the clamped scroll offset."""
+    sw, sh = screen.get_size()
+    screen.fill((18, 18, 18))
+
+    cell_w = GRID_THUMB_W + GRID_PAD
+    cell_h = GRID_THUMB_H + GRID_PAD
+    cols = max(1, (sw - GRID_PAD) // cell_w)
+    grid_w = cols * cell_w - GRID_PAD
+    x0 = max(GRID_PAD, (sw - grid_w) // 2)
+    top = GRID_TOP
+
+    rows = (len(cells) + cols - 1) // cols
+    content_h = rows * cell_h
+    view_h = sh - top - GRID_PAD
+    max_scroll = max(0, content_h - view_h)
+    scroll_y = max(0, min(scroll_y, max_scroll))
+
+    for i, cell in enumerate(cells):
+        col = i % cols
+        row = i // cols
+        x = x0 + col * cell_w
+        y = top + row * cell_h - scroll_y
+        if y + GRID_THUMB_H < top or y > sh:
+            continue  # fully scrolled off-screen
+
+        screen.blit(cell['thumb'], (x, y))
+
+        hl = cell_highlight(cell, active_note, flash_times, now)
+        if hl > 0:
+            border = int(2 + 4 * hl)
+            color = (255, int(60 + 180 * hl), 40)
+            pygame.draw.rect(screen, color,
+                             (x - 2, y - 2, GRID_THUMB_W + 4, GRID_THUMB_H + 4),
+                             border)
+
+        draw_text_outlined(screen, format_notes(cell['notes']), fonts['note'],
+                           (x + 6, y + 4))
+        if cell['type'] == 'video':
+            draw_text_outlined(screen, 'VID', fonts['small'],
+                               (x + GRID_THUMB_W - 48, y + GRID_THUMB_H - 26),
+                               color=(255, 220, 120))
+
+    # Header band (drawn last so thumbnails scroll underneath it)
+    pygame.draw.rect(screen, (30, 30, 30), (0, 0, sw, top))
+    pygame.draw.line(screen, (70, 70, 70), (0, top), (sw, top), 2)
+    header = (f"GRID VIEW  |  {len(cells)} media  |  "
+              f"Tab: performance view   Up/Down or wheel: scroll   Esc: quit")
+    draw_text_outlined(screen, header, fonts['header'], (GRID_PAD, 15),
+                       color=(230, 230, 230), outline_w=1)
+
+    return scroll_y
+
+
 def select_midi_ports(available_ports, port_filter=None):
     """Select MIDI ports. If port_filter is given, return all substring matches.
     Otherwise auto-select all hardware ports (skip virtual ones)."""
@@ -572,10 +710,23 @@ def main():
             print("No MIDI input devices found — using keyboard only.")
 
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). ESC to quit.")
+    print("Tab: toggle grid/media-manager view (Up/Down or mouse wheel to scroll).")
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
              'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0}
     note_hit_counts = {}
+
+    # Grid / media-manager view state
+    grid_mode = False
+    grid_cells = None  # built lazily the first time the grid is opened
+    grid_scroll = 0
+    flash_times = {}  # note -> monotonic time it was last triggered
+    prev_active = None
+    grid_fonts = {
+        'note': pygame.font.SysFont(None, 40),
+        'small': pygame.font.SysFont(None, 26),
+        'header': pygame.font.SysFont(None, 30),
+    }
 
     if min_note_beats:
         dur = clock_tracker.note_duration(min_note_beats)
@@ -594,6 +745,27 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                elif event.key == pygame.K_TAB:
+                    grid_mode = not grid_mode
+                    if grid_mode and grid_cells is None:
+                        grid_cells = build_grid_cells(
+                            note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
+                    grid_scroll = 0
+                elif grid_mode and event.key in (pygame.K_UP, pygame.K_DOWN,
+                                                 pygame.K_PAGEUP, pygame.K_PAGEDOWN,
+                                                 pygame.K_HOME, pygame.K_END):
+                    if event.key == pygame.K_UP:
+                        grid_scroll -= 80
+                    elif event.key == pygame.K_DOWN:
+                        grid_scroll += 80
+                    elif event.key == pygame.K_PAGEUP:
+                        grid_scroll -= 400
+                    elif event.key == pygame.K_PAGEDOWN:
+                        grid_scroll += 400
+                    elif event.key == pygame.K_HOME:
+                        grid_scroll = 0
+                    elif event.key == pygame.K_END:
+                        grid_scroll = 10 ** 9  # clamped during render
                 elif event.key in KEY_TO_NOTE:
                     note = KEY_TO_NOTE[event.key]
                     msg_queue.put(mido.Message('note_on', note=note, velocity=100))
@@ -601,6 +773,8 @@ def main():
                 if event.key in KEY_TO_NOTE:
                     note = KEY_TO_NOTE[event.key]
                     msg_queue.put(mido.Message('note_off', note=note, velocity=0))
+            elif event.type == pygame.MOUSEWHEEL and grid_mode:
+                grid_scroll -= event.y * 60
 
         # Process keyboard/file messages from queue
         state = process_midi_messages(msg_queue, start_note, end_note,
@@ -614,8 +788,18 @@ def main():
                                           clock_tracker, min_note_beats, args.zoom_ring,
                                           note_hit_counts)
 
+        # Track note triggers for the grid's flash highlight (works in both views)
+        now = time.monotonic()
+        cur_active = state['note_active']
+        if cur_active is not None and cur_active != prev_active:
+            flash_times[cur_active] = now
+        prev_active = cur_active
+
         # Draw current frame
-        if state['video_player']:
+        if grid_mode:
+            grid_scroll = render_grid(screen, grid_cells, grid_scroll, grid_fonts,
+                                      cur_active, flash_times, now)
+        elif state['video_player']:
             frame_surface = state['video_player'].get_frame()
             if frame_surface:
                 screen.blit(
