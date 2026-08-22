@@ -117,6 +117,19 @@ class MidiClockTracker:
         return self.quarter_note_duration() * note_length_beats
 
 
+def _blit_overlay_lines(screen, width, height, lines):
+    """Blit a vertically-centered stack of ``(text, font, color)`` lines.
+
+    Shared by the empty-folder screen and the startup/help overlay so both use
+    the same centering and line-spacing."""
+    y = height // 2 - len(lines) * 20
+    for text, f, color in lines:
+        if text:
+            rendered = f.render(text, True, color)
+            screen.blit(rendered, (width // 2 - rendered.get_width() // 2, y))
+        y += f.get_height() + 8
+
+
 def show_instructions(screen, width, height):
     """Display setup instructions when no media files are found."""
     screen.fill((20, 20, 20))
@@ -136,13 +149,7 @@ def show_instructions(screen, width, height):
         ("Press ESC to quit.", font, (140, 140, 140)),
     ]
 
-    y = height // 2 - len(lines) * 20
-    for text, f, color in lines:
-        if text:
-            rendered = f.render(text, True, color)
-            screen.blit(rendered, (width // 2 - rendered.get_width() // 2, y))
-        y += f.get_height() + 8
-
+    _blit_overlay_lines(screen, width, height, lines)
     pygame.display.flip()
 
     # Wait for ESC or quit
@@ -152,6 +159,64 @@ def show_instructions(screen, width, height):
                 return
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return
+
+
+def draw_startup_help(screen, width, height):
+    """Draw the semi-transparent startup/help overlay over the current frame.
+
+    Lists the core controls plus how to bring this help back later. Unlike
+    :func:`show_instructions` this does not fill the screen or flip — it dims
+    the existing frame with a translucent layer so media stays faintly visible
+    behind it (the main loop flips afterward). The caller shows it at launch and
+    on F1/?, and hides it on the first note played."""
+    font_large = pygame.font.SysFont(None, 48)
+    font = pygame.font.SysFont(None, 32)
+    font_small = pygame.font.SysFont(None, 26)
+
+    dim = pygame.Surface((width, height), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 205))
+    screen.blit(dim, (0, 0))
+
+    lines = [
+        ("Keyframes", font_large, (255, 255, 255)),
+        ("", font_small, (180, 180, 180)),
+        ("Your computer keyboard is a piano:", font, (210, 210, 210)),
+        ("  Z-M = lower octave    Q-P = upper octave", font_small, (180, 180, 180)),
+        ("  Any mapped key triggers its image or video", font_small, (140, 140, 140)),
+        ("", font_small, (180, 180, 180)),
+        ("Tab    Grid manager: view, rearrange, replace media", font_small, (180, 180, 180)),
+        ("Esc    Quit", font_small, (180, 180, 180)),
+        ("", font_small, (180, 180, 180)),
+        ("Press any key to start playing.", font, (255, 220, 120)),
+        ("Press F1 or ? anytime to show this help again.", font_small, (140, 185, 225)),
+    ]
+    _blit_overlay_lines(screen, width, height, lines)
+
+
+def is_help_reshow_key(event):
+    """True if ``event`` (a KEYDOWN) is the reshow-help binding: F1 or ?.
+
+    ``?`` arrives either as K_QUESTION or as Shift+K_SLASH depending on the
+    platform/layout. None of these are piano keys (KEY_TO_NOTE), so the caller
+    intercepts them ahead of note handling without stealing a playable key."""
+    if event.key in (pygame.K_F1, pygame.K_QUESTION):
+        return True
+    if event.key == pygame.K_SLASH and (event.mod & pygame.KMOD_SHIFT):
+        return True
+    return False
+
+
+def update_help_visibility(show_help, *, reshow_key=False, note_started=False):
+    """Return the help-overlay visibility after one input.
+
+    Reshow (F1/?) wins and shows the overlay; otherwise the first note played
+    (a KEY_TO_NOTE press or an incoming MIDI note) hides it. Called from the
+    main loop for both the keyboard and live-MIDI paths."""
+    if reshow_key:
+        return True
+    if note_started:
+        return False
+    return show_help
 
 
 def list_media_files():
@@ -1060,10 +1125,15 @@ def main():
 
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). ESC to quit.")
     print("Tab: toggle grid/media-manager view (Up/Down or mouse wheel to scroll).")
+    print("F1 or ?: show the on-screen help overlay again.")
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
              'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0}
     note_hit_counts = {}
+
+    # Startup help overlay: shown on launch (performance view, media present),
+    # dismissed on the first note played, reshowable via F1/?.
+    show_help = True
 
     # Grid / media-manager view state
     grid_mode = False
@@ -1097,6 +1167,13 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                elif is_help_reshow_key(event):
+                    # Reshow the startup help overlay. Handled ahead of
+                    # KEY_TO_NOTE so F1/? never doubles as a played note; it
+                    # dismisses again on the next note. Ignored in grid view,
+                    # which has its own on-screen controls header.
+                    if not grid_mode:
+                        show_help = update_help_visibility(show_help, reshow_key=True)
                 elif event.key == pygame.K_TAB:
                     grid_mode = not grid_mode
                     if grid_mode and grid_cells is None:
@@ -1217,9 +1294,15 @@ def main():
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()
         cur_active = state['note_active']
-        if cur_active is not None and cur_active != prev_active:
+        note_started = cur_active is not None and cur_active != prev_active
+        if note_started:
             flash_times[cur_active] = now
         prev_active = cur_active
+
+        # Dismiss the startup help overlay the moment a note is played. This
+        # covers both keyboard piano keys and incoming MIDI notes uniformly,
+        # since both surface here as a newly-active note.
+        show_help = update_help_visibility(show_help, note_started=note_started)
 
         # Draw current frame
         if grid_mode:
@@ -1242,6 +1325,11 @@ def main():
             screen.blit(scaled, (0, 0))
         else:
             screen.fill((0, 0, 0))
+
+        # Startup/help overlay draws on top of the current frame in performance
+        # view only (grid view has its own controls header).
+        if show_help and not grid_mode:
+            draw_startup_help(screen, display_w, display_h)
 
         pygame.display.flip()
         clock.tick(60)
