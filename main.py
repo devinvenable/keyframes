@@ -70,7 +70,6 @@ NOTE_LENGTHS = {
 DEFAULT_BPM = 120
 ZOOM_RING_SIZE = 16
 ZOOM_RING_STEP = 0.03
-DEFAULT_STROBE_MS = 40
 LATCH_NOTICE_SECONDS = 1.5
 
 SIZE_PRESETS = {
@@ -254,11 +253,22 @@ def toggle_latch_mode(latch_enabled):
     return not latch_enabled
 
 
-def strobe_is_active(current_state, now=None):
-    """Whether the current trigger should temporarily render as black."""
-    if now is None:
-        now = time.monotonic()
-    return now < current_state.get('strobe_until', 0)
+def inverted_surface(media):
+    """Return a cached colour-inverted (XOR/negative) copy of an image media.
+
+    Inversion is a white BLEND_RGB_SUB (255 - rgb), leaving alpha intact. Cached
+    on the media dict so repeated same-note hits just swap surfaces — no
+    per-frame cost. Used to flash a still to its negative on a same-note repeat
+    instead of the old black strobe (video is left alone; it restarts on retrigger)."""
+    inv = media.get('surface_inverted')
+    if inv is None:
+        src = media['surface']
+        inv = pygame.Surface(src.get_size(), pygame.SRCALPHA)
+        inv.fill((255, 255, 255, 255))
+        # white - src (per RGB channel) = 255 - rgb, i.e. the colour negative.
+        inv.blit(src, (0, 0), special_flags=pygame.BLEND_RGB_SUB)
+        media['surface_inverted'] = inv
+    return inv
 
 
 def list_media_files():
@@ -592,10 +602,12 @@ def zoom_surface_to_screen(surface, target_size, zoom_scale):
 
 
 def draw_performance_frame(screen, current_state, target_size, now=None):
-    """Draw the media selected by MIDI, including its optional retrigger gap."""
-    if strobe_is_active(current_state, now):
-        screen.fill((0, 0, 0))
-    elif current_state['video_player']:
+    """Draw the media selected by MIDI.
+
+    A same-note repeat of a still shows its colour-inverted (negative) copy; a
+    different note shows the image normally. Video is unaffected (it restarts on
+    retrigger, which already reads well)."""
+    if current_state['video_player']:
         frame_surface = current_state['video_player'].get_frame()
         if frame_surface:
             screen.blit(
@@ -606,8 +618,11 @@ def draw_performance_frame(screen, current_state, target_size, now=None):
         else:
             screen.fill((0, 0, 0))
     elif current_state['surface']:
+        surface = current_state['surface']
+        if current_state.get('inverted') and current_state.get('surface_media'):
+            surface = inverted_surface(current_state['surface_media'])
         scaled = zoom_surface_to_screen(
-            current_state['surface'], target_size, current_state['zoom_scale'])
+            surface, target_size, current_state['zoom_scale'])
         screen.blit(scaled, (0, 0))
     else:
         screen.fill((0, 0, 0))
@@ -617,7 +632,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                           current_state, channel=None, clock_tracker=None,
                           min_note_beats=None, zoom_ring_enabled=False,
                           note_hit_counts=None, assign_callback=None,
-                          latch_mode=True, strobe_seconds=DEFAULT_STROBE_MS / 1000):
+                          latch_mode=True):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
@@ -657,13 +672,18 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
         if is_note_on:
             if assign_callback and assign_callback(note):
                 continue
-            # Strobe (brief black cut) fires ONLY on a repeat of the SAME note,
-            # so hammering one key flashes; switching to a different note swaps
-            # cleanly with no black gap. Tracked via last_note so it holds across
+            # A same-note repeat of a STILL flips it to its negative (XOR/invert)
+            # and holds until the next hit, so hammering one key alternates
+            # normal/negative. A different note always shows normally. Video is
+            # untouched (it restarts on retrigger). last_note holds across
             # note-offs in both latch and non-latch modes.
+            media = note_to_media.get(note)
             is_repeat = note == current_state.get('last_note')
             current_state['last_note'] = note
-            strobe_at = now + strobe_seconds if is_repeat else 0
+            if is_repeat and media and media['type'] == 'image':
+                current_state['inverted'] = not current_state.get('inverted', False)
+            else:
+                current_state['inverted'] = False
             # Stop any current video
             if current_state['video_player']:
                 current_state['video_player'].release()
@@ -672,22 +692,21 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # Clear any pending hold
             current_state['hold_until'] = None
 
-            media = note_to_media.get(note)
             if media and media['type'] == 'video':
                 current_state['zoom_scale'] = 1.0
                 current_state['video_player'] = VideoPlayer(media['path'], target_size)
                 current_state['surface'] = None
+                current_state['surface_media'] = None
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
-                current_state['strobe_until'] = strobe_at
             elif media and media['type'] == 'image':
                 current_state['zoom_scale'] = get_zoom_ring_scale(
                     note, note_hit_counts, zoom_ring_enabled
                 )
                 current_state['surface'] = media['surface']
+                current_state['surface_media'] = media
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
-                current_state['strobe_until'] = strobe_at
 
         elif (is_note_off and not latch_mode
               and note == current_state['note_active']):
@@ -1267,8 +1286,6 @@ def main():
                              "(or 1, 1/2, 1/4, 1/8, 1/16, 1/32)")
     parser.add_argument('--no-latch', action='store_true',
                         help="Release media on note-off instead of latching the last hit")
-    parser.add_argument('--strobe-ms', type=int, default=DEFAULT_STROBE_MS, metavar='MS',
-                        help=f"Black retrigger gap in milliseconds (default: {DEFAULT_STROBE_MS}; 0 disables)")
     parser.add_argument('--bpm', type=float, default=DEFAULT_BPM,
                         help=f"Fallback BPM when no MIDI clock is present (default: {DEFAULT_BPM})")
     parser.add_argument('--zoom-ring', action='store_true',
@@ -1286,8 +1303,6 @@ def main():
                              "reel (1080x1350) (default: 1280x720)")
     args = parser.parse_args()
 
-    if args.strobe_ms < 0:
-        parser.error('--strobe-ms must be zero or greater')
 
     if args.packaging_smoke_test:
         run_packaging_smoke_test()
@@ -1370,7 +1385,7 @@ def main():
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
              'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0,
-             'strobe_until': 0, 'last_note': None}
+             'inverted': False, 'surface_media': None, 'last_note': None}
     note_hit_counts = {}
     latch_enabled = not args.no_latch
     latch_notice_until = 0
@@ -1552,14 +1567,14 @@ def main():
                                       note_to_media, target_size, state, midi_channel,
                                       clock_tracker, min_note_beats, args.zoom_ring,
                                       note_hit_counts, assign_if_selected,
-                                      latch_enabled, args.strobe_ms / 1000)
+                                      latch_enabled)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel,
                                           clock_tracker, min_note_beats, args.zoom_ring,
                                           note_hit_counts, assign_if_selected,
-                                          latch_enabled, args.strobe_ms / 1000)
+                                          latch_enabled)
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()

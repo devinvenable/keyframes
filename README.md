@@ -27,7 +27,7 @@ copies `dist/Keyframes_Windows.zip` back to this checkout.
 - Media files are automatically distributed evenly across the note range — videos are interleaved with images so they spread across all keys
 - Every note triggers something — no dead keys
 - By default, the last triggered image or video latches on screen; note-off does not clear it
-- Every hit briefly cuts to black (40 ms by default), so rapid retriggers of one key read as distinct flashes
+- Hitting the *same* key again flips its still image to a colour negative (and back), so rapid retriggers of one key read as a strobing invert; different notes swap cleanly. Videos restart on retrigger and are left unaltered
 - Videos restart on every hit and freeze on their last frame until the next trigger
 - Displays fullscreen on the first landscape monitor it finds
 - 60 FPS render loop, hardware-accelerated
@@ -115,8 +115,6 @@ python main.py --zoom-ring
 # Use hold-while-held behavior instead of the default latch
 python main.py --no-latch
 
-# Change the retrigger black gap (0 disables it)
-python main.py --strobe-ms 60
 
 # Custom window size
 python main.py --windowed --size 1920x1080
@@ -194,4 +192,3 @@ The note→file assignment is remembered in a sparse `mapping.json` manifest bes
 - Multi-monitor aware — automatically picks a landscape display
 - `--zoom-ring` gives each MIDI note its own 16-step repeat-hit cycle: first hit is normal size, then each hit on that note scales slightly larger until it wraps back to normal
 - Latch mode is on by default, so short percussive MIDI notes still leave the last hit visible; use `--no-latch` or press **L** at runtime to return to note-off release behavior
-- `--strobe-ms` controls the black retrigger gap (default `40`; `0` disables it)
