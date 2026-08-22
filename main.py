@@ -1,4 +1,5 @@
 import argparse
+import ctypes
 import json
 import os
 import queue
@@ -6,6 +7,7 @@ import shutil
 import sys
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 import cv2
@@ -748,6 +750,95 @@ def supported_media_file(path):
     return os.path.splitext(path)[1].lower() in IMAGE_EXTS + VIDEO_EXTS
 
 
+def normalize_drop_paths(raw):
+    """Turn a DROPFILE/DROPTEXT payload into a list of local filesystem paths.
+
+    On some Linux setups the payload arrives as a ``file://`` URI (possibly
+    percent-encoded, possibly a multi-line text/uri-list with trailing
+    newlines/CRs) rather than a bare path.  Decodes each non-empty line into a
+    plain path; lines that aren't local files (e.g. ``http://`` URLs) are
+    dropped."""
+    paths = []
+    for line in raw.splitlines() or [raw]:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('file:'):
+            parsed = urllib.parse.urlparse(line)
+            if parsed.netloc not in ('', 'localhost'):
+                continue  # file on another host, not reachable
+            line = urllib.parse.unquote(parsed.path)
+        elif '://' in line:
+            continue  # non-file URL, nothing to copy
+        if line:
+            paths.append(line)
+    return paths
+
+
+# Cached X11 connection for pointer queries: (libX11, Display*) once opened,
+# or False after a failed attempt so non-X11 platforms don't retry every drop.
+_x11_pointer_conn = None
+
+
+def x11_query_pointer():
+    """Window-relative pointer position straight from the X server, or None.
+
+    During an external XDND drag SDL2/X11 delivers no MOUSEMOTION events, so
+    ``pygame.mouse.get_pos()`` still reports wherever the cursor last was
+    *before* the drag — the drop then hit-tests a stale point.  XQueryPointer
+    asks the server directly (it ignores the drag source's pointer grab), via a
+    private connection so no SDL internals are touched.  Returns None off-X11
+    or on any failure; callers fall back to pygame's view."""
+    global _x11_pointer_conn
+    if _x11_pointer_conn is False:
+        return None
+    try:
+        window = pygame.display.get_wm_info().get('window')
+        if not window:
+            return None
+        if _x11_pointer_conn is None:
+            xlib = ctypes.CDLL('libX11.so.6')
+            xlib.XOpenDisplay.restype = ctypes.c_void_p
+            xlib.XOpenDisplay.argtypes = [ctypes.c_char_p]
+            display = xlib.XOpenDisplay(None)
+            if not display:
+                _x11_pointer_conn = False
+                return None
+            _x11_pointer_conn = (xlib, display)
+        xlib, display = _x11_pointer_conn
+        root = ctypes.c_ulong()
+        child = ctypes.c_ulong()
+        root_x = ctypes.c_int()
+        root_y = ctypes.c_int()
+        win_x = ctypes.c_int()
+        win_y = ctypes.c_int()
+        mask = ctypes.c_uint()
+        found = xlib.XQueryPointer(
+            ctypes.c_void_p(display), ctypes.c_ulong(window),
+            ctypes.byref(root), ctypes.byref(child),
+            ctypes.byref(root_x), ctypes.byref(root_y),
+            ctypes.byref(win_x), ctypes.byref(win_y),
+            ctypes.byref(mask))
+        if not found:
+            return None
+        return win_x.value, win_y.value
+    except Exception:
+        _x11_pointer_conn = False
+        return None
+
+
+def drop_pointer_pos():
+    """Best-known window-relative pointer position for resolving a drop target.
+
+    Prefers a live X server query (fresh even mid-XDND-drag); falls back to
+    ``pygame.mouse.get_pos()`` on other platforms, where SDL keeps the mouse
+    state current during drags."""
+    pos = x11_query_pointer()
+    if pos is not None:
+        return pos
+    return pygame.mouse.get_pos()
+
+
 def import_dropped_file(src):
     """Copy a dropped file into ``images/`` if it isn't already there.
 
@@ -857,8 +948,13 @@ def draw_drop_flash(screen, cells, scroll_y, drop_flash, now):
 
     Green = the cell was reassigned; red = the drop was rejected (unsupported
     type or landed off any cell). Located via the same grid_layout() the drop
-    hit-test used, so the flash lands exactly on the cell that was targeted."""
+    hit-test used, so the flash lands exactly on the cell that was targeted.
+    A flash with ``note=None`` (drop missed every cell) borders the whole
+    window instead — a missed drop must never be invisible."""
     if not drop_flash or now >= drop_flash['until']:
+        return
+    if drop_flash['note'] is None:
+        pygame.draw.rect(screen, (230, 60, 60), screen.get_rect(), 6)
         return
     index = None
     for i, cell in enumerate(cells):
@@ -1003,6 +1099,10 @@ def main():
     clock_tracker = MidiClockTracker(fallback_bpm=args.bpm)
 
     pygame.init()
+    # SDL ships with DROPTEXT/DROPBEGIN/DROPCOMPLETE disabled by default (only
+    # DROPFILE is on). Unblock everything so text/uri-list drops and the
+    # begin/complete diagnostics actually arrive.
+    pygame.event.set_blocked(None)
 
     if args.windowed:
         if args.size.lower() in SIZE_PRESETS:
@@ -1182,23 +1282,48 @@ def main():
                         else:
                             undo_stack.pop()  # no-op swap, nothing to undo
                 grid_drag = None
-            elif event.type == pygame.DROPFILE and grid_mode and grid_cells:
+            elif event.type in (pygame.DROPBEGIN, pygame.DROPCOMPLETE):
+                # Diagnostic: proves the window is receiving the drop-event
+                # family at all (fullscreen X11 windows sometimes never do).
+                print(f"[drop] {pygame.event.event_name(event.type)}")
+            elif event.type in (pygame.DROPFILE, pygame.DROPTEXT):
                 # Native drag-and-drop: reassign the cell under the cursor to the
                 # dropped media file (copy into images/, persist via the mapping,
-                # reload live). Ignore drops outside grid view or off any cell.
-                idx = grid_cell_at(grid_cells, grid_scroll,
-                                   screen.get_size(), pygame.mouse.get_pos())
-                if idx is not None:
+                # reload live). DROPTEXT covers file managers that hand SDL a
+                # text/uri-list instead of a plain path; normalize_drop_paths
+                # decodes either payload. The drop target comes from
+                # drop_pointer_pos() — on X11 pygame.mouse.get_pos() is stale
+                # during an external drag (no MOUSEMOTION is delivered), so the
+                # X server is queried directly.
+                raw = getattr(event, 'file', None) or getattr(event, 'text', '') or ''
+                paths = normalize_drop_paths(raw)
+                pointer = drop_pointer_pos()
+                idx = None
+                if grid_mode and grid_cells:
+                    idx = grid_cell_at(grid_cells, grid_scroll,
+                                       screen.get_size(), pointer)
+                print(f"[drop] {pygame.event.event_name(event.type)} raw={raw!r} "
+                      f"mouse.get_pos={pygame.mouse.get_pos()} pointer={pointer} "
+                      f"paths={paths} cell={idx}")
+                if not grid_mode or not grid_cells:
+                    print("[drop] ignored: not in grid view (Tab opens it)")
+                elif idx is None:
+                    # Missed every cell: flash the whole window red so a failed
+                    # drop is never silent again.
+                    print("[drop] missed all cells — drop landed on no thumbnail")
+                    drop_flash = {'note': None, 'ok': False,
+                                  'until': time.monotonic() + GRID_DROP_FLASH}
+                else:
                     cell = grid_cells[idx]
                     flash_note = cell['notes'][0]
-                    ok = apply_drop(event.file, cell, note_to_media)
+                    ok = bool(paths) and apply_drop(paths[0], cell, note_to_media)
                     if ok:
                         grid_cells = build_grid_cells(
                             note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
                         print(f"Replaced note(s) {format_notes(cell['notes'])} "
-                              f"-> {os.path.basename(event.file)}")
+                              f"-> {os.path.basename(paths[0])}")
                     else:
-                        print(f"Ignored unsupported drop: {event.file}")
+                        print(f"Ignored unsupported drop: {raw!r}")
                     drop_flash = {'note': flash_note, 'ok': ok,
                                   'until': time.monotonic() + GRID_DROP_FLASH}
 
