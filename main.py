@@ -732,8 +732,8 @@ def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
     pygame.draw.rect(screen, (30, 30, 30), (0, 0, sw, top))
     pygame.draw.line(screen, (70, 70, 70), (0, top), (sw, top), 2)
     header = (f"GRID VIEW  |  {len(cells)} media  |  "
-              f"Drag a file onto a cell to replace   Tab: performance view   "
-              f"Up/Down or wheel: scroll   Esc: quit")
+              f"Drag a thumbnail onto another to swap   Drop a file to replace   "
+              f"Ctrl+Z: undo   Tab: performance view   Wheel: scroll   Esc: quit")
     draw_text_outlined(screen, header, fonts['header'], (GRID_PAD, 15),
                        color=(230, 230, 230), outline_w=1)
 
@@ -802,6 +802,56 @@ def apply_drop(filepath, cell, note_to_media):
     return True
 
 
+def swap_cell_mapping(mapping, notes_a, name_a, notes_b, name_b):
+    """Swap two cells' note->filename entries in a mapping dict, in place.
+
+    Every note that backed ``name_a`` now points at ``name_b`` and vice versa.
+    A cell can back multiple notes (a shared file), so this swaps *all* notes of
+    each side, mirroring how apply_drop reassigns cell['notes'] together.
+    Returns the same dict for convenience."""
+    for note in notes_a:
+        mapping[note] = name_b
+    for note in notes_b:
+        mapping[note] = name_a
+    return mapping
+
+
+def swap_cells_media(note_to_media, notes_a, media_a, notes_b, media_b):
+    """Swap two cells' live media objects across their notes, in place.
+
+    Takes the already-loaded objects (``cells[i]['media']``) directly and moves
+    each onto the other side's notes, so the grid's id()-based dedup keeps one
+    cell per file — no re-decode, no second object for a file still on screen.
+    Captures happen at the call site (both objects passed in) so neither is lost
+    when the first assignment removes the last note referencing it."""
+    for note in notes_a:
+        note_to_media[note] = media_b
+    for note in notes_b:
+        note_to_media[note] = media_a
+
+
+def apply_swap(cell_a, cell_b, note_to_media):
+    """Swap which notes two grid cells map to: rearrange by manifest edit.
+
+    Persists the swap through the shared mapping (load_mapping/save_mapping —
+    never touching mapping.json directly) and live-updates ``note_to_media`` in
+    place, reusing both already-loaded objects. Returns True on a real swap, or
+    False when the two cells are the same (a no-op drop onto self). The caller
+    rebuilds the grid cells afterwards so the moved thumbnails appear."""
+    if cell_a is cell_b:
+        return False
+    notes_a = list(cell_a['notes'])
+    notes_b = list(cell_b['notes'])
+    name_a = cell_a['media']['name']
+    name_b = cell_b['media']['name']
+    mapping = load_mapping()
+    swap_cell_mapping(mapping, notes_a, name_a, notes_b, name_b)
+    save_mapping(mapping)
+    swap_cells_media(note_to_media, notes_a, cell_a['media'],
+                     notes_b, cell_b['media'])
+    return True
+
+
 def draw_drop_flash(screen, cells, scroll_y, drop_flash, now):
     """Draw the success/failure border for the most recent drop, if still live.
 
@@ -824,6 +874,30 @@ def draw_drop_flash(screen, cells, scroll_y, drop_flash, now):
     color = (60, 220, 90) if drop_flash['ok'] else (230, 60, 60)
     pygame.draw.rect(screen, color,
                      (x - 3, y - 3, GRID_THUMB_W + 6, GRID_THUMB_H + 6), 5)
+
+
+GRID_DRAG_THRESHOLD = 6  # pixels of travel before a mouse-down becomes a drag
+
+
+def draw_drag_feedback(screen, cells, scroll_y, drag, mouse_pos):
+    """Draw the in-progress rearrange: highlight the drop target and float a
+    ghost of the dragged thumbnail under the cursor.
+
+    Uses the same grid_layout()/grid_cell_at() the drop uses, so the highlighted
+    target is exactly the cell the release will act on. Only draws once the
+    drag has actually moved (a plain click shows nothing)."""
+    if not drag or not drag.get('moved'):
+        return
+    mx, my = mouse_pos
+    target = grid_cell_at(cells, scroll_y, screen.get_size(), mouse_pos)
+    if target is not None and target != drag['from_index']:
+        layout = grid_layout(len(cells), scroll_y, screen.get_size())
+        x, y = cell_rect(target, layout)
+        pygame.draw.rect(screen, (90, 170, 255),
+                         (x - 3, y - 3, GRID_THUMB_W + 6, GRID_THUMB_H + 6), 4)
+    ghost = drag['thumb'].copy()
+    ghost.set_alpha(180)
+    screen.blit(ghost, (mx - GRID_THUMB_W // 2, my - GRID_THUMB_H // 2))
 
 
 def select_midi_ports(available_ports, port_filter=None):
@@ -997,6 +1071,8 @@ def main():
     grid_scroll = 0
     flash_times = {}  # note -> monotonic time it was last triggered
     drop_flash = None  # {'note', 'until', 'ok'} border feedback for last drop
+    grid_drag = None  # {'from_index', 'thumb', 'start', 'moved'} in-grid rearrange
+    undo_stack = []   # snapshots {'mapping', 'note_to_media'} for Ctrl+Z
     prev_active = None
     grid_fonts = {
         'note': pygame.font.SysFont(None, 40),
@@ -1042,6 +1118,18 @@ def main():
                         grid_scroll = 0
                     elif event.key == pygame.K_END:
                         grid_scroll = 10 ** 9  # clamped during render
+                elif (grid_mode and event.key == pygame.K_z
+                      and event.mod & pygame.KMOD_CTRL and undo_stack):
+                    # Undo the last rearrange: restore the mapping and the live
+                    # note->media assignments from before the swap. Checked ahead
+                    # of KEY_TO_NOTE so Ctrl+Z isn't also played as note 48.
+                    snap = undo_stack.pop()
+                    save_mapping(snap['mapping'])
+                    note_to_media.clear()
+                    note_to_media.update(snap['note_to_media'])
+                    grid_cells = build_grid_cells(
+                        note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
+                    print("Undo: reverted last rearrange")
                 elif event.key in KEY_TO_NOTE:
                     note = KEY_TO_NOTE[event.key]
                     msg_queue.put(mido.Message('note_on', note=note, velocity=100))
@@ -1051,6 +1139,49 @@ def main():
                     msg_queue.put(mido.Message('note_off', note=note, velocity=0))
             elif event.type == pygame.MOUSEWHEEL and grid_mode:
                 grid_scroll -= event.y * 60
+            elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                  and grid_mode and grid_cells):
+                # Begin a potential in-grid rearrange. Not a drag yet — it only
+                # becomes one once the cursor travels past GRID_DRAG_THRESHOLD,
+                # so a plain click never swaps anything.
+                idx = grid_cell_at(grid_cells, grid_scroll,
+                                   screen.get_size(), event.pos)
+                if idx is not None:
+                    grid_drag = {'from_index': idx,
+                                 'thumb': grid_cells[idx]['thumb'],
+                                 'start': event.pos, 'moved': False}
+            elif event.type == pygame.MOUSEMOTION and grid_drag:
+                sx, sy = grid_drag['start']
+                if (abs(event.pos[0] - sx) + abs(event.pos[1] - sy)
+                        > GRID_DRAG_THRESHOLD):
+                    grid_drag['moved'] = True
+            elif (event.type == pygame.MOUSEBUTTONUP and event.button == 1
+                  and grid_drag):
+                # Drop the dragged thumbnail: if it lands on a different cell,
+                # swap which notes the two cells map to (persisted via the shared
+                # mapping) and rebuild so both moved thumbnails appear.
+                if grid_drag['moved'] and grid_cells:
+                    target = grid_cell_at(grid_cells, grid_scroll,
+                                          screen.get_size(), event.pos)
+                    from_idx = grid_drag['from_index']
+                    if target is not None and target != from_idx:
+                        cell_a = grid_cells[from_idx]
+                        cell_b = grid_cells[target]
+                        undo_stack.append({
+                            'mapping': dict(load_mapping()),
+                            'note_to_media': dict(note_to_media),
+                        })
+                        if apply_swap(cell_a, cell_b, note_to_media):
+                            grid_cells = build_grid_cells(
+                                note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
+                            print(f"Rearranged: notes "
+                                  f"{format_notes(cell_a['notes'])} <-> "
+                                  f"{format_notes(cell_b['notes'])}")
+                            drop_flash = {'note': cell_b['notes'][0], 'ok': True,
+                                          'until': time.monotonic() + GRID_DROP_FLASH}
+                        else:
+                            undo_stack.pop()  # no-op swap, nothing to undo
+                grid_drag = None
             elif event.type == pygame.DROPFILE and grid_mode and grid_cells:
                 # Native drag-and-drop: reassign the cell under the cursor to the
                 # dropped media file (copy into images/, persist via the mapping,
@@ -1095,6 +1226,8 @@ def main():
             grid_scroll = render_grid(screen, grid_cells, grid_scroll, grid_fonts,
                                       cur_active, flash_times, now)
             draw_drop_flash(screen, grid_cells, grid_scroll, drop_flash, now)
+            draw_drag_feedback(screen, grid_cells, grid_scroll, grid_drag,
+                               pygame.mouse.get_pos())
         elif state['video_player']:
             frame_surface = state['video_player'].get_frame()
             if frame_surface:
