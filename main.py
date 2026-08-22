@@ -657,6 +657,13 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
         if is_note_on:
             if assign_callback and assign_callback(note):
                 continue
+            # Strobe (brief black cut) fires ONLY on a repeat of the SAME note,
+            # so hammering one key flashes; switching to a different note swaps
+            # cleanly with no black gap. Tracked via last_note so it holds across
+            # note-offs in both latch and non-latch modes.
+            is_repeat = note == current_state.get('last_note')
+            current_state['last_note'] = note
+            strobe_at = now + strobe_seconds if is_repeat else 0
             # Stop any current video
             if current_state['video_player']:
                 current_state['video_player'].release()
@@ -672,7 +679,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                 current_state['surface'] = None
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
-                current_state['strobe_until'] = now + strobe_seconds
+                current_state['strobe_until'] = strobe_at
             elif media and media['type'] == 'image':
                 current_state['zoom_scale'] = get_zoom_ring_scale(
                     note, note_hit_counts, zoom_ring_enabled
@@ -680,7 +687,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                 current_state['surface'] = media['surface']
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
-                current_state['strobe_until'] = now + strobe_seconds
+                current_state['strobe_until'] = strobe_at
 
         elif (is_note_off and not latch_mode
               and note == current_state['note_active']):
@@ -1363,7 +1370,7 @@ def main():
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
              'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0,
-             'strobe_until': 0}
+             'strobe_until': 0, 'last_note': None}
     note_hit_counts = {}
     latch_enabled = not args.no_latch
     latch_notice_until = 0
