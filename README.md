@@ -147,12 +147,13 @@ see at a glance which media is bound to which key. Scroll with **Up/Down**,
 **PageUp/PageDown**, **Home/End**, or the **mouse wheel**. Press **Tab** again to
 return to the performance view, or **Esc** to quit.
 
-Each thumbnail maps to exactly one key or none. Click a thumbnail to select it,
-then press **A** or plain **Enter** to arm assignment. The next computer-piano
-or incoming MIDI note maps to that media and steals the note from its prior
-media; **Esc** cancels. Press **Delete** or **Backspace** to unmap the selected
-media without deleting its file. Playing keys outside assignment mode only
-previews/flashes media and never changes mappings.
+Each thumbnail maps to exactly one key or none. Click a thumbnail to select it —
+the next computer-piano or incoming MIDI note maps to that media, steals the
+note from its prior media, and deselects (one click = one remap). Clicking
+empty grid space or leaving the grid deselects without remapping. Press
+**Delete** or **Backspace** to unmap the selected media without deleting its
+file. With nothing selected, playing keys only previews/flashes media and never
+changes mappings.
 
 **Click-to-replace:** drag an image or video from your file manager
 (Explorer/Finder) and drop it onto a grid cell to reassign that note to the new
