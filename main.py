@@ -859,8 +859,8 @@ def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
     pygame.draw.rect(screen, (30, 30, 30), (0, 0, sw, top))
     pygame.draw.line(screen, (70, 70, 70), (0, top), (sw, top), 2)
     header = (f"GRID VIEW  |  {len(cells)} media  |  "
-              f"Drag a thumbnail onto another to swap   Drop a file to replace   "
-              f"Ctrl+Z: undo   Tab: performance view   Wheel: scroll   Esc: quit")
+              f"Click: select   A/Enter: assign (play notes)   Drag: swap   "
+              f"Drop file: replace   Ctrl+Z: undo   Tab: perform   Esc: quit")
     draw_text_outlined(screen, header, fonts['header'], (GRID_PAD, 15),
                        color=(230, 230, 230), outline_w=1)
 
@@ -1068,6 +1068,96 @@ def apply_swap(cell_a, cell_b, note_to_media):
     return True
 
 
+# --- Play-to-assign (MIDI-learn) assign-mode state machine ------------------
+#
+# A keyboard/MIDI mode, kept orthogonal to the mouse gesture (rearrange-drag /
+# press-and-hold preview / DROPFILE). The user CLICKS a cell to select it, then
+# presses 'A' or Enter to ENTER assign mode and PLAYS the notes that should map
+# to that cell's media; Enter applies, Esc cancels. The state is a plain dict so
+# the whole flow is testable headless without a window:
+#   selected  -- index of the highlighted cell, or None
+#   active    -- True while capturing played notes
+#   captured  -- ordered list of distinct notes played since entering the mode
+
+def new_assign_state():
+    """Fresh assign state: nothing selected, not capturing, no captured notes."""
+    return {'selected': None, 'active': False, 'captured': []}
+
+
+def assign_select(state, index):
+    """Select a grid cell (persistent highlight distinct from the note flash).
+
+    Selecting is a separate step from capturing: it leaves assign mode inactive
+    and clears any pending capture, so a stray click never silently reassigns
+    and clicking a new cell mid-assign just re-targets."""
+    return {'selected': index, 'active': False, 'captured': []}
+
+
+def assign_enter(state):
+    """Enter assign mode for the currently selected cell.
+
+    No-op (returns the state unchanged, still inactive) when nothing is
+    selected — there is no media to assign captured notes to."""
+    if state['selected'] is None:
+        return state
+    return {'selected': state['selected'], 'active': True, 'captured': []}
+
+
+def assign_capture(state, note):
+    """Record a played note into the pending set while assign mode is active.
+
+    Ignored (state returned unchanged) when not active, so normal play in grid
+    view never captures. De-duplicated and order-preserving so replaying a note
+    doesn't list it twice."""
+    if not state['active']:
+        return state
+    if note in state['captured']:
+        return state
+    return {'selected': state['selected'], 'active': True,
+            'captured': state['captured'] + [note]}
+
+
+def assign_cancel(state):
+    """Leave assign mode without changing any mapping (Esc / no-op apply).
+
+    Keeps the cell selected so the user can immediately retry."""
+    return {'selected': state['selected'], 'active': False, 'captured': []}
+
+
+def assign_target_index(cells, name):
+    """Index of the cell whose media is filename ``name``, or None.
+
+    Used to keep the selection pinned to the same media after a rebuild
+    reorders cells (a cell's index shifts once it takes over lower notes)."""
+    for i, cell in enumerate(cells):
+        if cell['media'].get('name') == name:
+            return i
+    return None
+
+
+def apply_assign(cell, notes, note_to_media):
+    """Reassign a set of played/captured notes to a selected cell's media.
+
+    The play-to-assign (MIDI-learn) mutation: every note in ``notes`` is
+    pointed at the selected cell's file, persisted through the shared mapping
+    (load_mapping/save_mapping — never touching mapping.json directly), and
+    live-updated in ``note_to_media`` reusing the already-loaded object so the
+    grid's id()-based dedup keeps one cell per file. Notes are taken over from
+    whatever cell previously held them (overwrite). Returns the list of notes
+    actually applied — empty (a no-op that touches nothing) when ``notes`` is
+    empty. The caller rebuilds the grid cells afterwards."""
+    notes = list(notes)
+    if not notes:
+        return []
+    name = cell['media']['name']
+    mapping = load_mapping()
+    for note in notes:
+        mapping[note] = name
+    save_mapping(mapping)
+    reassign_cell_media(note_to_media, notes, name)
+    return notes
+
+
 def draw_drop_flash(screen, cells, scroll_y, drop_flash, now):
     """Draw the success/failure border for the most recent drop, if still live.
 
@@ -1182,6 +1272,53 @@ def draw_drag_feedback(screen, cells, scroll_y, drag, mouse_pos):
     ghost = drag['thumb'].copy()
     ghost.set_alpha(180)
     screen.blit(ghost, (mx - GRID_THUMB_W // 2, my - GRID_THUMB_H // 2))
+
+
+def draw_assign_overlay(screen, cells, scroll_y, assign_state, fonts):
+    """Draw the play-to-assign UI: selected-cell highlight, capture marks, banner.
+
+    * The selected cell gets a steady cyan border — distinct from the orange
+      note-trigger flash — so it's clear which media assignment mode targets.
+    * While active, any cell currently holding a captured note gets a magenta
+      border, and a banner names the controls plus the captured notes so far.
+    Uses the same grid_layout()/cell_rect() as rendering so borders land exactly
+    on their cells."""
+    if not cells or assign_state['selected'] is None:
+        return
+    layout = grid_layout(len(cells), scroll_y, screen.get_size())
+
+    sel = assign_state['selected']
+    if 0 <= sel < len(cells):
+        x, y = cell_rect(sel, layout)
+        if y + GRID_THUMB_H >= layout['top'] and y <= screen.get_height():
+            pygame.draw.rect(screen, (80, 210, 255),
+                             (x - 4, y - 4, GRID_THUMB_W + 8, GRID_THUMB_H + 8), 4)
+
+    if not assign_state['active']:
+        return
+
+    captured = set(assign_state['captured'])
+    if captured:
+        for i, cell in enumerate(cells):
+            if captured.intersection(cell['notes']):
+                x, y = cell_rect(i, layout)
+                if y + GRID_THUMB_H < layout['top'] or y > screen.get_height():
+                    continue
+                pygame.draw.rect(screen, (230, 90, 230),
+                                 (x - 2, y - 2, GRID_THUMB_W + 4, GRID_THUMB_H + 4), 3)
+
+    sw = screen.get_width()
+    band_h = 40
+    banner = pygame.Surface((sw, band_h))
+    banner.set_alpha(220)
+    banner.fill((60, 20, 70))
+    screen.blit(banner, (0, GRID_TOP))
+    caps = (', '.join(str(n) for n in assign_state['captured'])
+            if assign_state['captured'] else '(none)')
+    msg = (f"ASSIGN MODE: play the notes for THIS media  |  "
+           f"Enter: apply   Esc: cancel  |  Captured: {caps}")
+    draw_text_outlined(screen, msg, fonts['header'], (GRID_PAD, GRID_TOP + 8),
+                       color=(255, 230, 255), outline_w=1)
 
 
 def select_midi_ports(available_ports, port_filter=None):
@@ -1362,6 +1499,7 @@ def main():
     drop_flash = None  # {'note', 'until', 'ok'} border feedback for last drop
     grid_drag = None  # {'from_index','thumb','start','moved','is_video'} gesture
     grid_preview = None  # {'index', 'player'} live press-and-hold video preview
+    assign_state = new_assign_state()  # play-to-assign (MIDI-learn) selection/capture
     undo_stack = []   # snapshots {'mapping', 'note_to_media'} for Ctrl+Z
     prev_active = None
     grid_fonts = {
@@ -1401,6 +1539,39 @@ def main():
                     show_help = update_help_visibility(show_help, key_pressed=True)
                     if event.key == pygame.K_ESCAPE:
                         continue  # consumed: closed the overlay, don't also quit
+                # --- Play-to-assign mode (grid MIDI-learn): handled BEFORE the
+                #     global Esc-quit so Esc cancels assign mode instead of
+                #     quitting the app. Plain Enter (no Alt) applies the captured
+                #     notes; is_fullscreen_toggle_key still owns Alt+Enter. ---
+                if grid_mode and assign_state['active']:
+                    if event.key == pygame.K_ESCAPE:
+                        assign_state = assign_cancel(assign_state)
+                        print("Assign mode: cancelled")
+                        continue
+                    if event.key == pygame.K_RETURN and not (event.mod & pygame.KMOD_ALT):
+                        idx = assign_state['selected']
+                        captured = list(assign_state['captured'])
+                        if (grid_cells and idx is not None
+                                and 0 <= idx < len(grid_cells) and captured):
+                            cell = grid_cells[idx]
+                            name = cell['media']['name']
+                            undo_stack.append({
+                                'mapping': dict(load_mapping()),
+                                'note_to_media': dict(note_to_media),
+                            })
+                            applied = apply_assign(cell, captured, note_to_media)
+                            grid_cells = build_grid_cells(
+                                note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
+                            # Rebuild reorders cells; keep the selection pinned to
+                            # the same media by re-finding it by filename.
+                            new_idx = assign_target_index(grid_cells, name)
+                            assign_state = assign_select(assign_state, new_idx)
+                            print(f"Assigned notes {format_notes(applied)} -> {name}")
+                        else:
+                            # Nothing captured: apply is a no-op, just leave mode.
+                            assign_state = assign_cancel(assign_state)
+                            print("Assign mode: no notes captured, nothing changed")
+                        continue
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 elif is_fullscreen_toggle_key(event):
@@ -1425,6 +1596,8 @@ def main():
                     # Leaving the grid mid-hold: drop the gesture so it can't
                     # keep a preview alive off-screen (reconcile releases it).
                     grid_drag = None
+                    # Toggling views abandons any pending assign selection/capture.
+                    assign_state = new_assign_state()
                 elif grid_mode and event.key in (pygame.K_UP, pygame.K_DOWN,
                                                  pygame.K_PAGEUP, pygame.K_PAGEDOWN,
                                                  pygame.K_HOME, pygame.K_END):
@@ -1452,6 +1625,17 @@ def main():
                     grid_cells = build_grid_cells(
                         note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
                     print("Undo: reverted last rearrange")
+                elif (grid_mode and not assign_state['active']
+                      and assign_state['selected'] is not None
+                      and (event.key == pygame.K_a
+                           or (event.key == pygame.K_RETURN
+                               and not (event.mod & pygame.KMOD_ALT)))):
+                    # Enter assign mode for the selected cell. 'A' and plain
+                    # Enter are non-piano keys (Alt+Enter is fullscreen, caught
+                    # above); play notes to capture, Enter applies, Esc cancels.
+                    assign_state = assign_enter(assign_state)
+                    print("Assign mode: play the notes for this media "
+                          "- Enter apply, Esc cancel")
                 elif event.key in KEY_TO_NOTE:
                     note = KEY_TO_NOTE[event.key]
                     msg_queue.put(mido.Message('note_on', note=note, velocity=100))
@@ -1499,6 +1683,14 @@ def main():
                                           'until': time.monotonic() + GRID_DROP_FLASH}
                         else:
                             undo_stack.pop()  # no-op swap, nothing to undo
+                elif grid_cells:
+                    # A plain click (no drag travel) selects the cell under the
+                    # cursor for play-to-assign. Selecting re-targets and drops
+                    # any pending capture, so a click never reassigns by itself.
+                    idx = grid_cell_at(grid_cells, grid_scroll,
+                                       screen.get_size(), event.pos)
+                    if idx is not None:
+                        assign_state = assign_select(assign_state, idx)
                 grid_drag = None
             elif event.type in (pygame.DROPBEGIN, pygame.DROPCOMPLETE):
                 # Diagnostic: proves the window is receiving the drop-event
@@ -1563,6 +1755,11 @@ def main():
         note_started = cur_active is not None and cur_active != prev_active
         if note_started:
             flash_times[cur_active] = now
+            # In assign mode, capture every played note (computer key OR live
+            # MIDI) — both surface here as a newly-active note, so one hook
+            # covers both input paths uniformly.
+            if grid_mode and assign_state['active']:
+                assign_state = assign_capture(assign_state, cur_active)
         prev_active = cur_active
 
         # Dismiss the startup help overlay the moment a note is played. This
@@ -1599,6 +1796,8 @@ def main():
             draw_grid_preview(screen, grid_cells, grid_scroll, grid_preview)
             draw_drag_feedback(screen, grid_cells, grid_scroll, grid_drag,
                                pygame.mouse.get_pos())
+            draw_assign_overlay(screen, grid_cells, grid_scroll, assign_state,
+                                grid_fonts)
         elif state['video_player']:
             frame_surface = state['video_player'].get_frame()
             if frame_surface:
