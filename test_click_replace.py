@@ -154,9 +154,13 @@ def test_apply_drop_persists_mapping_and_updates_media_live(media_dir, tmp_path)
     _make_png(src, color=(200, 100, 50))
     ok = main.apply_drop(str(src), target, note_to_media)
 
+    old_name = target['media']['name']
     assert ok is True
     # File landed in images/
     assert os.path.exists(images / 'dropped.png')
+    # The replaced file is deleted so no orphan cell remains.
+    assert old_name != 'dropped.png'
+    assert not os.path.exists(images / old_name)
     # Mapping persisted for every note of the cell.
     saved = main.load_mapping()
     for n in notes:
@@ -201,4 +205,99 @@ def test_apply_drop_rejects_unsupported_type(media_dir, tmp_path):
 
     assert ok is False
     assert not os.path.exists(images / 'notes.txt')  # not copied
+    assert os.path.exists(images / 'a.png')          # target left intact
     assert main.load_mapping() == before             # mapping untouched
+
+
+# --- apply_drop: new replace-in-place behavior (T52) -------------------------
+
+def test_apply_drop_on_mapped_cell_keeps_key_points_at_b_removes_a(media_dir, tmp_path):
+    images = media_dir / 'images'
+    _make_png(images / 'a.png')
+    note_to_media = main.load_media(36, 99)
+    cells = main.build_grid_cells(note_to_media, (main.GRID_THUMB_W, main.GRID_THUMB_H))
+    target = cells[0]
+    key = target['notes'][0]  # the cell is mapped to a key
+    assert target['media']['name'] == 'a.png'
+
+    src = tmp_path / 'b.png'
+    _make_png(src, color=(9, 9, 9))
+    ok = main.apply_drop(str(src), target, note_to_media)
+
+    assert ok is True
+    # The key stays and now triggers B.
+    assert main.load_mapping()[key] == 'b.png'
+    assert note_to_media[key]['name'] == 'b.png'
+    # A's file is gone; B is present.
+    assert not os.path.exists(images / 'a.png')
+    assert os.path.exists(images / 'b.png')
+    # Rebuilt grid: exactly one cell, showing B on the key.
+    rebuilt = main.build_grid_cells(note_to_media, (main.GRID_THUMB_W, main.GRID_THUMB_H))
+    assert [c['media']['name'] for c in rebuilt] == ['b.png']
+    assert rebuilt[0]['notes'] == [key]
+
+
+def test_apply_drop_on_unmapped_cell_swaps_file_no_key(media_dir, tmp_path):
+    images = media_dir / 'images'
+    _make_png(images / 'c.png')
+    # An unmapped cell: no note_to_media entry, notes empty.
+    note_to_media = {}
+    cell = {'media': {'name': 'c.png', 'type': 'image'}, 'type': 'image',
+            'notes': []}
+
+    src = tmp_path / 'd.png'
+    _make_png(src, color=(3, 4, 5))
+    ok = main.apply_drop(str(src), cell, note_to_media)
+
+    assert ok is True
+    # No key was created.
+    assert main.load_mapping() == {}
+    assert all(m['name'] != 'd.png' for m in note_to_media.values())
+    # File swapped: A deleted, B present.
+    assert not os.path.exists(images / 'c.png')
+    assert os.path.exists(images / 'd.png')
+    # Rebuilt grid shows B as a single unmapped cell.
+    rebuilt = main.build_grid_cells(note_to_media, (main.GRID_THUMB_W, main.GRID_THUMB_H))
+    assert [c['media']['name'] for c in rebuilt] == ['d.png']
+    assert rebuilt[0]['notes'] == []
+
+
+def test_apply_drop_same_file_onto_own_cell_is_noop_no_delete(media_dir):
+    images = media_dir / 'images'
+    _make_png(images / 'a.png')
+    note_to_media = main.load_media(36, 99)
+    cells = main.build_grid_cells(note_to_media, (main.GRID_THUMB_W, main.GRID_THUMB_H))
+    target = cells[0]
+    key = target['notes'][0]
+
+    # Drop a.png onto a.png's own cell — the file must survive.
+    ok = main.apply_drop(os.path.join(str(images), 'a.png'), target, note_to_media)
+
+    assert ok is True
+    assert os.path.exists(images / 'a.png')       # NOT deleted
+    assert main.load_mapping()[key] == 'a.png'    # key unchanged
+    assert note_to_media[key]['name'] == 'a.png'
+
+
+def test_remove_media_file_never_unlinks_outside_images_dir(media_dir, tmp_path):
+    images = media_dir / 'images'
+    # A file living outside images/, reachable only via a traversal basename.
+    outside = tmp_path / 'secret.png'
+    _make_png(outside)
+    assert outside.exists()
+
+    # A crafted "name" that would escape IMAGES_DIR must be refused.
+    escaped = main.remove_media_file(os.path.join('..', 'secret.png'))
+    assert escaped is False
+    assert outside.exists()                       # untouched
+
+    # An empty name and a name equal to `keep` are also no-ops.
+    assert main.remove_media_file('') is False
+    _make_png(images / 'keepme.png')
+    assert main.remove_media_file('keepme.png', keep='keepme.png') is False
+    assert os.path.exists(images / 'keepme.png')
+
+    # A legitimate in-dir file IS removed.
+    _make_png(images / 'gone.png')
+    assert main.remove_media_file('gone.png') is True
+    assert not os.path.exists(images / 'gone.png')

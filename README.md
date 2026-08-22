@@ -162,12 +162,16 @@ empty grid space or leaving the grid deselects without remapping. Press
 file. With nothing selected, playing keys only previews/flashes media and never
 changes mappings.
 
-**Click-to-replace:** drag an image or video from your file manager
-(Explorer/Finder) and drop it onto a grid cell to reassign that note to the new
-file. The file is copied into `images/` if it isn't already there, the change is
-saved to `mapping.json`, and the media updates live — no restart. A green border
-flashes on success; an unsupported file type or a drop that misses every cell
-flashes red and is ignored.
+**Drag-to-replace:** drag an image or video from your file manager
+(Explorer/Finder) and drop it onto a grid cell to replace that cell's media *in
+place*. The dropped file is copied into `images/` (if it isn't already there)
+and takes over the cell: if the cell has a key, that key now triggers the new
+file; if the cell is unmapped, the new file just fills the slot with no key. The
+cell's **old file is deleted** from `images/` so no orphan cell is left behind —
+dropped files are copies, so your original is the backup. The change is saved to
+`mapping.json` and the media updates live — no restart. A green border flashes on
+success; an unsupported file type or a drop that misses every cell flashes red
+and is ignored (nothing copied or deleted).
 
 ## Media folder
 
