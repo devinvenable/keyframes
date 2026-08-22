@@ -146,6 +146,12 @@ see at a glance which media is bound to which key. Scroll with **Up/Down**,
 **PageUp/PageDown**, **Home/End**, or the **mouse wheel**. Press **Tab** again to
 return to the performance view, or **Esc** to quit.
 
+Each thumbnail owns one contiguous key zone. Click a thumbnail to select it,
+then use **Left/Right** to move its trailing divider one key, or
+**Shift+Left/Right** for its leading divider. The adjacent zone grows or shrinks
+with it; neither can be reduced below one key. The labels update live and
+**Ctrl+Z** restores the previous divider position.
+
 **Click-to-replace:** drag an image or video from your file manager
 (Explorer/Finder) and drop it onto a grid cell to reassign that note to the new
 file. The file is copied into `images/` if it isn't already there, the change is
@@ -164,7 +170,7 @@ Files are sorted and distributed evenly across the 64-note range. Videos are int
 
 ### `mapping.json`
 
-The note→file assignment is remembered in a `mapping.json` manifest beside the `images/` folder (next to the executable in a packaged build). On first launch it is seeded from the even-distribution above and written out; after that it is the source of truth, so assignments survive restarts. The file is plain, human-readable JSON (`{"36": "sunrise.png", ...}`) you can hand-edit. On each launch it is reconciled with the folder: entries for deleted files are dropped and their notes reseeded, and newly added files are surfaced automatically.
+The note→file assignment is remembered in a `mapping.json` manifest beside the `images/` folder (next to the executable in a packaged build). On first launch it is seeded from the even-distribution above and written out; after that it is the source of truth, so zone boundaries survive restarts. The file is plain, human-readable JSON (`{"36": "sunrise.png", ...}`) you can hand-edit. The active note range is always normalized into contiguous, gap-free, non-overlapping zones: each file gets one run of keys. On launch, deleted files are removed; new files append at the high-key end by taking one key from the rightmost zone with a spare key. If every key is already its own zone, surplus files simply remain off-grid.
 
 ## Configuration
 

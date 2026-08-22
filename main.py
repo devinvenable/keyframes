@@ -328,57 +328,188 @@ def save_mapping(mapping, path=None):
     os.replace(tmp, path)
 
 
+def validate_zones(zones, start_note, end_note):
+    """Return whether ``zones`` exactly partition the active note range.
+
+    A zone is ``{'name': filename, 'start_note': first, 'end_note': last}``.
+    Besides being gap-free and ordered, a filename can occur in only one zone:
+    otherwise the grid's one-cell-per-media view would hide a fragmented run.
+    """
+    expected = start_note
+    names = set()
+    for zone in zones:
+        if (not isinstance(zone.get('name'), str)
+                or zone['name'] in names
+                or zone.get('start_note') != expected
+                or zone.get('end_note', expected - 1) < expected):
+            return False
+        names.add(zone['name'])
+        expected = zone['end_note'] + 1
+    return expected == end_note + 1
+
+
+def zones_from_mapping(mapping, start_note, end_note):
+    """Build contiguous filename zones from a complete active mapping.
+
+    This helper deliberately preserves repeated filename runs so callers can
+    normalize old fragmented manifests. Use ``normalize_zones`` before relying
+    on the stricter one-zone-per-media invariant.
+    """
+    zones = []
+    for note in range(start_note, end_note + 1):
+        name = mapping.get(note)
+        if not isinstance(name, str):
+            raise ValueError(f'mapping has no filename for note {note}')
+        if zones and zones[-1]['name'] == name:
+            zones[-1]['end_note'] = note
+        else:
+            zones.append({'name': name, 'start_note': note, 'end_note': note})
+    return zones
+
+
+def mapping_from_zones(zones):
+    """Return the note->filename mapping represented by contiguous zones."""
+    mapping = {}
+    for zone in zones:
+        for note in range(zone['start_note'], zone['end_note'] + 1):
+            mapping[note] = zone['name']
+    return mapping
+
+
+def normalize_zones(zones, start_note, end_note):
+    """Make a complete contiguous, one-zone-per-media layout from ``zones``.
+
+    Legacy manifests may contain gaps or the same filename in disjoint runs.
+    We retain every represented filename once, in first-seen note order, and
+    retain its total number of keys.  This makes the repair deterministic while
+    avoiding fragmented cells.
+    """
+    weights = {}
+    order = []
+    for zone in zones:
+        name = zone.get('name')
+        if not isinstance(name, str):
+            continue
+        first = max(start_note, zone.get('start_note', start_note))
+        last = min(end_note, zone.get('end_note', end_note - 1))
+        if last < first:
+            continue
+        if name not in weights:
+            order.append(name)
+            weights[name] = 0
+        weights[name] += last - first + 1
+
+    width = end_note - start_note + 1
+    order = order[:width]  # a one-key minimum leaves no room for more zones
+    if not order:
+        return []
+    # Any holes become part of the final existing zone.  This only occurs for
+    # malformed/partial legacy manifests; normal mapping-derived zones sum to
+    # the exact width already.
+    weights[order[-1]] += max(0, width - sum(weights[name] for name in order))
+    # Dropping zones beyond the key count leaves their keys with the final kept
+    # zone. (There cannot be more visible media than keys.)
+    weights[order[-1]] += sum(weights[name] for name in weights if name not in order)
+
+    normalized = []
+    cursor = start_note
+    remaining = width
+    for index, name in enumerate(order):
+        slots_left = len(order) - index - 1
+        size = remaining - slots_left if index == len(order) - 1 else min(
+            weights[name], remaining - slots_left)
+        normalized.append({'name': name, 'start_note': cursor,
+                           'end_note': cursor + size - 1})
+        cursor += size
+        remaining -= size
+    assert validate_zones(normalized, start_note, end_note)
+    return normalized
+
+
+def move_zone_boundary(zones, selected_index, side, delta):
+    """Return a new layout with one selected boundary moved by ``delta`` keys.
+
+    ``side`` is ``'leading'`` or ``'trailing'``; positive deltas move a
+    boundary toward higher notes.  Movement is clamped so both neighbouring
+    zones always retain at least one key.  Invalid selections and edge zones
+    are harmless no-ops.
+    """
+    result = [dict(zone) for zone in zones]
+    if not (0 <= selected_index < len(result)) or side not in ('leading', 'trailing'):
+        return result
+    if side == 'trailing':
+        if selected_index + 1 >= len(result):
+            return result
+        current, neighbour = result[selected_index], result[selected_index + 1]
+        lower = -(current['end_note'] - current['start_note'])
+        upper = neighbour['end_note'] - neighbour['start_note']
+        change = max(lower, min(delta, upper))
+        current['end_note'] += change
+        neighbour['start_note'] += change
+    else:
+        if selected_index == 0:
+            return result
+        neighbour, current = result[selected_index - 1], result[selected_index]
+        lower = -(neighbour['end_note'] - neighbour['start_note'])
+        upper = current['end_note'] - current['start_note']
+        change = max(lower, min(delta, upper))
+        neighbour['end_note'] += change
+        current['start_note'] += change
+    return result
+
+
+def normalize_mapping(mapping, start_note, end_note):
+    """Normalize the active slice of a mapping and preserve other entries."""
+    active = {note: name for note, name in mapping.items()
+              if start_note <= note <= end_note}
+    zones = normalize_zones(zones_from_mapping(active, start_note, end_note),
+                            start_note, end_note)
+    result = dict(mapping)
+    result.update(mapping_from_zones(zones))
+    return result, zones
+
+
 def reconcile_mapping(stored, present_files, start_note, end_note):
-    """Overlay a stored manifest on the auto-distribution seed.
+    """Reconcile media changes into a contiguous one-zone-per-file mapping.
 
-    Rules:
-      * A stored note keeps its filename while that file still exists on disk.
-      * Notes with no (surviving) stored assignment fall back to the seed.
-      * Files present on disk but referenced by no note are surfaced by taking
-        over a duplicated, non-pinned slot, so newly-dropped media isn't lost.
-      * Stored entries outside the active note range are preserved as long as
-        their file still exists (so narrowing the range temporarily doesn't
-        discard a user's pinned assignments).
-
-    Returns a fresh ``{int note: str filename}`` mapping."""
+    Existing zone sizes and order survive reloads.  Removed files disappear;
+    new files append at the high-note end, each taking one key from the
+    rightmost zone that has a spare key.  The only fallback is a fresh even
+    seed when there is no surviving active assignment.
+    """
     present = set(present_files)
     ordered = order_media_files(present_files)
-    seed = seed_distribution(ordered, start_note, end_note)
+    active = {note: name for note, name in stored.items()
+              if start_note <= note <= end_note and name in present}
+    if len(active) != end_note - start_note + 1:
+        seed = seed_distribution(ordered, start_note, end_note)
+        active = {note: active.get(note, seed.get(note))
+                  for note in range(start_note, end_note + 1)}
+    zones = normalize_zones(zones_from_mapping(active, start_note, end_note),
+                            start_note, end_note)
 
-    result = {}
-    for note in range(start_note, end_note + 1):
-        stored_name = stored.get(note)
-        if stored_name in present:
-            result[note] = stored_name
-        elif note in seed:
-            result[note] = seed[note]
-
-    # Surface present files that no note points at by evicting a duplicated slot
-    # that the user hasn't explicitly pinned in the stored manifest.
-    referenced = set(result.values())
-    counts = {}
-    for name in result.values():
-        counts[name] = counts.get(name, 0) + 1
-    for new_name in ordered:
-        if new_name in referenced:
+    referenced = {zone['name'] for zone in zones}
+    for name in ordered:
+        if name in referenced or len(zones) >= end_note - start_note + 1:
             continue
-        victim = None
-        for note in range(start_note, end_note + 1):
-            current = result.get(note)
-            if current is None:
-                victim = note
-                break
-            if counts.get(current, 0) > 1 and stored.get(note) != current:
-                victim = note
-                break
-        if victim is None:
-            break  # every note holds a distinct/pinned file; extras stay unshown
-        old = result.get(victim)
-        if old is not None:
-            counts[old] -= 1
-        result[victim] = new_name
-        counts[new_name] = counts.get(new_name, 0) + 1
-        referenced.add(new_name)
+        donor_index = next((index for index in range(len(zones) - 1, -1, -1)
+                            if zones[index]['end_note'] > zones[index]['start_note']),
+                           None)
+        if donor_index is None:
+            break
+        donor = zones[donor_index]
+        donor['end_note'] -= 1
+        # The new zone is appended at the high-note end.  If the rightmost
+        # donor is not itself last, slide all following fixed-size zones down
+        # by one key to carry that borrowed key through to the end.
+        for zone in zones[donor_index + 1:]:
+            zone['start_note'] -= 1
+            zone['end_note'] -= 1
+        zones.append({'name': name, 'start_note': end_note, 'end_note': end_note})
+        referenced.add(name)
+
+    assert validate_zones(zones, start_note, end_note)
+    result = mapping_from_zones(zones)
 
     # Keep valid out-of-range stored assignments so they survive this run.
     for note, name in stored.items():
@@ -404,10 +535,8 @@ def make_media_entry(name):
 def load_media(start_note, end_note):
     """Build the note -> media mapping, honoring the persistent manifest.
 
-    The manifest (``mapping.json``) is an overlay on top of the historical
-    even-distribution seed: stored assignments win, holes are seeded, and the
-    reconciled result is written back so it survives restarts and reflects the
-    current contents of ``images/``."""
+    The manifest is reconciled into contiguous media zones and written back so
+    edited boundaries survive restarts and folder changes."""
     all_files = list_media_files()
     if not all_files:
         return None
@@ -739,14 +868,11 @@ def build_grid_cells(note_to_media, thumb_size):
 
 
 def format_notes(notes):
-    """Compact label for the note(s) a cell maps to, collapsing only CONTIGUOUS
-    runs so gaps stay visible: '36', '36-39', or '46-47, 51-77'.
+    """Compact label for notes, retaining gap-aware formatting as a safety net.
 
-    A cell's notes need not be contiguous — assigning 48-50 to another cell
-    leaves this one owning 46,47,51..77. Showing a bare min-max ('46-77') would
-    falsely imply it covers 48-50, which actually belong elsewhere. Listing each
-    run makes the gap honest, so the label never looks like it overlaps another
-    cell's keys."""
+    Zone cells normally contain exactly one run (``36-39``); multiple runs are
+    still rendered honestly if a malformed caller ever reaches this boundary.
+    """
     ns = sorted(set(notes))
     if not ns:
         return ""
@@ -841,7 +967,8 @@ def grid_cell_at(cells, scroll_y, screen_size, pos):
     return None
 
 
-def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
+def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now,
+                selected_index=None):
     """Draw the media-manager grid. Returns the clamped scroll offset."""
     sw, sh = screen.get_size()
     screen.fill((18, 18, 18))
@@ -864,6 +991,9 @@ def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
             pygame.draw.rect(screen, color,
                              (x - 2, y - 2, GRID_THUMB_W + 4, GRID_THUMB_H + 4),
                              border)
+        if i == selected_index:
+            pygame.draw.rect(screen, (80, 210, 255),
+                             (x - 4, y - 4, GRID_THUMB_W + 8, GRID_THUMB_H + 8), 4)
 
         draw_text_outlined(screen, format_notes(cell['notes']), fonts['note'],
                            (x + 6, y + 4))
@@ -876,7 +1006,8 @@ def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
     pygame.draw.rect(screen, (30, 30, 30), (0, 0, sw, top))
     pygame.draw.line(screen, (70, 70, 70), (0, top), (sw, top), 2)
     header = (f"GRID VIEW  |  {len(cells)} media  |  "
-              f"Click: select   A/Enter: assign (play notes)   Drag: swap   "
+              f"Click: select   Left/Right: trailing boundary   "
+              f"Shift+Left/Right: leading boundary   Drag: swap   "
               f"Drop file: replace   Ctrl+Z: undo   Tab: perform   Esc: quit")
     draw_text_outlined(screen, header, fonts['header'], (GRID_PAD, 15),
                        color=(230, 230, 230), outline_w=1)
@@ -1014,6 +1145,37 @@ def reassign_cell_media(note_to_media, notes, name):
     return existing
 
 
+def persist_zones(zones, note_to_media):
+    """Persist a validated zone layout and update its live shared media objects."""
+    if not zones:
+        return zones
+    start_note, end_note = zones[0]['start_note'], zones[-1]['end_note']
+    if not validate_zones(zones, start_note, end_note):
+        raise ValueError('refusing to persist a non-contiguous zone layout')
+    mapping = load_mapping()
+    mapping.update(mapping_from_zones(zones))
+    mapping, normalized = normalize_mapping(mapping, start_note, end_note)
+    save_mapping(mapping)
+
+    by_name = {media['name']: media for media in note_to_media.values()}
+    for zone in normalized:
+        media = by_name.get(zone['name'])
+        if media is None:
+            media = make_media_entry(zone['name'])
+            by_name[zone['name']] = media
+        for note in range(zone['start_note'], zone['end_note'] + 1):
+            note_to_media[note] = media
+    return normalized
+
+
+def apply_zone_boundary_move(zones, selected_index, side, delta, note_to_media):
+    """Move one selected zone boundary, persist it, and return ``(zones, moved)``."""
+    moved = move_zone_boundary(zones, selected_index, side, delta)
+    if moved == zones:
+        return zones, False
+    return persist_zones(moved, note_to_media), True
+
+
 def apply_drop(filepath, cell, note_to_media):
     """Reassign one grid cell's notes to a dropped media file.
 
@@ -1030,8 +1192,13 @@ def apply_drop(filepath, cell, note_to_media):
     mapping = load_mapping()
     for note in notes:
         mapping[note] = name
+    start_note, end_note = min(note_to_media), max(note_to_media)
+    mapping, zones = normalize_mapping(mapping, start_note, end_note)
     save_mapping(mapping)
+    # A replacement with a filename already in another zone is consolidated
+    # instead of leaving that media in two fragmented cells.
     reassign_cell_media(note_to_media, notes, name)
+    persist_zones(zones, note_to_media)
     return True
 
 
@@ -1079,100 +1246,13 @@ def apply_swap(cell_a, cell_b, note_to_media):
     name_b = cell_b['media']['name']
     mapping = load_mapping()
     swap_cell_mapping(mapping, notes_a, name_a, notes_b, name_b)
+    start_note, end_note = min(note_to_media), max(note_to_media)
+    mapping, zones = normalize_mapping(mapping, start_note, end_note)
     save_mapping(mapping)
     swap_cells_media(note_to_media, notes_a, cell_a['media'],
                      notes_b, cell_b['media'])
+    persist_zones(zones, note_to_media)
     return True
-
-
-# --- Play-to-assign (MIDI-learn) assign-mode state machine ------------------
-#
-# A keyboard/MIDI mode, kept orthogonal to the mouse gesture (rearrange-drag /
-# press-and-hold preview / DROPFILE). The user CLICKS a cell to select it, then
-# presses 'A' or Enter to ENTER assign mode and PLAYS the notes that should map
-# to that cell's media; Enter applies, Esc cancels. The state is a plain dict so
-# the whole flow is testable headless without a window:
-#   selected  -- index of the highlighted cell, or None
-#   active    -- True while capturing played notes
-#   captured  -- ordered list of distinct notes played since entering the mode
-
-def new_assign_state():
-    """Fresh assign state: nothing selected, not capturing, no captured notes."""
-    return {'selected': None, 'active': False, 'captured': []}
-
-
-def assign_select(state, index):
-    """Select a grid cell (persistent highlight distinct from the note flash).
-
-    Selecting is a separate step from capturing: it leaves assign mode inactive
-    and clears any pending capture, so a stray click never silently reassigns
-    and clicking a new cell mid-assign just re-targets."""
-    return {'selected': index, 'active': False, 'captured': []}
-
-
-def assign_enter(state):
-    """Enter assign mode for the currently selected cell.
-
-    No-op (returns the state unchanged, still inactive) when nothing is
-    selected — there is no media to assign captured notes to."""
-    if state['selected'] is None:
-        return state
-    return {'selected': state['selected'], 'active': True, 'captured': []}
-
-
-def assign_capture(state, note):
-    """Record a played note into the pending set while assign mode is active.
-
-    Ignored (state returned unchanged) when not active, so normal play in grid
-    view never captures. De-duplicated and order-preserving so replaying a note
-    doesn't list it twice."""
-    if not state['active']:
-        return state
-    if note in state['captured']:
-        return state
-    return {'selected': state['selected'], 'active': True,
-            'captured': state['captured'] + [note]}
-
-
-def assign_cancel(state):
-    """Leave assign mode without changing any mapping (Esc / no-op apply).
-
-    Keeps the cell selected so the user can immediately retry."""
-    return {'selected': state['selected'], 'active': False, 'captured': []}
-
-
-def assign_target_index(cells, name):
-    """Index of the cell whose media is filename ``name``, or None.
-
-    Used to keep the selection pinned to the same media after a rebuild
-    reorders cells (a cell's index shifts once it takes over lower notes)."""
-    for i, cell in enumerate(cells):
-        if cell['media'].get('name') == name:
-            return i
-    return None
-
-
-def apply_assign(cell, notes, note_to_media):
-    """Reassign a set of played/captured notes to a selected cell's media.
-
-    The play-to-assign (MIDI-learn) mutation: every note in ``notes`` is
-    pointed at the selected cell's file, persisted through the shared mapping
-    (load_mapping/save_mapping — never touching mapping.json directly), and
-    live-updated in ``note_to_media`` reusing the already-loaded object so the
-    grid's id()-based dedup keeps one cell per file. Notes are taken over from
-    whatever cell previously held them (overwrite). Returns the list of notes
-    actually applied — empty (a no-op that touches nothing) when ``notes`` is
-    empty. The caller rebuilds the grid cells afterwards."""
-    notes = list(notes)
-    if not notes:
-        return []
-    name = cell['media']['name']
-    mapping = load_mapping()
-    for note in notes:
-        mapping[note] = name
-    save_mapping(mapping)
-    reassign_cell_media(note_to_media, notes, name)
-    return notes
 
 
 def draw_drop_flash(screen, cells, scroll_y, drop_flash, now):
@@ -1289,127 +1369,6 @@ def draw_drag_feedback(screen, cells, scroll_y, drag, mouse_pos):
     ghost = drag['thumb'].copy()
     ghost.set_alpha(180)
     screen.blit(ghost, (mx - GRID_THUMB_W // 2, my - GRID_THUMB_H // 2))
-
-
-def assign_projection(cells, selected_index, captured_notes):
-    """Compute — without mutating anything — what applying ``captured_notes`` to
-    the selected cell WOULD do, so assign mode can preview it before Enter.
-
-    Pure and headless-testable. Returns::
-
-        {'selected': None | {'index', 'current', 'projected'},
-         'donors':   {index: {'losing', 'remaining', 'emptied'}}}
-
-    * ``selected.projected`` is the target cell's current notes UNION the
-      captured ones (the range it GROWS to) — sorted; ``current`` is its notes
-      today.
-    * Each DONOR is a non-selected cell that currently holds one or more
-      captured notes: ``losing`` are exactly those notes (they get taken over),
-      ``remaining`` is what it keeps, and ``emptied`` is True when it loses every
-      note it had (its file becomes unreferenced).
-
-    Returns empty ``selected``/``donors`` when nothing is selected, the index is
-    out of range, or no notes are captured — i.e. there is nothing to preview."""
-    result = {'selected': None, 'donors': {}}
-    captured = set(captured_notes)
-    if (selected_index is None or not captured
-            or not (0 <= selected_index < len(cells))):
-        return result
-    sel_cell = cells[selected_index]
-    result['selected'] = {
-        'index': selected_index,
-        'current': sorted(sel_cell['notes']),
-        'projected': sorted(set(sel_cell['notes']) | captured),
-    }
-    for i, cell in enumerate(cells):
-        if i == selected_index:
-            continue
-        losing = sorted(captured.intersection(cell['notes']))
-        if not losing:
-            continue
-        remaining = sorted(set(cell['notes']) - captured)
-        result['donors'][i] = {
-            'losing': losing,
-            'remaining': remaining,
-            'emptied': not remaining,
-        }
-    return result
-
-
-def draw_assign_overlay(screen, cells, scroll_y, assign_state, fonts):
-    """Draw the play-to-assign UI: selected-cell highlight, capture marks, banner.
-
-    * The selected cell gets a steady cyan border — distinct from the orange
-      note-trigger flash — so it's clear which media assignment mode targets.
-    * While active, the projection (see :func:`assign_projection`) is previewed
-      in place: the selected cell shows the range it will GROW to
-      (``current -> projected``), and every donor cell is dimmed and labelled
-      with the notes it will LOSE (``-losing``), an ``EMPTY`` hint when it loses
-      all of them. A banner names the controls plus the captured notes so far.
-    Nothing here mutates state — the preview vanishes on Esc and is only written
-    on Enter (apply_assign). Uses the same grid_layout()/cell_rect() as
-    rendering so borders and labels land exactly on their cells."""
-    if not cells or assign_state['selected'] is None:
-        return
-    layout = grid_layout(len(cells), scroll_y, screen.get_size())
-
-    def on_screen(y):
-        return y + GRID_THUMB_H >= layout['top'] and y <= screen.get_height()
-
-    sel = assign_state['selected']
-    if 0 <= sel < len(cells):
-        x, y = cell_rect(sel, layout)
-        if on_screen(y):
-            pygame.draw.rect(screen, (80, 210, 255),
-                             (x - 4, y - 4, GRID_THUMB_W + 8, GRID_THUMB_H + 8), 4)
-
-    if not assign_state['active']:
-        return
-
-    proj = assign_projection(cells, sel, assign_state['captured'])
-
-    # Donor cells: dim the thumbnail and stamp the loss so it's clear this media
-    # is about to have those notes stolen from it.
-    for i, donor in proj['donors'].items():
-        x, y = cell_rect(i, layout)
-        if not on_screen(y):
-            continue
-        dim = pygame.Surface((GRID_THUMB_W, GRID_THUMB_H))
-        dim.set_alpha(150)
-        dim.fill((10, 10, 10))
-        screen.blit(dim, (x, y))
-        pygame.draw.rect(screen, (230, 90, 230),
-                         (x - 2, y - 2, GRID_THUMB_W + 4, GRID_THUMB_H + 4), 3)
-        loss = f"-{format_notes(donor['losing'])}"
-        draw_text_outlined(screen, loss, fonts['note'], (x + 6, y + 4),
-                           color=(255, 150, 150))
-        tag = ('EMPTY' if donor['emptied']
-               else f"keeps {format_notes(donor['remaining'])}")
-        draw_text_outlined(screen, tag, fonts['small'],
-                           (x + 6, y + GRID_THUMB_H - 24),
-                           color=(255, 200, 120))
-
-    # Selected cell: show the range it GROWS to (current -> projected).
-    if proj['selected'] is not None and 0 <= sel < len(cells):
-        x, y = cell_rect(sel, layout)
-        if on_screen(y):
-            grow = (f"{format_notes(proj['selected']['current'])} -> "
-                    f"{format_notes(proj['selected']['projected'])}")
-            draw_text_outlined(screen, grow, fonts['note'], (x + 6, y + 4),
-                               color=(150, 255, 200))
-
-    sw = screen.get_width()
-    band_h = 40
-    banner = pygame.Surface((sw, band_h))
-    banner.set_alpha(220)
-    banner.fill((60, 20, 70))
-    screen.blit(banner, (0, GRID_TOP))
-    caps = (', '.join(str(n) for n in assign_state['captured'])
-            if assign_state['captured'] else '(none)')
-    msg = (f"ASSIGN MODE: play the notes for THIS media  |  "
-           f"Enter: apply   Esc: cancel  |  Captured: {caps}")
-    draw_text_outlined(screen, msg, fonts['header'], (GRID_PAD, GRID_TOP + 8),
-                       color=(255, 230, 255), outline_w=1)
 
 
 def select_midi_ports(available_ports, port_filter=None):
@@ -1590,7 +1549,7 @@ def main():
     drop_flash = None  # {'note', 'until', 'ok'} border feedback for last drop
     grid_drag = None  # {'from_index','thumb','start','moved','is_video'} gesture
     grid_preview = None  # {'index', 'player'} live press-and-hold video preview
-    assign_state = new_assign_state()  # play-to-assign (MIDI-learn) selection/capture
+    selected_zone = None  # selected contiguous media zone in note order
     undo_stack = []   # snapshots {'mapping', 'note_to_media'} for Ctrl+Z
     prev_active = None
     grid_fonts = {
@@ -1630,39 +1589,6 @@ def main():
                     show_help = update_help_visibility(show_help, key_pressed=True)
                     if event.key == pygame.K_ESCAPE:
                         continue  # consumed: closed the overlay, don't also quit
-                # --- Play-to-assign mode (grid MIDI-learn): handled BEFORE the
-                #     global Esc-quit so Esc cancels assign mode instead of
-                #     quitting the app. Plain Enter (no Alt) applies the captured
-                #     notes; is_fullscreen_toggle_key still owns Alt+Enter. ---
-                if grid_mode and assign_state['active']:
-                    if event.key == pygame.K_ESCAPE:
-                        assign_state = assign_cancel(assign_state)
-                        print("Assign mode: cancelled")
-                        continue
-                    if event.key == pygame.K_RETURN and not (event.mod & pygame.KMOD_ALT):
-                        idx = assign_state['selected']
-                        captured = list(assign_state['captured'])
-                        if (grid_cells and idx is not None
-                                and 0 <= idx < len(grid_cells) and captured):
-                            cell = grid_cells[idx]
-                            name = cell['media']['name']
-                            undo_stack.append({
-                                'mapping': dict(load_mapping()),
-                                'note_to_media': dict(note_to_media),
-                            })
-                            applied = apply_assign(cell, captured, note_to_media)
-                            grid_cells = build_grid_cells(
-                                note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
-                            # Rebuild reorders cells; keep the selection pinned to
-                            # the same media by re-finding it by filename.
-                            new_idx = assign_target_index(grid_cells, name)
-                            assign_state = assign_select(assign_state, new_idx)
-                            print(f"Assigned notes {format_notes(applied)} -> {name}")
-                        else:
-                            # Nothing captured: apply is a no-op, just leave mode.
-                            assign_state = assign_cancel(assign_state)
-                            print("Assign mode: no notes captured, nothing changed")
-                        continue
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 elif is_fullscreen_toggle_key(event):
@@ -1687,8 +1613,31 @@ def main():
                     # Leaving the grid mid-hold: drop the gesture so it can't
                     # keep a preview alive off-screen (reconcile releases it).
                     grid_drag = None
-                    # Toggling views abandons any pending assign selection/capture.
-                    assign_state = new_assign_state()
+                    selected_zone = None
+                elif (grid_mode and selected_zone is not None and grid_cells
+                      and event.key in (pygame.K_LEFT, pygame.K_RIGHT)):
+                    # Arrow nudges are independent of the wrapped 2-D grid: the
+                    # selected zone's leading/trailing divider always means its
+                    # adjacent zone in note order.  Labels redraw immediately,
+                    # so both affected ranges remain visible after every nudge.
+                    side = 'leading' if event.mod & pygame.KMOD_SHIFT else 'trailing'
+                    delta = 1 if event.key == pygame.K_RIGHT else -1
+                    zones = zones_from_mapping(
+                        {note: media['name'] for note, media in note_to_media.items()},
+                        start_note, end_note)
+                    undo_stack.append({
+                        'mapping': dict(load_mapping()),
+                        'note_to_media': dict(note_to_media),
+                    })
+                    zones, moved = apply_zone_boundary_move(
+                        zones, selected_zone, side, delta, note_to_media)
+                    if moved:
+                        grid_cells = build_grid_cells(
+                            note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
+                        print(f"Moved {side} boundary: "
+                              f"{format_notes(grid_cells[selected_zone]['notes'])}")
+                    else:
+                        undo_stack.pop()
                 elif grid_mode and event.key in (pygame.K_UP, pygame.K_DOWN,
                                                  pygame.K_PAGEUP, pygame.K_PAGEDOWN,
                                                  pygame.K_HOME, pygame.K_END):
@@ -1716,17 +1665,6 @@ def main():
                     grid_cells = build_grid_cells(
                         note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
                     print("Undo: reverted last rearrange")
-                elif (grid_mode and not assign_state['active']
-                      and assign_state['selected'] is not None
-                      and (event.key == pygame.K_a
-                           or (event.key == pygame.K_RETURN
-                               and not (event.mod & pygame.KMOD_ALT)))):
-                    # Enter assign mode for the selected cell. 'A' and plain
-                    # Enter are non-piano keys (Alt+Enter is fullscreen, caught
-                    # above); play notes to capture, Enter applies, Esc cancels.
-                    assign_state = assign_enter(assign_state)
-                    print("Assign mode: play the notes for this media "
-                          "- Enter apply, Esc cancel")
                 elif event.key in KEY_TO_NOTE:
                     note = KEY_TO_NOTE[event.key]
                     msg_queue.put(mido.Message('note_on', note=note, velocity=100))
@@ -1775,13 +1713,12 @@ def main():
                         else:
                             undo_stack.pop()  # no-op swap, nothing to undo
                 elif grid_cells:
-                    # A plain click (no drag travel) selects the cell under the
-                    # cursor for play-to-assign. Selecting re-targets and drops
-                    # any pending capture, so a click never reassigns by itself.
+                    # A plain click selects this note-order zone for boundary
+                    # nudging; clicking alone never changes the mapping.
                     idx = grid_cell_at(grid_cells, grid_scroll,
                                        screen.get_size(), event.pos)
                     if idx is not None:
-                        assign_state = assign_select(assign_state, idx)
+                        selected_zone = idx
                 grid_drag = None
             elif event.type in (pygame.DROPBEGIN, pygame.DROPCOMPLETE):
                 # Diagnostic: proves the window is receiving the drop-event
@@ -1846,11 +1783,6 @@ def main():
         note_started = cur_active is not None and cur_active != prev_active
         if note_started:
             flash_times[cur_active] = now
-            # In assign mode, capture every played note (computer key OR live
-            # MIDI) — both surface here as a newly-active note, so one hook
-            # covers both input paths uniformly.
-            if grid_mode and assign_state['active']:
-                assign_state = assign_capture(assign_state, cur_active)
         prev_active = cur_active
 
         # Dismiss the startup help overlay the moment a note is played. This
@@ -1882,13 +1814,11 @@ def main():
         # Draw current frame
         if grid_mode:
             grid_scroll = render_grid(screen, grid_cells, grid_scroll, grid_fonts,
-                                      cur_active, flash_times, now)
+                                      cur_active, flash_times, now, selected_zone)
             draw_drop_flash(screen, grid_cells, grid_scroll, drop_flash, now)
             draw_grid_preview(screen, grid_cells, grid_scroll, grid_preview)
             draw_drag_feedback(screen, grid_cells, grid_scroll, grid_drag,
                                pygame.mouse.get_pos())
-            draw_assign_overlay(screen, grid_cells, grid_scroll, assign_state,
-                                grid_fonts)
         elif state['video_player']:
             frame_surface = state['video_player'].get_frame()
             if frame_surface:
