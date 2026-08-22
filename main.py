@@ -195,6 +195,18 @@ def draw_startup_help(screen, width, height):
     _blit_overlay_lines(screen, width, height, lines)
 
 
+def enable_all_events():
+    """Allow every event type onto the queue.
+
+    SDL ships with DROPTEXT/DROPBEGIN/DROPCOMPLETE disabled by default (only
+    DROPFILE is on), so we need those text/uri-list drops and begin/complete
+    diagnostics to arrive. The correct call is ``set_allowed(None)`` — note that
+    ``set_blocked(None)`` does the OPPOSITE and blocks EVERY event (including
+    KEYDOWN and DROPFILE), which silently kills all keyboard, mouse, and drop
+    input. Kept as a named, tested helper so that trap can't be reintroduced."""
+    pygame.event.set_allowed(None)
+
+
 def is_help_reshow_key(event):
     """True if ``event`` (a KEYDOWN) is the reshow-help binding: F1 or ?.
 
@@ -1168,10 +1180,7 @@ def main():
     clock_tracker = MidiClockTracker(fallback_bpm=args.bpm)
 
     pygame.init()
-    # SDL ships with DROPTEXT/DROPBEGIN/DROPCOMPLETE disabled by default (only
-    # DROPFILE is on). Unblock everything so text/uri-list drops and the
-    # begin/complete diagnostics actually arrive.
-    pygame.event.set_blocked(None)
+    enable_all_events()
 
     if args.windowed:
         if args.size.lower() in SIZE_PRESETS:
