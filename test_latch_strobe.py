@@ -26,7 +26,27 @@ def make_state():
         'hold_until': None,
         'zoom_scale': 1.0,
         'strobe_until': 0,
+        'last_note': None,
     }
+
+
+def test_strobe_only_on_same_note_repeat():
+    q = queue.Queue()
+    state = make_state()
+    media = {
+        60: {'type': 'image', 'surface': 'a'},
+        62: {'type': 'image', 'surface': 'b'},
+    }
+    # First hit of 60: not a repeat -> no strobe window.
+    state = trigger(q, state, media, 10.0, 60)
+    assert not strobe_is_active(state, 10.0)
+    # Same note again -> strobe fires.
+    state = trigger(q, state, media, 11.0, 60)
+    assert strobe_is_active(state, 11.0)
+    # Switch to a different note -> no strobe, clean swap.
+    state = trigger(q, state, media, 12.0, 62)
+    assert not strobe_is_active(state, 12.0)
+    assert state['surface'] == 'b'
 
 
 def trigger(queue_, state, note_to_media, now, note):
