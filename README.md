@@ -26,8 +26,9 @@ copies `dist/Keyframes_Windows.zip` back to this checkout.
 - Drop any mix of images (`.png`, `.jpg`, `.jpeg`, `.bmp`) and videos (`.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`) into the folder
 - Media files are automatically distributed evenly across the note range — videos are interleaved with images so they spread across all keys
 - Every note triggers something — no dead keys
-- Videos play back in real-time and stop immediately on note-off
-- If a note is held past the end of a video, it freezes on the last frame
+- By default, the last triggered image or video latches on screen; note-off does not clear it
+- Every hit briefly cuts to black (40 ms by default), so rapid retriggers of one key read as distinct flashes
+- Videos restart on every hit and freeze on their last frame until the next trigger
 - Displays fullscreen on the first landscape monitor it finds
 - 60 FPS render loop, hardware-accelerated
 - No MIDI hardware required — built-in computer keyboard works as a piano
@@ -111,6 +112,12 @@ python main.py --windowed
 # Enable per-note zoom ring (16 repeat-hit positions)
 python main.py --zoom-ring
 
+# Use hold-while-held behavior instead of the default latch
+python main.py --no-latch
+
+# Change the retrigger black gap (0 disables it)
+python main.py --strobe-ms 60
+
 # Custom window size
 python main.py --windowed --size 1920x1080
 
@@ -131,7 +138,7 @@ Lower octave (C3-B3):
 Z X C V B N M
 ```
 
-White keys are on the letter rows, black keys (sharps/flats) are on the row above. Hold a key to sustain, release to stop.
+White keys are on the letter rows, black keys (sharps/flats) are on the row above. By default, a hit latches its media until the next hit; press **L** to toggle latch mode live (a brief on-screen label confirms the mode). Run with `--no-latch` for hold-while-held behavior, where releasing a key stops it.
 
 If a MIDI device is connected, both the device and keyboard work simultaneously.
 
@@ -182,3 +189,5 @@ The note→file assignment is remembered in a sparse `mapping.json` manifest bes
 - `START_NOTE` and `NUM_KEYS` in `main.py` can be adjusted for your keyboard layout
 - Multi-monitor aware — automatically picks a landscape display
 - `--zoom-ring` gives each MIDI note its own 16-step repeat-hit cycle: first hit is normal size, then each hit on that note scales slightly larger until it wraps back to normal
+- Latch mode is on by default, so short percussive MIDI notes still leave the last hit visible; use `--no-latch` or press **L** at runtime to return to note-off release behavior
+- `--strobe-ms` controls the black retrigger gap (default `40`; `0` disables it)
