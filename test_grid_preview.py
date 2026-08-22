@@ -60,7 +60,6 @@ def test_begin_on_video_cell_marks_video_and_pending():
     assert g is not None
     assert g['from_index'] == 0
     assert g['is_video'] is True
-    assert g['moved'] is False
 
 
 def test_begin_on_image_cell_is_not_video():
@@ -76,34 +75,6 @@ def test_begin_off_any_cell_returns_none():
     assert main.begin_grid_gesture(cells, 0, SCREEN, (5, 0)) is None
 
 
-# --- update_grid_gesture: pending -> drag latch -----------------------------
-
-def test_small_move_stays_pending():
-    cells = _cells()
-    g = main.begin_grid_gesture(cells, 0, SCREEN, _center(cells, 0))
-    sx, sy = g['start']
-    main.update_grid_gesture(g, (sx + main.GRID_DRAG_THRESHOLD, sy))  # not past
-    assert g['moved'] is False
-
-
-def test_move_past_threshold_becomes_drag():
-    cells = _cells()
-    g = main.begin_grid_gesture(cells, 0, SCREEN, _center(cells, 0))
-    sx, sy = g['start']
-    main.update_grid_gesture(g, (sx + main.GRID_DRAG_THRESHOLD + 1, sy))
-    assert g['moved'] is True
-
-
-def test_drag_latches_and_never_reverts():
-    cells = _cells()
-    g = main.begin_grid_gesture(cells, 0, SCREEN, _center(cells, 0))
-    sx, sy = g['start']
-    main.update_grid_gesture(g, (sx + 50, sy + 50))  # clearly a drag
-    assert g['moved'] is True
-    main.update_grid_gesture(g, (sx, sy))  # back to origin
-    assert g['moved'] is True  # stays a drag
-
-
 # --- gesture_previews: the preview predicate --------------------------------
 
 def test_previews_true_for_held_video_on_its_cell():
@@ -117,14 +88,6 @@ def test_no_preview_for_image_cell():
     cells = _cells()
     pos = _center(cells, 1)
     g = main.begin_grid_gesture(cells, 0, SCREEN, pos)
-    assert main.gesture_previews(g, cells, 0, SCREEN, pos) is False
-
-
-def test_no_preview_once_it_is_a_drag():
-    cells = _cells()
-    pos = _center(cells, 0)
-    g = main.begin_grid_gesture(cells, 0, SCREEN, pos)
-    g['moved'] = True
     assert main.gesture_previews(g, cells, 0, SCREEN, pos) is False
 
 

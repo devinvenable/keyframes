@@ -28,28 +28,9 @@ def _img(color=(100, 150, 200), size=(320, 180)):
     return {'type': 'image', 'surface': surf}
 
 
-def test_build_grid_cells_dedupes_shared_media():
-    # Two media objects, each shared across a contiguous run of notes.
-    a, b = _img((10, 20, 30)), _img((40, 50, 60))
-    note_to_media = {36: a, 37: a, 38: a, 39: b, 40: b}
-    cells = main.build_grid_cells(note_to_media, (main.GRID_THUMB_W, main.GRID_THUMB_H))
-
-    assert len(cells) == 2, "shared media object should collapse to one cell"
-    assert cells[0]['notes'] == [36, 37, 38]
-    assert cells[1]['notes'] == [39, 40]
-    # Cells ordered by their first note
-    assert cells[0]['notes'][0] < cells[1]['notes'][0]
-    # Thumbnails are the requested size
-    assert cells[0]['thumb'].get_size() == (main.GRID_THUMB_W, main.GRID_THUMB_H)
-
-
 def test_format_notes():
     assert main.format_notes([36]) == '36'
-    assert main.format_notes([36, 37, 38]) == '36-38'
-    # Non-contiguous notes show each run so gaps are honest, not a bare min-max.
-    assert main.format_notes([46, 47, 51, 52, 53]) == '46-47, 51-53'
-    assert main.format_notes([36, 40]) == '36, 40'
-    assert main.format_notes([]) == ''
+    assert main.format_notes([]) == '—'
 
 
 def test_cell_highlight_active_faded_and_expired():
@@ -75,8 +56,8 @@ def test_cell_highlight_active_faded_and_expired():
 def test_render_grid_clamps_scroll_and_runs():
     screen = pygame.display.get_surface()
     a, b = _img((10, 20, 30)), _img((40, 50, 60))
-    note_to_media = {n: (a if n < 50 else b) for n in range(36, 60)}
-    cells = main.build_grid_cells(note_to_media, (main.GRID_THUMB_W, main.GRID_THUMB_H))
+    cells = [{'media': a, 'type': 'image', 'thumb': main.make_thumbnail(a, (200, 112)), 'notes': [36]},
+             {'media': b, 'type': 'image', 'thumb': main.make_thumbnail(b, (200, 112)), 'notes': []}] * 12
 
     # Over-scrolling is clamped to a finite, non-negative offset
     clamped = main.render_grid(screen, cells, 10 ** 9, {
