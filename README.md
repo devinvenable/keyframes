@@ -117,6 +117,17 @@ White keys are on the letter rows, black keys (sharps/flats) are on the row abov
 
 If a MIDI device is connected, both the device and keyboard work simultaneously.
 
+### Grid / media-manager view
+
+Press **Tab** to toggle between the performance display and a scrollable grid of
+every loaded media file. Each thumbnail is labeled with the MIDI note (or note
+range) it maps to, and videos are marked with a `VID` badge and their first frame.
+
+MIDI stays live in grid view: playing a note flashes its thumbnail, so you can
+see at a glance which media is bound to which key. Scroll with **Up/Down**,
+**PageUp/PageDown**, **Home/End**, or the **mouse wheel**. Press **Tab** again to
+return to the performance view, or **Esc** to quit.
+
 ## Media folder
 
 Drop any images or videos into the `images/` directory — any filenames, any order. Supported formats:
