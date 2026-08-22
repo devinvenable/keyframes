@@ -9,6 +9,10 @@ logs/
 .agent-tasks.db
 canon/
 worktrees/
+# Runtime-generated note->media manifest (seeded on first launch)
+/mapping.json
+/mapping.json.tmp
+
 images/*
 !images/.gitkeep
 !images/starter-neon.png
