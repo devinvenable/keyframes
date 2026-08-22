@@ -155,6 +155,10 @@ Drop any images or videos into the `images/` directory — any filenames, any or
 
 Files are sorted and distributed evenly across the 64-note range. Videos are interleaved with images so they don't cluster together. The more files you add, the more variety per key.
 
+### `mapping.json`
+
+The note→file assignment is remembered in a `mapping.json` manifest beside the `images/` folder (next to the executable in a packaged build). On first launch it is seeded from the even-distribution above and written out; after that it is the source of truth, so assignments survive restarts. The file is plain, human-readable JSON (`{"36": "sunrise.png", ...}`) you can hand-edit. On each launch it is reconciled with the folder: entries for deleted files are dropped and their notes reseeded, and newly added files are surfaced automatically.
+
 ## Configuration
 
 - `START_NOTE` and `NUM_KEYS` in `main.py` can be adjusted for your keyboard layout
