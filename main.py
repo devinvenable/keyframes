@@ -4,6 +4,7 @@ import queue
 import sys
 import threading
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -14,8 +15,22 @@ import mido
 DEFAULT_START_NOTE = 36  # C2
 DEFAULT_NUM_KEYS = 64
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-IMAGES_DIR = os.path.join(SCRIPT_DIR, 'images')
+def get_application_dir():
+    """Return the directory containing editable user files.
+
+    PyInstaller extracts bundled files into ``sys._MEIPASS``, but Keyframes'
+    media is intentionally *not* bundled.  A frozen app must therefore use the
+    executable's directory, while a source checkout uses this file's directory.
+    ``APP_DIR`` is also the location for future user-editable configuration.
+    """
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+APP_DIR = get_application_dir()
+BUNDLE_DIR = Path(getattr(sys, '_MEIPASS', APP_DIR))
+IMAGES_DIR = str(APP_DIR / 'images')
 
 IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.bmp')
 VIDEO_EXTS = ('.mp4', '.avi', '.mov', '.mkv', '.webm')
@@ -556,6 +571,36 @@ def select_midi_ports(available_ports, port_filter=None):
     return [available_ports[0]]
 
 
+def run_packaging_smoke_test():
+    """Exercise the shipped image, video, and RT-MIDI backend without hardware."""
+    image_files = sorted(Path(IMAGES_DIR).glob('*.png'))
+    video_files = sorted(Path(IMAGES_DIR).glob('*.mp4'))
+    if not image_files or not video_files:
+        raise RuntimeError('Packaging smoke test needs one .png and one .mp4 in images/.')
+
+    pygame.init()
+    try:
+        # ``convert_alpha`` deliberately verifies the pygame display backend too.
+        # A tiny hidden surface keeps this test non-interactive on the build VM.
+        pygame.display.set_mode((1, 1), pygame.HIDDEN)
+        pygame.image.load(str(image_files[0])).convert_alpha()
+        player = VideoPlayer(str(video_files[0]), (320, 180))
+        try:
+            if player.get_frame() is None:
+                raise RuntimeError(f'OpenCV could not decode {video_files[0].name}.')
+        finally:
+            player.release()
+
+        # This import and enumeration load the dynamically selected mido RT-MIDI
+        # backend.  No input device is required for either operation.
+        import mido.backends.rtmidi  # noqa: F401
+        mido.get_input_names()
+    finally:
+        pygame.quit()
+
+    print('Packaging smoke test passed: image, video, and RT-MIDI backend are available.')
+
+
 def main():
     parser = argparse.ArgumentParser(description="MIDI Note Image Display")
     parser.add_argument('--midi-file', '-f', help="Path to a MIDI file to play back")
@@ -579,6 +624,8 @@ def main():
                              "note grow slightly larger before wrapping to normal size")
     parser.add_argument('--windowed', '-w', action='store_true',
                         help="Run in a window instead of fullscreen")
+    parser.add_argument('--packaging-smoke-test', action='store_true',
+                        help=argparse.SUPPRESS)
     parser.add_argument('--size', type=str, default='1280x720', metavar='WxH|PRESET',
                         help="Window size: WxH or preset name — "
                              "hd (1920x1080), 4k (3840x2160), "
@@ -586,6 +633,10 @@ def main():
                              "square (1080x1080), ig-story (1080x1920), "
                              "reel (1080x1350) (default: 1280x720)")
     args = parser.parse_args()
+
+    if args.packaging_smoke_test:
+        run_packaging_smoke_test()
+        return
 
     start_note = args.start_note
     num_keys = args.num_keys

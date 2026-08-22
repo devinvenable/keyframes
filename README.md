@@ -2,6 +2,24 @@
 
 Real-time MIDI-triggered image and video display using pygame, mido, and OpenCV. Press a key on your MIDI controller — or your computer keyboard — and the corresponding media fills the screen. Designed for live performance and VJ setups.
 
+## Windows download build
+
+The Windows release is a self-contained folder: unzip `Keyframes_Windows.zip`,
+then double-click `Keyframes.exe`.  No Python installation is needed.  Keep the
+`images/` folder beside the executable and replace its starter media with your
+own images and videos whenever you like.  `README.txt` inside the release gives
+the same quick-start instructions.
+
+Maintainers can build it on the Windows VM with:
+
+```bash
+scripts/build-windows.sh --clean
+```
+
+The driver pushes the current branch, builds it on the VM, verifies the frozen
+app can load an image, decode a video, and initialize the RT-MIDI backend, then
+copies `dist/Keyframes_Windows.zip` back to this checkout.
+
 ## How it works
 
 - Maps MIDI notes (C2–B6, notes 36–99) to images and videos in the `images/` directory

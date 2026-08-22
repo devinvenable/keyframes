@@ -11,7 +11,13 @@ canon/
 worktrees/
 images/*
 !images/.gitkeep
+!images/starter-neon.png
+!images/starter-pulse.mp4
 keep/
+
+# PyInstaller output is reproducible; releases are created by scripts/build-windows.sh.
+/build/
+/dist/
 
 # axon runtime artifacts
 .agent-tasks.db*
