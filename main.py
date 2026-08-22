@@ -1025,34 +1025,68 @@ def reassign_cell_media(note_to_media, notes, name):
     return existing
 
 
-def apply_drop(filepath, cell, note_to_media):
-    """Replace one grid cell's media while retaining its optional key.
+def remove_media_file(name, keep=None):
+    """Delete a media file from ``images/`` after a replace, safely.
 
-    Copies the file into ``images/`` (if needed), persists the reassignment
-    through the shared mapping (load_mapping/save_mapping — never touching
-    mapping.json directly), and live-updates ``note_to_media`` in place reusing
-    any already-loaded object for the file. Returns True on success, or False
-    for an unsupported file type (caller flashes red). The caller rebuilds the
-    grid cells afterwards so the new thumbnail appears."""
+    No-op (returns False) when ``name`` is empty, equals ``keep`` (never delete
+    the file that just replaced it), or resolves outside ``IMAGES_DIR`` — a
+    realpath guard so a crafted basename can't escape the media dir and unlink
+    something else. Returns True only when a file was actually removed."""
+    if not name or name == keep:
+        return False
+    base = os.path.realpath(IMAGES_DIR)
+    real = os.path.realpath(os.path.join(IMAGES_DIR, name))
+    if real == base or os.path.commonpath([real, base]) != base:
+        return False
+    if os.path.exists(real):
+        os.remove(real)
+        return True
+    return False
+
+
+def apply_drop(filepath, cell, note_to_media):
+    """Replace the targeted grid cell's media in place, keeping its key.
+
+    Copies the dropped file B into ``images/`` (skipping the copy if it is
+    already there), then:
+      * If the cell has a key (note N): steal N from the old file A and assign
+        N -> B through the shared mapping, so B now triggers on N (and B's own
+        prior key, if any, is stolen too).
+      * If the cell is unmapped: B simply replaces A in that slot and stays
+        unmapped (no key to inherit).
+    The old file A is then deleted from ``images/`` (never when A is B itself,
+    and only after a realpath check confirms it lives inside IMAGES_DIR) so no
+    orphan cell is left behind — dropped files are copies from elsewhere, so the
+    source is the backup. ``note_to_media`` is live-updated in place (A and any
+    stale B entry dropped, the cell's notes pointed at B, reusing an already-
+    loaded object for B) and the caller rebuilds the grid. Returns True on
+    success, or False for an unsupported file type (caller flashes red; nothing
+    is copied or deleted)."""
     if not supported_media_file(filepath):
         return False
+    old_name = cell['media']['name']
     name = import_dropped_file(filepath)
     notes = list(cell['notes'])
-    mapping = load_mapping()
     target_media = next((media for media in note_to_media.values()
                          if media['name'] == name), None)
     if target_media is None:
         target_media = make_media_entry(name)
-    # The target file may already be mapped: a replacement steals that key.
-    mapping = unmap_mapping(mapping, name)
+    # The dropped file may already be mapped elsewhere: steal that key, then
+    # steal the cell's key (if any) onto it.
+    mapping = unmap_mapping(load_mapping(), name)
     for note in notes:
         mapping = assign_mapping(mapping, note, name)
     save_mapping(mapping)
     for note, media in list(note_to_media.items()):
-        if media['name'] == cell['media']['name'] or media['name'] == name:
+        if media['name'] in (old_name, name):
             del note_to_media[note]
     for note in notes:
         note_to_media[note] = target_media
+    remove_media_file(old_name, keep=name)
+    if notes:
+        print(f"Replaced {old_name} with {name} at key {notes[0]}")
+    else:
+        print(f"Replaced {old_name} with {name}")
     return True
 
 
@@ -1473,19 +1507,15 @@ def main():
                 selected_index = grid_cell_at(grid_cells, grid_scroll,
                                               screen.get_size(), event.pos)
                 grid_drag = None
-            elif event.type in (pygame.DROPBEGIN, pygame.DROPCOMPLETE):
-                # Diagnostic: proves the window is receiving the drop-event
-                # family at all (fullscreen X11 windows sometimes never do).
-                print(f"[drop] {pygame.event.event_name(event.type)}")
             elif event.type in (pygame.DROPFILE, pygame.DROPTEXT):
-                # Native drag-and-drop: reassign the cell under the cursor to the
-                # dropped media file (copy into images/, persist via the mapping,
-                # reload live). DROPTEXT covers file managers that hand SDL a
-                # text/uri-list instead of a plain path; normalize_drop_paths
-                # decodes either payload. The drop target comes from
-                # drop_pointer_pos() — on X11 pygame.mouse.get_pos() is stale
-                # during an external drag (no MOUSEMOTION is delivered), so the
-                # X server is queried directly.
+                # Native drag-and-drop: replace the cell under the cursor with
+                # the dropped media file (copy into images/, persist via the
+                # mapping, delete the old file, reload live). DROPTEXT covers
+                # file managers that hand SDL a text/uri-list instead of a plain
+                # path; normalize_drop_paths decodes either payload. The drop
+                # target comes from drop_pointer_pos() — on X11
+                # pygame.mouse.get_pos() is stale during an external drag (no
+                # MOUSEMOTION is delivered), so the X server is queried directly.
                 raw = getattr(event, 'file', None) or getattr(event, 'text', '') or ''
                 paths = normalize_drop_paths(raw)
                 pointer = drop_pointer_pos()
@@ -1493,15 +1523,11 @@ def main():
                 if grid_mode and grid_cells:
                     idx = grid_cell_at(grid_cells, grid_scroll,
                                        screen.get_size(), pointer)
-                print(f"[drop] {pygame.event.event_name(event.type)} raw={raw!r} "
-                      f"mouse.get_pos={pygame.mouse.get_pos()} pointer={pointer} "
-                      f"paths={paths} cell={idx}")
                 if not grid_mode or not grid_cells:
-                    print("[drop] ignored: not in grid view (Tab opens it)")
+                    pass  # only the grid view accepts drops
                 elif idx is None:
                     # Missed every cell: flash the whole window red so a failed
-                    # drop is never silent again.
-                    print("[drop] missed all cells — drop landed on no thumbnail")
+                    # drop is never silent.
                     drop_flash = {'note': None, 'ok': False,
                                   'until': time.monotonic() + GRID_DROP_FLASH}
                 else:
@@ -1511,10 +1537,6 @@ def main():
                     if ok:
                         grid_cells = build_grid_cells(
                             note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
-                        print(f"Replaced note(s) {format_notes(cell['notes'])} "
-                              f"-> {os.path.basename(paths[0])}")
-                    else:
-                        print(f"Ignored unsupported drop: {raw!r}")
                     drop_flash = {'note': flash_note, 'ok': ok,
                                   'until': time.monotonic() + GRID_DROP_FLASH}
 
