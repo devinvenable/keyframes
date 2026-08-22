@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
@@ -295,6 +296,19 @@ def reconcile_mapping(stored, present_files, start_note, end_note):
     return result
 
 
+def make_media_entry(name):
+    """Build a single note-media object for a filename in ``images/``.
+
+    Carries a ``name`` field so the live click-to-replace path can find and
+    reuse an already-loaded object for the same file (preserving the grid's
+    id()-based dedup) instead of decoding it a second time."""
+    filepath = os.path.join(IMAGES_DIR, name)
+    if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+        return {'type': 'video', 'path': filepath, 'name': name}
+    img = pygame.image.load(filepath).convert_alpha()
+    return {'type': 'image', 'surface': img, 'name': name}
+
+
 def load_media(start_note, end_note):
     """Build the note -> media mapping, honoring the persistent manifest.
 
@@ -320,12 +334,7 @@ def load_media(start_note, end_note):
     # the object (the grid view collapses cells by ``id(media)``).
     media_by_file = {}
     for name in set(in_range.values()):
-        filepath = os.path.join(IMAGES_DIR, name)
-        if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
-            media_by_file[name] = {'type': 'video', 'path': filepath}
-        else:
-            img = pygame.image.load(filepath).convert_alpha()
-            media_by_file[name] = {'type': 'image', 'surface': img}
+        media_by_file[name] = make_media_entry(name)
 
     note_to_media = {note: media_by_file[name] for note, name in in_range.items()}
 
@@ -638,11 +647,14 @@ def cell_highlight(cell, active_note, flash_times, now):
     return strength
 
 
-def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
-    """Draw the media-manager grid. Returns the clamped scroll offset."""
-    sw, sh = screen.get_size()
-    screen.fill((18, 18, 18))
+def grid_layout(num_cells, scroll_y, screen_size):
+    """Compute the grid's shared geometry for a given cell count and scroll.
 
+    Returned by the single source of truth that both rendering and drop
+    hit-testing use, so a cell's on-screen rectangle is derived identically in
+    every path (a divergent copy here is exactly the "selector that can't
+    discriminate" trap). ``scroll_y`` comes back clamped to a valid offset."""
+    sw, sh = screen_size
     cell_w = GRID_THUMB_W + GRID_PAD
     cell_h = GRID_THUMB_H + GRID_PAD
     cols = max(1, (sw - GRID_PAD) // cell_w)
@@ -650,17 +662,52 @@ def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
     x0 = max(GRID_PAD, (sw - grid_w) // 2)
     top = GRID_TOP
 
-    rows = (len(cells) + cols - 1) // cols
+    rows = (num_cells + cols - 1) // cols
     content_h = rows * cell_h
     view_h = sh - top - GRID_PAD
     max_scroll = max(0, content_h - view_h)
     scroll_y = max(0, min(scroll_y, max_scroll))
+    return {'cols': cols, 'x0': x0, 'top': top,
+            'cell_w': cell_w, 'cell_h': cell_h, 'scroll_y': scroll_y}
+
+
+def cell_rect(index, layout):
+    """Top-left (x, y) of a cell's thumbnail given a grid_layout() result."""
+    col = index % layout['cols']
+    row = index // layout['cols']
+    x = layout['x0'] + col * layout['cell_w']
+    y = layout['top'] + row * layout['cell_h'] - layout['scroll_y']
+    return x, y
+
+
+def grid_cell_at(cells, scroll_y, screen_size, pos):
+    """Return the index of the grid cell under ``pos`` (x, y), or None.
+
+    Drops that land on the header band, in inter-cell padding, or on empty
+    space past the last cell return None rather than snapping to a neighbour —
+    an off-target drop must miss, not silently reassign the wrong note."""
+    mx, my = pos
+    layout = grid_layout(len(cells), scroll_y, screen_size)
+    if my < layout['top']:
+        return None  # header band, never a drop target
+    for i in range(len(cells)):
+        x, y = cell_rect(i, layout)
+        if x <= mx < x + GRID_THUMB_W and y <= my < y + GRID_THUMB_H:
+            return i
+    return None
+
+
+def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
+    """Draw the media-manager grid. Returns the clamped scroll offset."""
+    sw, sh = screen.get_size()
+    screen.fill((18, 18, 18))
+
+    layout = grid_layout(len(cells), scroll_y, screen_size=(sw, sh))
+    scroll_y = layout['scroll_y']
+    top = layout['top']
 
     for i, cell in enumerate(cells):
-        col = i % cols
-        row = i // cols
-        x = x0 + col * cell_w
-        y = top + row * cell_h - scroll_y
+        x, y = cell_rect(i, layout)
         if y + GRID_THUMB_H < top or y > sh:
             continue  # fully scrolled off-screen
 
@@ -685,11 +732,98 @@ def render_grid(screen, cells, scroll_y, fonts, active_note, flash_times, now):
     pygame.draw.rect(screen, (30, 30, 30), (0, 0, sw, top))
     pygame.draw.line(screen, (70, 70, 70), (0, top), (sw, top), 2)
     header = (f"GRID VIEW  |  {len(cells)} media  |  "
-              f"Tab: performance view   Up/Down or wheel: scroll   Esc: quit")
+              f"Drag a file onto a cell to replace   Tab: performance view   "
+              f"Up/Down or wheel: scroll   Esc: quit")
     draw_text_outlined(screen, header, fonts['header'], (GRID_PAD, 15),
                        color=(230, 230, 230), outline_w=1)
 
     return scroll_y
+
+
+GRID_DROP_FLASH = 0.6  # seconds a drop-result border lingers
+
+
+def supported_media_file(path):
+    """True if ``path`` has a supported image/video extension."""
+    return os.path.splitext(path)[1].lower() in IMAGE_EXTS + VIDEO_EXTS
+
+
+def import_dropped_file(src):
+    """Copy a dropped file into ``images/`` if it isn't already there.
+
+    Returns the basename to store in the mapping. A file already living in
+    ``images/`` (by name) is reused as-is — matching the manifest's filename-
+    keyed contract — rather than re-copied."""
+    name = os.path.basename(src)
+    dst = os.path.join(IMAGES_DIR, name)
+    if not os.path.exists(IMAGES_DIR):
+        os.makedirs(IMAGES_DIR)
+    if os.path.abspath(src) != os.path.abspath(dst) and not os.path.exists(dst):
+        shutil.copy2(src, dst)
+    return name
+
+
+def reassign_cell_media(note_to_media, notes, name):
+    """Point every note in ``notes`` at the media for filename ``name``, live.
+
+    Reuses an already-loaded object for ``name`` if one exists so the grid's
+    id()-based dedup keeps showing a single cell per file; only decodes a fresh
+    object when the file isn't loaded yet."""
+    existing = None
+    for media in note_to_media.values():
+        if media.get('name') == name:
+            existing = media
+            break
+    if existing is None:
+        existing = make_media_entry(name)
+    for note in notes:
+        note_to_media[note] = existing
+    return existing
+
+
+def apply_drop(filepath, cell, note_to_media):
+    """Reassign one grid cell's notes to a dropped media file.
+
+    Copies the file into ``images/`` (if needed), persists the reassignment
+    through the shared mapping (load_mapping/save_mapping — never touching
+    mapping.json directly), and live-updates ``note_to_media`` in place reusing
+    any already-loaded object for the file. Returns True on success, or False
+    for an unsupported file type (caller flashes red). The caller rebuilds the
+    grid cells afterwards so the new thumbnail appears."""
+    if not supported_media_file(filepath):
+        return False
+    name = import_dropped_file(filepath)
+    notes = list(cell['notes'])
+    mapping = load_mapping()
+    for note in notes:
+        mapping[note] = name
+    save_mapping(mapping)
+    reassign_cell_media(note_to_media, notes, name)
+    return True
+
+
+def draw_drop_flash(screen, cells, scroll_y, drop_flash, now):
+    """Draw the success/failure border for the most recent drop, if still live.
+
+    Green = the cell was reassigned; red = the drop was rejected (unsupported
+    type or landed off any cell). Located via the same grid_layout() the drop
+    hit-test used, so the flash lands exactly on the cell that was targeted."""
+    if not drop_flash or now >= drop_flash['until']:
+        return
+    index = None
+    for i, cell in enumerate(cells):
+        if drop_flash['note'] in cell['notes']:
+            index = i
+            break
+    if index is None:
+        return
+    layout = grid_layout(len(cells), scroll_y, screen.get_size())
+    x, y = cell_rect(index, layout)
+    if y + GRID_THUMB_H < layout['top'] or y > screen.get_height():
+        return  # cell scrolled out of view
+    color = (60, 220, 90) if drop_flash['ok'] else (230, 60, 60)
+    pygame.draw.rect(screen, color,
+                     (x - 3, y - 3, GRID_THUMB_W + 6, GRID_THUMB_H + 6), 5)
 
 
 def select_midi_ports(available_ports, port_filter=None):
@@ -862,6 +996,7 @@ def main():
     grid_cells = None  # built lazily the first time the grid is opened
     grid_scroll = 0
     flash_times = {}  # note -> monotonic time it was last triggered
+    drop_flash = None  # {'note', 'until', 'ok'} border feedback for last drop
     prev_active = None
     grid_fonts = {
         'note': pygame.font.SysFont(None, 40),
@@ -916,6 +1051,25 @@ def main():
                     msg_queue.put(mido.Message('note_off', note=note, velocity=0))
             elif event.type == pygame.MOUSEWHEEL and grid_mode:
                 grid_scroll -= event.y * 60
+            elif event.type == pygame.DROPFILE and grid_mode and grid_cells:
+                # Native drag-and-drop: reassign the cell under the cursor to the
+                # dropped media file (copy into images/, persist via the mapping,
+                # reload live). Ignore drops outside grid view or off any cell.
+                idx = grid_cell_at(grid_cells, grid_scroll,
+                                   screen.get_size(), pygame.mouse.get_pos())
+                if idx is not None:
+                    cell = grid_cells[idx]
+                    flash_note = cell['notes'][0]
+                    ok = apply_drop(event.file, cell, note_to_media)
+                    if ok:
+                        grid_cells = build_grid_cells(
+                            note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
+                        print(f"Replaced note(s) {format_notes(cell['notes'])} "
+                              f"-> {os.path.basename(event.file)}")
+                    else:
+                        print(f"Ignored unsupported drop: {event.file}")
+                    drop_flash = {'note': flash_note, 'ok': ok,
+                                  'until': time.monotonic() + GRID_DROP_FLASH}
 
         # Process keyboard/file messages from queue
         state = process_midi_messages(msg_queue, start_note, end_note,
@@ -940,6 +1094,7 @@ def main():
         if grid_mode:
             grid_scroll = render_grid(screen, grid_cells, grid_scroll, grid_fonts,
                                       cur_active, flash_times, now)
+            draw_drop_flash(screen, grid_cells, grid_scroll, drop_flash, now)
         elif state['video_player']:
             frame_surface = state['video_player'].get_frame()
             if frame_surface:
