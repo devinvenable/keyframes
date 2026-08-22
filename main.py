@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import queue
 import sys
@@ -31,6 +32,10 @@ def get_application_dir():
 APP_DIR = get_application_dir()
 BUNDLE_DIR = Path(getattr(sys, '_MEIPASS', APP_DIR))
 IMAGES_DIR = str(APP_DIR / 'images')
+# Persistent note -> filename manifest, kept beside the exe and editable images/
+# folder so it survives restarts and can be hand-edited.  Absent until the first
+# launch (or the Media Manager) seeds it.
+MAPPING_PATH = str(APP_DIR / 'mapping.json')
 
 IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.bmp')
 VIDEO_EXTS = ('.mp4', '.avi', '.mov', '.mkv', '.webm')
@@ -148,19 +153,19 @@ def show_instructions(screen, width, height):
                 return
 
 
-def load_media(start_note, end_note):
-    """Load all media files and distribute them evenly across the note range.
-    Videos are interleaved with images so they spread across the full range."""
+def list_media_files():
+    """Return the media filenames currently present in ``images/`` (unordered)."""
     if not os.path.exists(IMAGES_DIR):
         os.makedirs(IMAGES_DIR)
+    return [f for f in os.listdir(IMAGES_DIR)
+            if f.lower().endswith(IMAGE_EXTS + VIDEO_EXTS)]
 
-    all_files = [f for f in os.listdir(IMAGES_DIR)
-                 if f.lower().endswith(IMAGE_EXTS + VIDEO_EXTS)]
 
-    if not all_files:
-        return None
+def order_media_files(all_files):
+    """Sort images, then interleave videos evenly among them.
 
-    # Separate images and videos, then interleave videos evenly among images
+    This is the historical spread that keeps videos from clumping at one end of
+    the note range; the seed distribution below relies on it."""
     images = sorted(f for f in all_files if f.lower().endswith(IMAGE_EXTS))
     videos = sorted(f for f in all_files if f.lower().endswith(VIDEO_EXTS))
 
@@ -170,27 +175,163 @@ def load_media(start_note, end_note):
         for vi, v in enumerate(videos):
             insert_pos = min(interval * (vi + 1) + vi, len(media_files))
             media_files.insert(insert_pos, v)
+    return media_files
 
-    # Build list of loaded media
-    media_list = []
-    for f in media_files:
-        filepath = os.path.join(IMAGES_DIR, f)
-        ext = os.path.splitext(f)[1].lower()
-        if ext in VIDEO_EXTS:
-            media_list.append({'type': 'video', 'path': filepath})
+
+def seed_distribution(ordered_files, start_note, end_note):
+    """The original even-distribution: note -> filename across the note range.
+
+    Used both to seed a fresh manifest and to fill any note a stored manifest
+    leaves uncovered."""
+    num_notes = end_note - start_note + 1
+    n = len(ordered_files)
+    if n == 0:
+        return {}
+    return {note: ordered_files[int(i * n / num_notes)]
+            for i, note in enumerate(range(start_note, end_note + 1))}
+
+
+def load_mapping(path=None):
+    """Read the persistent note -> filename manifest.
+
+    Returns a ``{int note: str filename}`` dict, or ``{}`` if the file is
+    missing or unreadable.  Malformed entries are skipped rather than fatal so a
+    hand-edit typo never bricks startup.  This is the single loader the
+    replace/rearrange features share."""
+    if path is None:
+        path = MAPPING_PATH
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            raw = json.load(fh)
+    except (FileNotFoundError, ValueError, OSError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    mapping = {}
+    for note, filename in raw.items():
+        try:
+            note_int = int(note)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(filename, str):
+            mapping[note_int] = filename
+    return mapping
+
+
+def save_mapping(mapping, path=None):
+    """Write the note -> filename manifest as human-readable JSON.
+
+    Keys are stored as strings (JSON has no int keys) and sorted numerically so
+    the file diffs cleanly and hand-edits stay legible.  Written atomically via a
+    temp file so an interrupted write can't corrupt the manifest.  This is the
+    single writer the replace/rearrange features share."""
+    if path is None:
+        path = MAPPING_PATH
+    ordered = {str(note): mapping[note] for note in sorted(mapping)}
+    tmp = f"{path}.tmp"
+    with open(tmp, 'w', encoding='utf-8') as fh:
+        json.dump(ordered, fh, indent=2)
+        fh.write('\n')
+    os.replace(tmp, path)
+
+
+def reconcile_mapping(stored, present_files, start_note, end_note):
+    """Overlay a stored manifest on the auto-distribution seed.
+
+    Rules:
+      * A stored note keeps its filename while that file still exists on disk.
+      * Notes with no (surviving) stored assignment fall back to the seed.
+      * Files present on disk but referenced by no note are surfaced by taking
+        over a duplicated, non-pinned slot, so newly-dropped media isn't lost.
+      * Stored entries outside the active note range are preserved as long as
+        their file still exists (so narrowing the range temporarily doesn't
+        discard a user's pinned assignments).
+
+    Returns a fresh ``{int note: str filename}`` mapping."""
+    present = set(present_files)
+    ordered = order_media_files(present_files)
+    seed = seed_distribution(ordered, start_note, end_note)
+
+    result = {}
+    for note in range(start_note, end_note + 1):
+        stored_name = stored.get(note)
+        if stored_name in present:
+            result[note] = stored_name
+        elif note in seed:
+            result[note] = seed[note]
+
+    # Surface present files that no note points at by evicting a duplicated slot
+    # that the user hasn't explicitly pinned in the stored manifest.
+    referenced = set(result.values())
+    counts = {}
+    for name in result.values():
+        counts[name] = counts.get(name, 0) + 1
+    for new_name in ordered:
+        if new_name in referenced:
+            continue
+        victim = None
+        for note in range(start_note, end_note + 1):
+            current = result.get(note)
+            if current is None:
+                victim = note
+                break
+            if counts.get(current, 0) > 1 and stored.get(note) != current:
+                victim = note
+                break
+        if victim is None:
+            break  # every note holds a distinct/pinned file; extras stay unshown
+        old = result.get(victim)
+        if old is not None:
+            counts[old] -= 1
+        result[victim] = new_name
+        counts[new_name] = counts.get(new_name, 0) + 1
+        referenced.add(new_name)
+
+    # Keep valid out-of-range stored assignments so they survive this run.
+    for note, name in stored.items():
+        if not (start_note <= note <= end_note) and name in present:
+            result[note] = name
+
+    return result
+
+
+def load_media(start_note, end_note):
+    """Build the note -> media mapping, honoring the persistent manifest.
+
+    The manifest (``mapping.json``) is an overlay on top of the historical
+    even-distribution seed: stored assignments win, holes are seeded, and the
+    reconciled result is written back so it survives restarts and reflects the
+    current contents of ``images/``."""
+    all_files = list_media_files()
+    if not all_files:
+        return None
+
+    stored = load_mapping()
+    reconciled = reconcile_mapping(stored, all_files, start_note, end_note)
+    if reconciled != stored:
+        save_mapping(reconciled)
+
+    # Only notes inside the active range drive playback; out-of-range entries are
+    # preserved in the file but not loaded here.
+    in_range = {note: name for note, name in reconciled.items()
+                if start_note <= note <= end_note}
+
+    # Load one media object per unique filename so notes that share a file share
+    # the object (the grid view collapses cells by ``id(media)``).
+    media_by_file = {}
+    for name in set(in_range.values()):
+        filepath = os.path.join(IMAGES_DIR, name)
+        if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+            media_by_file[name] = {'type': 'video', 'path': filepath}
         else:
             img = pygame.image.load(filepath).convert_alpha()
-            media_list.append({'type': 'image', 'surface': img})
+            media_by_file[name] = {'type': 'image', 'surface': img}
 
-    # Distribute evenly across the note range
-    num_notes = end_note - start_note + 1
-    note_to_media = {}
-    for i, note in enumerate(range(start_note, end_note + 1)):
-        media_index = int(i * len(media_list) / num_notes)
-        note_to_media[note] = media_list[media_index]
+    note_to_media = {note: media_by_file[name] for note, name in in_range.items()}
 
-    num_videos = sum(1 for m in note_to_media.values() if m['type'] == 'video')
-    print(f"Loaded {len(media_list)} media files ({len(videos)} videos), mapped across notes {start_note}-{end_note}")
+    num_files = len(media_by_file)
+    num_videos = sum(1 for m in media_by_file.values() if m['type'] == 'video')
+    print(f"Loaded {num_files} media files ({num_videos} videos), mapped across notes {start_note}-{end_note}")
     print(f"Video notes: {sorted(n for n, m in note_to_media.items() if m['type'] == 'video')}")
     return note_to_media
 
