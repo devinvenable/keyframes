@@ -65,16 +65,35 @@ def test_grid_cell_at_hits_the_cell_under_the_cursor():
     assert main.grid_cell_at(cells, 0, screen, pos) == 3
 
 
-def test_grid_cell_at_misses_header_and_gaps():
+def test_grid_cell_at_misses_gap_between_cells():
     cells = [{'notes': [n], 'type': 'image'} for n in range(36, 44)]
     screen = (800, 600)
-    # A drop on the header band never targets a cell.
-    assert main.grid_cell_at(cells, 0, screen, (400, 5)) is None
     # A drop in the inter-cell padding (just right of cell 0's thumbnail) misses.
     layout = main.grid_layout(len(cells), 0, screen)
     x, y = main.cell_rect(0, layout)
     gap_x = x + main.GRID_THUMB_W + main.GRID_PAD // 2
     assert main.grid_cell_at(cells, 0, screen, (gap_x, y + 10)) is None
+
+
+def test_grid_cell_at_ignores_cells_scrolled_under_the_header():
+    # Enough cells to allow a real scroll offset.
+    cells = [{'notes': [n], 'type': 'image'} for n in range(36, 66)]
+    screen = (800, 600)
+    # Scroll until a second-row cell's thumbnail slides partly under the header.
+    scroll = 134
+    layout = main.grid_layout(len(cells), scroll, screen)
+    x, y = main.cell_rect(3, layout)  # first cell of row 1
+    assert y < layout['top'], "test setup: cell must overlap the header band"
+    # A point inside that cell's rect but within the header band must NOT hit it:
+    # the header owns those pixels (Tab/scroll hints), a drop there is not a drop
+    # on the note hiding beneath.
+    hdr_y = layout['top'] - 2
+    assert y <= hdr_y < y + main.GRID_THUMB_H, "test setup: point must be in cell rect"
+    assert main.grid_cell_at(cells, scroll, screen,
+                             (x + main.GRID_THUMB_W // 2, hdr_y)) is None
+    # ...but the same cell IS hittable just below the header.
+    assert main.grid_cell_at(cells, scroll, screen,
+                             (x + main.GRID_THUMB_W // 2, layout['top'] + 2)) == 3
 
 
 def test_grid_cell_at_empty_grid_returns_none():

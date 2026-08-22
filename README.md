@@ -146,6 +146,13 @@ see at a glance which media is bound to which key. Scroll with **Up/Down**,
 **PageUp/PageDown**, **Home/End**, or the **mouse wheel**. Press **Tab** again to
 return to the performance view, or **Esc** to quit.
 
+**Click-to-replace:** drag an image or video from your file manager
+(Explorer/Finder) and drop it onto a grid cell to reassign that note to the new
+file. The file is copied into `images/` if it isn't already there, the change is
+saved to `mapping.json`, and the media updates live — no restart. A green border
+flashes on success; an unsupported file type or a drop that misses every cell
+flashes red and is ignored.
+
 ## Media folder
 
 Drop any images or videos into the `images/` directory — any filenames, any order. Supported formats:
