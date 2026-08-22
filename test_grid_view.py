@@ -46,6 +46,10 @@ def test_build_grid_cells_dedupes_shared_media():
 def test_format_notes():
     assert main.format_notes([36]) == '36'
     assert main.format_notes([36, 37, 38]) == '36-38'
+    # Non-contiguous notes show each run so gaps are honest, not a bare min-max.
+    assert main.format_notes([46, 47, 51, 52, 53]) == '46-47, 51-53'
+    assert main.format_notes([36, 40]) == '36, 40'
+    assert main.format_notes([]) == ''
 
 
 def test_cell_highlight_active_faded_and_expired():

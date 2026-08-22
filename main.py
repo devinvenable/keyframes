@@ -739,10 +739,27 @@ def build_grid_cells(note_to_media, thumb_size):
 
 
 def format_notes(notes):
-    """Compact label for the note(s) a cell maps to (e.g. '36' or '36-39')."""
-    if len(notes) == 1:
-        return str(notes[0])
-    return f"{min(notes)}-{max(notes)}"
+    """Compact label for the note(s) a cell maps to, collapsing only CONTIGUOUS
+    runs so gaps stay visible: '36', '36-39', or '46-47, 51-77'.
+
+    A cell's notes need not be contiguous — assigning 48-50 to another cell
+    leaves this one owning 46,47,51..77. Showing a bare min-max ('46-77') would
+    falsely imply it covers 48-50, which actually belong elsewhere. Listing each
+    run makes the gap honest, so the label never looks like it overlaps another
+    cell's keys."""
+    ns = sorted(set(notes))
+    if not ns:
+        return ""
+    runs = []
+    start = prev = ns[0]
+    for n in ns[1:]:
+        if n == prev + 1:
+            prev = n
+        else:
+            runs.append((start, prev))
+            start = prev = n
+    runs.append((start, prev))
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
 
 
 def draw_text_outlined(surface, text, font, pos, color=(255, 255, 255),
