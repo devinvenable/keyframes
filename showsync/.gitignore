@@ -1,3 +1,4 @@
 *.egg-info/
 .hypothesis/
 .pytest_cache/
+demo/demo-*.wav

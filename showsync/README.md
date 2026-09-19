@@ -85,7 +85,16 @@ Each file is streamed and resampled to 48 kHz, using bounded current/next buffer
 The final song's `gap` is ignored; earlier gaps retain the outgoing tempo.
 
 Space toggles pause, N skips to the next song, Q quits; the three large buttons
-also work. Paused is dim amber. Ramps display their target BPM. An underrun
+also work. Tab opens a setlist panel: Up/Down select a song, Shift+Up/Down move
+it. Songs that have not started yet can be moved while playing (the current song
+keeps playing); once the set has ended, everything can be reordered. Moves are
+refused — with an on-screen notice — while a skip is settling or in a song's
+final half-second. The new order is saved back to the setlist YAML immediately,
+preserving hand-written comments and formatting (ruamel.yaml round trip), so it
+is what loads next time. At the end of the set, R (key or button) restarts from
+song 1 (Stop was sent at the end; restart sends Start again). Mid-show, R asks
+for a second R within 3 s so a stray keypress cannot restart a live set.
+Paused is dim amber. Ramps display their target BPM. An underrun
 flashes a warning and is logged while silence occupies the missing audio frames.
 Late decoded samples are discarded to preserve alignment. Decode/MIDI failures
 stop playback and report an error. **Resume sends Start: external patterns

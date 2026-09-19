@@ -109,7 +109,8 @@ def run(audio, clock, *, persist=None, max_frames=None):
                     movable = i >= first_movable
                     if i == selected:
                         pygame.draw.rect(screen, dim, (70, y - 4, 860, row_height - 2), border_radius=6)
-                    marker = '▶' if i == p.song_index and not p.ended else ' '
+                    # '>' rather than '▶': pygame's bundled font has no glyph for it.
+                    marker = '>' if i == p.song_index and not p.ended else ' '
                     text(f'{marker} {i + 1:>2}  {entry.name}  ({entry.bpm:g} BPM)', (90, y),
                          color=fg if movable else dim)
                 text('UP/DOWN select   SHIFT+UP/DOWN move   TAB close', (500, 475), center=True, color=dim)
@@ -143,7 +144,7 @@ def run(audio, clock, *, persist=None, max_frames=None):
             if time.monotonic() < confirm_until:
                 text('PRESS R AGAIN TO RESTART THE SET', (500, 110), 1, True)
             if time.monotonic() < flash_until:
-                text(flash, (500, 560), center=True)
+                text(flash, (500, 583), center=True)
             error = audio.error or clock.error
             if error:
                 raise RuntimeError(error)

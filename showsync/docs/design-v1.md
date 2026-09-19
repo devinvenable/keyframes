@@ -327,6 +327,14 @@ pygame.
 - Input: keyboard only in v1 (space/N/Q + click on the three buttons). Big
   hit targets; no menus, no dialogs — the setlist path is a CLI argument:
   `showsync path/to/setlist.yaml`.
+- Tab toggles a setlist panel (kept off the glanceable performance screen):
+  Up/Down select, Shift+Up/Down move a song that has not started yet (any song
+  once the set has ended); refusals show an on-screen notice. The new order is
+  written back to the setlist YAML via a ruamel.yaml round trip, preserving
+  hand-written comments (byte-stable when the order is unchanged).
+- End of set shows a Restart control: R (or its button) restarts from song 1 —
+  Stop was already sent, restart sends Start per §4. Mid-show R requires a
+  second press within 3 s.
 
 ---
 
