@@ -56,7 +56,7 @@ def run(audio, clock, *, max_frames=None):
             target = tempo.ramp_target(p.song_time)
             bpm = f'{tempo.bpm_at(p.song_time):.1f} BPM'
             if target is not None:
-                bpm += f'  (ramping → {target:g})'
+                bpm += f'  (ramping to {target:g})'
             text(bpm, (500, 255), 2, True)
             state = 'END OF SET' if p.ended else ('PAUSED' if paused else ('GAP' if p.gap else 'PLAYING'))
             text(state, (500, 305), center=True)

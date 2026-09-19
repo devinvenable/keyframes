@@ -6,7 +6,9 @@ existing loopMIDI/hardware loop with --input-port and --output-port. No simulate
 transport is substituted if a device cannot be opened.
 """
 import argparse
+import gc
 import json
+import multiprocessing
 from pathlib import Path
 import platform
 import sys
@@ -34,6 +36,30 @@ def port_index(selection, ports):
     raise ValueError(f'Port {selection!r} not found; available: {list(enumerate(ports))}')
 
 
+def receive_process(pipe, selection, token):
+    """Separate interpreter so the sender's spin cannot hold the receiver's GIL."""
+    midi = None
+    received = []
+    try:
+        midi = rtmidi.MidiIn()
+        midi.ignore_types(sysex=True, timing=False, active_sense=True)
+        midi.set_callback(lambda event, data: received.append(time.monotonic()) if event[0] == [CLOCK] else None)
+        if selection is None:
+            midi.open_virtual_port(token)
+        else:
+            midi.open_port(port_index(selection, midi.get_ports()))
+        pipe.send({'ready': True})
+        pipe.recv()
+        midi.cancel_callback()
+        pipe.send(received)
+    except Exception as exc:
+        pipe.send({'error': str(exc)})
+    finally:
+        if midi:
+            midi.close_port()
+        pipe.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seconds', type=float, default=15)
@@ -41,20 +67,31 @@ def main():
     parser.add_argument('--input-port')
     parser.add_argument('--output-port')
     parser.add_argument('--json', type=Path)
+    parser.add_argument('--freeze-gc', action='store_true', help='Freeze startup objects before playback (optional timing hardening)')
     args = parser.parse_args()
     if args.seconds < 3:
         parser.error('--seconds must be at least 3')
-    midi_in = midi_out = audio = clock = None
+    midi_out = audio = clock = receiver = pipe = None
     received, sent = [], []
     result = {'platform': platform.platform(), 'python': sys.version.split()[0]}
     status = 1
     try:
-        midi_in, midi_out = rtmidi.MidiIn(), rtmidi.MidiOut()
-        midi_in.ignore_types(sysex=True, timing=False, active_sense=True)
-        midi_in.set_callback(lambda event, data: received.append(time.monotonic()) if event[0] == [CLOCK] else None)
+        if (args.input_port is None) != (args.output_port is None):
+            raise ValueError('Both --input-port and --output-port are required for a physical loop')
+        token = 'showsync-jitter-' + uuid.uuid4().hex[:8]
+        context = multiprocessing.get_context('spawn')
+        pipe, child = context.Pipe()
+        receiver = context.Process(target=receive_process, args=(child, args.input_port, token), daemon=True)
+        receiver.start()
+        child.close()
+        if not pipe.poll(20):
+            raise RuntimeError('MIDI receiver startup timed out')
+        ready = pipe.recv()
+        if not ready.get('ready'):
+            raise RuntimeError(ready['error'])
+        midi_out = rtmidi.MidiOut()
+        result['receiver'] = 'separate process (independent GIL)'
         if args.input_port is None and args.output_port is None:
-            token = 'showsync-jitter-' + uuid.uuid4().hex[:8]
-            midi_in.open_virtual_port(token)
             ports = midi_out.get_ports()
             matches = [i for i, name in enumerate(ports) if token in name]
             if len(matches) != 1:
@@ -62,7 +99,6 @@ def main():
             midi_out.open_port(matches[0])
             result['midi_route'] = ports[matches[0]]
         elif args.input_port is not None and args.output_port is not None:
-            midi_in.open_port(port_index(args.input_port, midi_in.get_ports()))
             midi_out.open_port(port_index(args.output_port, midi_out.get_ports()))
             result['midi_route'] = f'{args.output_port} -> {args.input_port}'
         else:
@@ -75,6 +111,11 @@ def main():
             sf.write(path, data, rate)
             song = Song('jitter probe', path, 120, tempo=(TempoEvent(1, 160, args.seconds - 2),))
             audio = AudioEngine(Setlist('jitter probe', (song,)), device=args.audio_device)
+            if args.freeze_gc:
+                import sounddevice  # Finish native backend imports before freezing.
+                audio.prepare()
+                gc.freeze()
+                result['gc_frozen'] = True
             def send(byte):
                 if byte == CLOCK:
                     p = audio.position()
@@ -94,6 +135,12 @@ def main():
                 raise RuntimeError('audio did not complete')
             clock.close()
             time.sleep(.1)  # Drain in-flight loopback messages, outside measurement.
+            pipe.send('stop')
+            if not pipe.poll(5):
+                raise RuntimeError('MIDI receiver drain timed out')
+            received = pipe.recv()
+            if isinstance(received, dict):
+                raise RuntimeError(received['error'])
             result.update(sent_ticks=len(sent), received_ticks=len(received),
                           audio_underruns=audio.underruns, dropped_ticks=clock.dropped_ticks,
                           priority_raised=clock.priority_raised,
@@ -122,10 +169,17 @@ def main():
             clock.close()
         if audio:
             audio.close()
-        if midi_in:
-            midi_in.close_port()
         if midi_out:
             midi_out.close_port()
+        if receiver:
+            receiver.join(timeout=.2)
+            if receiver.is_alive():
+                receiver.terminate()
+                receiver.join(timeout=2)
+        if pipe:
+            pipe.close()
+        if args.freeze_gc:
+            gc.unfreeze()
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(result, indent=2) + '\n')

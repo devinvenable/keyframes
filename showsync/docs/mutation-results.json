@@ -1,0 +1,196 @@
+[
+  {
+    "mutation": 1,
+    "file": "tempomap.py",
+    "killed_by": [
+      "tests.test_tempomap::test_constant_and_jump"
+    ]
+  },
+  {
+    "mutation": 2,
+    "file": "tempomap.py",
+    "killed_by": [
+      "tests.test_tempomap::test_analytic_ramp_and_gap_tail"
+    ]
+  },
+  {
+    "mutation": 3,
+    "file": "tempomap.py",
+    "killed_by": [
+      "tests.test_tempomap::test_round_trip_property",
+      "tests.test_tempomap::test_near_flat_inverse_is_stable"
+    ]
+  },
+  {
+    "mutation": 4,
+    "file": "tempomap.py",
+    "killed_by": [
+      "tests.test_tempomap::test_reject_bad_events[events0]",
+      "tests.test_tempomap::test_reject_bad_events[events1]",
+      "tests.test_tempomap::test_reject_bad_events[events2]",
+      "tests.test_tempomap::test_reject_bad_events[events3]",
+      "tests.test_tempomap::test_reject_bad_events[events4]",
+      "tests.test_tempomap::test_reject_bad_events[events5]",
+      "tests.test_tempomap::test_reject_bad_events[events6]",
+      "tests.test_tempomap::test_reject_bad_events[events7]",
+      "tests.test_tempomap::test_reject_bad_events[events8]",
+      "tests.test_tempomap::test_reject_bad_events[events9]"
+    ]
+  },
+  {
+    "mutation": 5,
+    "file": "tempomap.py",
+    "killed_by": [
+      "tests.test_tempomap::test_reject_bad_positions[-1]",
+      "tests.test_tempomap::test_reject_bad_positions[inf]",
+      "tests.test_tempomap::test_reject_bad_positions[nan]"
+    ]
+  },
+  {
+    "mutation": 6,
+    "file": "setlist.py",
+    "killed_by": [
+      "tests.test_setlist::test_full_design_fixture",
+      "tests.test_setlist::test_relative_paths_and_defaults"
+    ]
+  },
+  {
+    "mutation": 7,
+    "file": "setlist.py",
+    "killed_by": [
+      "tests.test_setlist::test_time_formats[1:35.5-95.5]",
+      "tests.test_setlist::test_time_formats[95.5-95.5_0]",
+      "tests.test_setlist::test_time_formats[95.5-95.5_1]",
+      "tests.test_setlist::test_time_formats[0:00-0]",
+      "tests.test_setlist::test_invalid_time[1:60]",
+      "tests.test_setlist::test_invalid_time[1:2]",
+      "tests.test_setlist::test_invalid_time[-1]",
+      "tests.test_setlist::test_invalid_time[NaN]",
+      "tests.test_setlist::test_invalid_time[1:20:30]",
+      "tests.test_setlist::test_invalid_time[True]",
+      "tests.test_setlist::test_invalid_time[None]"
+    ]
+  },
+  {
+    "mutation": 8,
+    "file": "setlist.py",
+    "killed_by": [
+      "tests.test_setlist::test_contextual_errors[change0-bpm]",
+      "tests.test_setlist::test_contextual_errors[change1-bpm]",
+      "tests.test_setlist::test_contextual_errors[change2-bpm]",
+      "tests.test_setlist::test_contextual_errors[change3-gap]",
+      "tests.test_setlist::test_contextual_errors[change4-name]",
+      "tests.test_setlist::test_contextual_errors[change5-file]",
+      "tests.test_setlist::test_contextual_errors[change6-file]",
+      "tests.test_setlist::test_contextual_errors[change7-unknown]",
+      "tests.test_setlist::test_contextual_errors[change8-ascending]",
+      "tests.test_setlist::test_contextual_errors[change9-overlaps]",
+      "tests.test_setlist::test_contextual_errors[change10-tempo[0]]",
+      "tests.test_setlist::test_contextual_errors[change11-tempo]",
+      "tests.test_setlist::test_duration_checked_at_load",
+      "tests.test_setlist::test_unsafe_yaml_rejected"
+    ]
+  },
+  {
+    "mutation": 9,
+    "file": "audio.py",
+    "killed_by": [
+      "tests.test_audio_decode::test_decode_real_formats[wav-44100]",
+      "tests.test_audio_decode::test_decode_real_formats[aiff-48000]",
+      "tests.test_audio_decode::test_decode_real_formats[flac-32000]",
+      "tests.test_audio_decode::test_decode_real_formats[mp3-44100]",
+      "tests.test_audio_decode::test_decode_real_formats[m4a-44100]"
+    ]
+  },
+  {
+    "mutation": 10,
+    "file": "audio.py",
+    "killed_by": [
+      "tests.test_audio_decode::test_ring_wrap_and_capacity",
+      "tests.test_audio_decode::test_underrun_discards_late_frames_instead_of_delaying_audio",
+      "tests.test_audio_decode::test_gapless_boundary_different_rates_and_gap"
+    ]
+  },
+  {
+    "mutation": 11,
+    "file": "audio.py",
+    "killed_by": [
+      "tests.test_audio_decode::test_latency_pause_skip_end_use_audible_frames"
+    ]
+  },
+  {
+    "mutation": 12,
+    "file": "audio.py",
+    "killed_by": [
+      "tests.test_audio_decode::test_callback_underrun_keeps_frame_counter"
+    ]
+  },
+  {
+    "mutation": 13,
+    "file": "audio.py",
+    "killed_by": [
+      "tests.test_audio_decode::test_duration_validation_before_device_open"
+    ]
+  },
+  {
+    "mutation": 14,
+    "file": "audio.py",
+    "killed_by": [
+      "tests.test_audio_decode::test_real_single_stream"
+    ]
+  },
+  {
+    "mutation": 15,
+    "file": "clock.py",
+    "killed_by": [
+      "tests.test_clock::test_exact_tick_times_through_ramps[events0]",
+      "tests.test_clock::test_exact_tick_times_through_ramps[events1]",
+      "tests.test_clock::test_exact_tick_times_through_ramps[events2]",
+      "tests.test_clock::test_pause_resume_skip_end_order",
+      "tests.test_clock::test_gap_keeps_ticks_and_next_song_restarts"
+    ]
+  },
+  {
+    "mutation": 16,
+    "file": "clock.py",
+    "killed_by": [
+      "tests.test_clock::test_late_tick_does_not_shift_following_ticks_or_burst"
+    ]
+  },
+  {
+    "mutation": 17,
+    "file": "clock.py",
+    "killed_by": [
+      "tests.test_clock::test_sleep_then_spin_is_driven_by_audio"
+    ]
+  },
+  {
+    "mutation": 18,
+    "file": "priority.py",
+    "killed_by": [
+      "tests.test_clock::test_windows_priority_mock[True]",
+      "tests.test_clock::test_windows_priority_mock[False]"
+    ]
+  },
+  {
+    "mutation": 19,
+    "file": "priority.py",
+    "killed_by": [
+      "tests.test_clock::test_posix_priority_denial_nonfatal"
+    ]
+  },
+  {
+    "mutation": 20,
+    "file": "priority.py",
+    "killed_by": [
+      "tests.test_clock::test_mac_priority_mock"
+    ]
+  },
+  {
+    "mutation": 21,
+    "file": "gui.py",
+    "killed_by": [
+      "tests.test_gui::test_dashboard_and_keyboard_transport"
+    ]
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "platform": "macOS-15.4.1-arm64-arm-64bit",
+  "python": "3.11.9",
+  "midi_route": "showsync-jitter-bf054ad2",
+  "sent_ticks": 447,
+  "received_ticks": 447,
+  "audio_underruns": 0,
+  "dropped_ticks": 0,
+  "priority_raised": true,
+  "audio_device": "1",
+  "audio_latency": 0.008833333333333334,
+  "interval_sigma_ms": 0.18316680093816656,
+  "interval_p99_abs_ms": 0.9259136626496912,
+  "interval_worst_abs_ms": 1.0417480953037739,
+  "phase_mean_ms": 0.15803104499875834,
+  "phase_p99_abs_ms": 0.8663751836866161,
+  "passed": true,
+  "raw_samples": "raw/macos.json.gz"
+}

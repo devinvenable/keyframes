@@ -106,3 +106,8 @@ raw send/receive/ideal times, and returns nonzero on missing devices or failed
 `--output-port` for a pre-existing loopback route. Device tests skip only if
 there is no usable output; tempo/config/clock tests need no audio or MIDI devices.
 See [verification](docs/verification.md) for measured platform results.
+
+A short runnable five-codec demo is `tests/fixtures/smoke.yaml`. Optional
+`--freeze-gc` on the main CLI and jitter harness freezes startup objects to
+reduce garbage-collector pauses; measure on the target machine before relying
+on it. It does not provide real-time scheduling guarantees.

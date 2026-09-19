@@ -1,0 +1,19 @@
+{
+  "platform": "Linux-6.14.0-37-generic-x86_64-with-glibc2.41",
+  "python": "3.13.3",
+  "midi_route": "RtMidiIn Client:showsync-jitter-efee4722 128:0",
+  "sent_ticks": 837,
+  "received_ticks": 837,
+  "audio_underruns": 5,
+  "dropped_ticks": 2,
+  "priority_raised": false,
+  "audio_device": "16",
+  "audio_latency": 0.010666666666666666,
+  "interval_sigma_ms": 2.679926700705592,
+  "interval_p99_abs_ms": 10.319493338465675,
+  "interval_worst_abs_ms": 17.398353200405836,
+  "phase_mean_ms": 1.6950627047848958,
+  "phase_p99_abs_ms": 9.854178484529255,
+  "passed": false,
+  "raw_samples": "raw/linux-loaded.json.gz"
+}

@@ -1,5 +1,6 @@
 """CLI wiring, shared by the console script and source entry point."""
 import argparse
+import gc
 import logging
 
 from .audio import AudioEngine
@@ -14,6 +15,7 @@ def main(argv=None):
     parser.add_argument('--audio-device', type=lambda s: int(s) if s.isdecimal() else s)
     parser.add_argument('--midi-port', help='MIDI output index or exact name')
     parser.add_argument('--list-devices', action='store_true')
+    parser.add_argument('--freeze-gc', action='store_true', help='Freeze startup objects to reduce GC timing pauses')
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     if args.list_devices:
@@ -29,6 +31,10 @@ def main(argv=None):
     try:
         audio = AudioEngine(load_setlist(args.setlist), device=args.audio_device)
         midi = open_midi_port(args.midi_port)
+        if args.freeze_gc:
+            import sounddevice
+            audio.prepare()
+            gc.freeze()
         clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]))
         clock.start()
         audio.start()
@@ -50,3 +56,5 @@ def main(argv=None):
             finally:
                 if midi:
                     midi.close_port()
+                if args.freeze_gc:
+                    gc.unfreeze()

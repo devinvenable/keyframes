@@ -1,0 +1,27 @@
+title: Five-codec smoke set
+# Short, original fixture audio; tempo positions intentionally scaled for a demo.
+audio_root: .
+songs:
+  - name: Cold Open
+    file: tone.wav
+    bpm: 92
+  - name: Signal Path
+    file: tone.flac
+    bpm: 120
+    tempo:
+      - {at: 0.3, bpm: 126}
+      - {at: 0.7, bpm: 120}
+  - name: Interlude (beatless)
+    file: tone.m4a
+    bpm: 120
+    gap: 0.15
+    tempo:
+      - {at: 0.1, bpm: 140, ramp: 0.5}
+  - name: Fourteen Hundred
+    file: tone.mp3
+    bpm: 140
+  - name: Closer
+    file: tone.aiff
+    bpm: 140
+    tempo:
+      - {at: 0.5, bpm: 96, ramp: 0.4}

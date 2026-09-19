@@ -14,7 +14,6 @@ def test_dashboard_and_keyboard_transport(monkeypatch):
     engine = AudioEngine(Setlist('stage test', (Song('Ambient', fixture, 120,
                                                   tempo=(TempoEvent(0, 140, .5),)),)))
     # A real pygame event loop, exercising pause, skip, and rendered ramp fields.
-    original = pygame.event.get
     events = iter([[pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE)],
                    [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n)],
                    [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q)]])
