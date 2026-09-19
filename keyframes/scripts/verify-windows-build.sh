@@ -14,7 +14,7 @@ windows_repo=$2
 windows_powershell=${KEYFRAMES_WINDOWS_POWERSHELL:-/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe}
 windows_repo_win=${windows_repo#/mnt/c/}
 windows_repo_win="C:\\${windows_repo_win//\//\\}"
-exe_path="$windows_repo_win\\dist\\Keyframes_Windows\\Keyframes.exe"
+exe_path="$windows_repo_win\\keyframes\\dist\\Keyframes_Windows\\Keyframes.exe"
 
 # Keyframes.exe is a windowed (GUI-subsystem) build, so $LASTEXITCODE is not
 # updated for it and cannot be trusted.  The smoke test prints a fixed success

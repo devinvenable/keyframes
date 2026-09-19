@@ -2,24 +2,26 @@
 # Build Keyframes on the reusable Windows VM and copy back the distributable.
 set -euo pipefail
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# This script lives in keyframes/scripts/, so its parent's parent is the
+# keyframes/ subproject, not the repo root.
+keyframes_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 windows_vm=${KEYFRAMES_WINDOWS_VM:-devin@192.168.1.225}
 windows_repo=${KEYFRAMES_WINDOWS_REPO:-/mnt/c/Users/devin/src/keyframes}
-windows_repo_url=${KEYFRAMES_WINDOWS_REPO_URL:-$(git -C "$repo_root" remote get-url origin)}
+windows_repo_url=${KEYFRAMES_WINDOWS_REPO_URL:-$(git -C "$keyframes_root" remote get-url origin)}
 # powershell.exe is not on PATH for a non-login SSH shell into WSL, so invoke it
 # by its stable absolute path.  Override if the box installs it elsewhere.
 windows_powershell=${KEYFRAMES_WINDOWS_POWERSHELL:-/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe}
-branch=$(git -C "$repo_root" branch --show-current)
+branch=$(git -C "$keyframes_root" branch --show-current)
 skip_deps=false
 clean=false
 
 usage() {
     cat <<'EOF'
-Usage: scripts/build-windows.sh [--skip-deps] [--clean]
+Usage: keyframes/scripts/build-windows.sh [--skip-deps] [--clean]
 
 Pushes the current branch, has the Windows VM pull it, builds the one-folder
 release, runs the frozen image/video/RT-MIDI smoke test, then copies back:
-  dist/Keyframes_Windows.zip
+  keyframes/dist/Keyframes_Windows.zip
 
 Override KEYFRAMES_WINDOWS_VM or KEYFRAMES_WINDOWS_REPO if the VM differs.
 EOF
@@ -39,7 +41,7 @@ if [[ -z "$branch" ]]; then
     exit 1
 fi
 
-git -C "$repo_root" push origin "HEAD:$branch"
+git -C "$keyframes_root" push origin "HEAD:$branch"
 # Clone the repo on first use so a fresh box is self-healing rather than failing
 # at the cd below.
 ssh "$windows_vm" "test -d '$windows_repo/.git' || git clone '$windows_repo_url' '$windows_repo'"
@@ -50,9 +52,9 @@ windows_repo_win="C:\\${windows_repo_win//\//\\}"
 ps_args=''
 [[ "$skip_deps" == true ]] && ps_args+=' -SkipDeps'
 [[ "$clean" == true ]] && ps_args+=' -Clean'
-ssh "$windows_vm" "'$windows_powershell' -NoProfile -ExecutionPolicy Bypass -File '$windows_repo_win\\scripts\\build_windows.ps1'$ps_args"
+ssh "$windows_vm" "'$windows_powershell' -NoProfile -ExecutionPolicy Bypass -File '$windows_repo_win\\keyframes\\scripts\\build_windows.ps1'$ps_args"
 
-"$repo_root/scripts/verify-windows-build.sh" "$windows_vm" "$windows_repo"
-mkdir -p "$repo_root/dist"
-scp "$windows_vm:$windows_repo/dist/Keyframes_Windows.zip" "$repo_root/dist/Keyframes_Windows.zip"
-echo "Windows distributable copied to $repo_root/dist/Keyframes_Windows.zip"
+"$keyframes_root/scripts/verify-windows-build.sh" "$windows_vm" "$windows_repo"
+mkdir -p "$keyframes_root/dist"
+scp "$windows_vm:$windows_repo/keyframes/dist/Keyframes_Windows.zip" "$keyframes_root/dist/Keyframes_Windows.zip"
+echo "Windows distributable copied to $keyframes_root/dist/Keyframes_Windows.zip"

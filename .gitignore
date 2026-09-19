@@ -10,18 +10,20 @@ logs/
 canon/
 worktrees/
 # Runtime-generated note->media manifest (seeded on first launch)
-/mapping.json
-/mapping.json.tmp
+keyframes/mapping.json
+keyframes/mapping.json.tmp
 
-images/*
-!images/.gitkeep
-!images/starter-neon.png
-!images/starter-pulse.mp4
+keyframes/images/*
+!keyframes/images/.gitkeep
+!keyframes/images/starter-neon.png
+!keyframes/images/starter-pulse.mp4
 keep/
+BL_proxy/
 
-# PyInstaller output is reproducible; releases are created by scripts/build-windows.sh.
-/build/
-/dist/
+# PyInstaller output is reproducible; releases are created by
+# keyframes/scripts/build-windows.sh.
+build/
+dist/
 
 # axon runtime artifacts
 .agent-tasks.db*
