@@ -131,7 +131,8 @@ refused — with an on-screen notice — while a skip is settling or in a song's
 final half-second. The new order is saved back to the setlist YAML immediately,
 preserving hand-written comments and formatting (ruamel.yaml round trip), so it
 is what loads next time. At the end of the set, R (key or button) restarts from
-song 1 (Stop was sent at the end; restart sends Start again). Mid-show, R asks
+song 1 (Stop was sent at the end; restart sends Start again) and E closes the
+audio/MIDI engines and returns to the setlist editor. Mid-show, R asks
 for a second R within 3 s so a stray keypress cannot restart a live set.
 Paused is dim amber. Ramps display their target BPM. An underrun
 flashes a warning and is logged while silence occupies the missing audio frames.
