@@ -14,10 +14,17 @@ modular sequencers) stays tempo-locked for live playing over the tracks.
 ### Setlist configuration
 
 The configuration is a setlist: an ordered list of audio files — songs recorded
-at different BPMs in Logic — each annotated with:
+at different BPMs — each annotated with:
 
 - its BPM, and
 - its tempo-change points (positions within the file where the tempo changes).
+
+showsync is DAW-agnostic: it never reads DAW metadata. Devin records in Logic
+on the Mac; David records at his house on Windows (wav or mp3, no Logic). The
+one requirement on any source: rhythmic material must be recorded to a
+metronome at a declared BPM — that BPM goes in the setlist, and the MIDI clock
+is only as true as it. Beatless/ambient material is exempt. Fitting a tempo
+map to a freely-recorded file is deferred alongside time-stretching.
 
 ### Playback
 

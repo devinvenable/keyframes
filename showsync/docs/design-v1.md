@@ -71,9 +71,16 @@ songs:
 
 Rules enforced by the validator:
 
-- Positions are **seconds within the audio file** (the audio was rendered from
-  Logic at fixed tempo, so time — not beats — is the ground truth). `m:ss.sss`
+- Positions are **seconds within the audio file** (the audio was rendered at
+  fixed tempo, so time — not beats — is the ground truth). `m:ss.sss`
   is accepted for readability and normalized to seconds.
+- **Source-audio contract (DAW-agnostic):** showsync reads no DAW metadata —
+  the declared `bpm`/`tempo` entries are the sole tempo authority. Files may
+  come from Logic (Devin) or from David's Windows setup (wav/mp3, no DAW
+  assumed). Rhythmic material must therefore be recorded to a click at the
+  declared BPM, or the emitted clock will walk out of phase with the audio;
+  beatless material is exempt. Tempo-map fitting for freely-recorded audio is
+  deferred to v2.
 - Events sorted ascending; a ramp may not overlap the next event
   (`at + ramp <= next.at`); events must lie within the file's duration
   (checked at load, when durations are known).
