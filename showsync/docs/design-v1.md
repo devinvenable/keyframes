@@ -59,7 +59,12 @@ audio_root: <path>             # optional; song paths resolved relative to this,
 songs:
   - name: <string>             # required, shown in GUI
     file: <path>               # required; .wav .aiff .flac .mp3 .m4a
-    bpm: <number>              # required; tempo at 0:00
+    bpm: <number>              # required to play; the GUI editor may leave it
+                               # unset while a set is being built (playback is
+                               # gated until every song has one)
+    offset: <seconds>          # optional first-beat offset (default 0): beat 0
+                               # of the tempo map anchors here; earlier audio
+                               # plays as lead-in
     gap: <seconds>             # optional silence AFTER this song (default 0.0)
     tempo:                     # optional list of tempo events, ascending by `at`
       - at: <position>         # required; seconds ("95.5") or "m:ss.sss" ("1:35.5")
@@ -84,6 +89,8 @@ Rules enforced by the validator:
 - Events sorted ascending; a ramp may not overlap the next event
   (`at + ramp <= next.at`); events must lie within the file's duration
   (checked at load, when durations are known).
+- `offset` must satisfy `0 <= offset < duration`; tempo event positions remain
+  absolute file positions and must be strictly after the offset.
 - `Stop` is implied at end of set; `gap` inserts silence between songs while
   the clock keeps running at the outgoing tempo (see §4 Start/Stop semantics
   for the alternative).
@@ -256,6 +263,7 @@ start on `Start` (0xFA). Rules:
 | Resume | `Start`, ticks resume from current audio position — **gear restarts its pattern**; documented v1 limitation, acceptable for loop-based hardware |
 | Skip to next song | `Stop` → seek audio to next song → `Start` at its 0:00 |
 | Between songs (`gap` silence) | ticks continue at the outgoing tempo (keeps arps/LFOs alive); the next song's map takes over at its first frame |
+| Song with `offset` (first-beat lead-in) | `Start` at the song's first frame as usual, then **no ticks through the lead-in**; tick 0 (beat 0) fires exactly at `offset`. Slaves reset on `Start` and step on the next `0xF8`, so their first step lands on the song's true downbeat. Falls out of the offset-shifted tempo map (`B(t)=0` for `t<=offset`, `T(0)=offset`) — no special-casing in the clock engine |
 | End of set | `Stop` |
 
 `Continue` (0xFB) is deliberately unused: without SPP it lies about position
@@ -323,10 +331,24 @@ pygame.
 ```
 
 - State colour: playing = normal, paused = whole screen dimmed amber (visible
-  peripheral cue), ramp active = BPM shown with target.
-- Input: keyboard only in v1 (space/N/Q + click on the three buttons). Big
-  hit targets; no menus, no dialogs — the setlist path is a CLI argument:
-  `showsync path/to/setlist.yaml`.
+  peripheral cue), ramp active = BPM shown with target, lead-in (audio before
+  a song's first-beat `offset`) = LEAD-IN.
+- Input: keyboard + click on the big buttons; the setlist path CLI argument is
+  optional — no argument reopens the last-used set (per-user state file) or a
+  new empty one.
+- **Setlist editor (pre-show)**: launching without a playable show opens an
+  editor over a mutable Document instead of the dashboard. Drag-and-drop audio
+  files (pygame `DROPFILE`) or a native picker (stdlib tkinter, withdraw-root
+  so no Tk loop competes with pygame's) add rows: name = filename stem, BPM
+  empty, offset 0. Per-row editing of name/BPM/offset, Shift+Up/Down reorder,
+  double-Delete remove. Every edit auto-saves through the ruamel round trip
+  (a pathless new set asks where once, defaulting next to the first audio
+  file). Playback is gated until every row is valid, then SPACE builds the
+  engines (audio/MIDI devices are only claimed for the show itself). YAML
+  stays the storage format — hand edits, gaps, and tempo ramps are respected
+  but never required. The saved file may hold songs without a BPM yet: the
+  Document loader is lenient, while the engine-facing loader stays strict.
+  At END OF SET, E closes the engines and re-enters the editor.
 - Tab toggles a setlist panel (kept off the glanceable performance screen):
   Up/Down select, Shift+Up/Down move a song that has not started yet (any song
   once the set has ended); refusals show an on-screen notice. The new order is

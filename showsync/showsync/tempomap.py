@@ -34,17 +34,23 @@ class Segment:
         return self.t0 + 2 * y / (self.bpm0 + math.sqrt(max(0, self.bpm0**2 + 2 * self.slope * y)))
 
 
-def validate_events(bpm, events, duration=None):
+def validate_events(bpm, events, duration=None, offset=0.0):
     if not math.isfinite(bpm) or bpm <= 0:
         raise ValueError("bpm must be finite and positive")
     if duration is not None and (not math.isfinite(duration) or duration <= 0):
         raise ValueError("duration must be finite and positive")
+    if not math.isfinite(offset) or offset < 0:
+        raise ValueError("offset must be finite and nonnegative")
+    if duration is not None and offset >= duration:
+        raise ValueError(f"offset must be less than file duration ({duration:g}s)")
     previous = -1.0
     end = 0.0
     for i, event in enumerate(events):
         prefix = f"tempo[{i}]"
         if not math.isfinite(event.at) or event.at < 0:
             raise ValueError(f"{prefix}.at must be finite and nonnegative")
+        if offset and event.at <= offset:
+            raise ValueError(f"{prefix}.at must be after the first-beat offset ({offset:g}s)")
         if event.at <= previous:
             raise ValueError(f"{prefix}.at must be strictly ascending")
         if event.at < end:
@@ -59,11 +65,20 @@ def validate_events(bpm, events, duration=None):
 
 
 class TempoMap:
-    def __init__(self, bpm, events=(), duration=None):
+    """Beat 0 anchors `offset` seconds into the file; audio before it is lead-in.
+
+    B(t) is clamped to 0 through the lead-in, so the clock engine emits no
+    ticks until the offset point, where tick 0 fires (T(0) == offset). Slaves
+    reset on Start and step on the next F8: their first step lands on the
+    song's true downbeat with no special-casing in the clock.
+    """
+
+    def __init__(self, bpm, events=(), duration=None, offset=0.0):
         events = tuple(events)
-        validate_events(bpm, events, duration)
+        validate_events(bpm, events, duration, offset)
+        self.offset = float(offset)
         segments = []
-        t, beats, current = 0.0, 0.0, float(bpm)
+        t, beats, current = self.offset, 0.0, float(bpm)
 
         def append(end, target):
             nonlocal t, beats, current
@@ -91,10 +106,10 @@ class TempoMap:
 
     def segment_at(self, t):
         self._check(t)
-        return self.segments[bisect_right(self._times, t) - 1]
+        return self.segments[max(0, bisect_right(self._times, t) - 1)]
 
     def B(self, t):
-        return self.segment_at(t).beats(t)
+        return max(0.0, self.segment_at(t).beats(t))
 
     def T(self, b):
         self._check(b)

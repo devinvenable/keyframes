@@ -16,6 +16,9 @@ class SetlistError(ValueError):
     pass
 
 
+SUFFIXES = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".m4a"}
+
+
 @dataclass(frozen=True)
 class Song:
     name: str
@@ -23,9 +26,10 @@ class Song:
     bpm: float
     gap: float = 0.0
     tempo: tuple[TempoEvent, ...] = ()
+    offset: float = 0.0  # beat 0 anchors here (seconds); earlier audio is lead-in
 
     def tempo_map(self, duration=None):
-        return TempoMap(self.bpm, self.tempo, duration)
+        return TempoMap(self.bpm, self.tempo, duration, self.offset)
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,43 @@ def string(value, field):
     return value
 
 
+def parse_song(row, root, *, require_bpm=True):
+    """Validated song fields as a dict; bpm may be None when not required.
+
+    The editor's lenient Document rows and the strict playback loader share
+    this, so a set saved mid-edit (bpm still unset) reopens instead of erroring.
+    """
+    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset"}, "song")
+    name = string(row.get("name"), "name")
+    file = (root / string(row.get("file"), "file")).resolve()
+    if file.suffix.lower() not in SUFFIXES:
+        raise ValueError("file must be WAV, AIFF, FLAC, MP3, or M4A")
+    bpm = row.get("bpm")
+    bpm = number(bpm, "bpm", positive=True) if (require_bpm or bpm is not None) else None
+    gap = number(row.get("gap", 0), "gap")
+    offset = number(row.get("offset", 0), "offset")
+    raw_events = row.get("tempo", [])
+    if not isinstance(raw_events, list):
+        raise ValueError("tempo must be a list")
+    events = []
+    for j, raw in enumerate(raw_events):
+        try:
+            raw = mapping(raw, {"at", "bpm", "ramp"}, "event")
+            events.append(TempoEvent(position(raw.get("at")),
+                                     number(raw.get("bpm"), "bpm", positive=True),
+                                     number(raw.get("ramp", 0), "ramp")))
+        except ValueError as exc:
+            raise ValueError(f"tempo[{j}].{exc}") from exc
+    return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset)
+
+
+def song_context(path, index, row):
+    context = f"{path}: song {index + 1}"
+    if isinstance(row, dict) and isinstance(row.get("name"), str) and row["name"].strip():
+        context += f" ({row['name']})"
+    return context
+
+
 def load_setlist(path, *, check_files=True, duration_probe=None):
     """Validate paths immediately; optionally validate durations with a decoder probe.
 
@@ -88,31 +129,12 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
             raise ValueError("songs must be a nonempty list")
         songs = []
         for i, row in enumerate(rows):
-            context = f"{path}: song {i + 1}"
-            row = mapping(row, {"name", "file", "bpm", "gap", "tempo"}, "song")
-            name = string(row.get("name"), "name")
-            context += f" ({name})"
-            file = (root / string(row.get("file"), "file")).resolve()
-            if file.suffix.lower() not in {".wav", ".aif", ".aiff", ".flac", ".mp3", ".m4a"}:
-                raise ValueError("file must be WAV, AIFF, FLAC, MP3, or M4A")
-            if check_files and not file.is_file():
-                raise ValueError(f"file does not exist: {file}")
-            bpm = number(row.get("bpm"), "bpm", positive=True)
-            gap = number(row.get("gap", 0), "gap")
-            raw_events = row.get("tempo", [])
-            if not isinstance(raw_events, list):
-                raise ValueError("tempo must be a list")
-            events = []
-            for j, raw in enumerate(raw_events):
-                try:
-                    raw = mapping(raw, {"at", "bpm", "ramp"}, "event")
-                    events.append(TempoEvent(position(raw.get("at")),
-                                             number(raw.get("bpm"), "bpm", positive=True),
-                                             number(raw.get("ramp", 0), "ramp")))
-                except ValueError as exc:
-                    raise ValueError(f"tempo[{j}].{exc}") from exc
-            song = Song(name, file, bpm, gap, tuple(events))
-            song.tempo_map(duration_probe(file) if duration_probe else None)
+            context = song_context(path, i, row)
+            fields = parse_song(row, root)
+            if check_files and not fields["file"].is_file():
+                raise ValueError(f"file does not exist: {fields['file']}")
+            song = Song(**fields)
+            song.tempo_map(duration_probe(song.file) if duration_probe else None)
             songs.append(song)
         return Setlist(title, tuple(songs))
     except (OSError, ValueError, yaml.YAMLError) as exc:

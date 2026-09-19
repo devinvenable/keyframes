@@ -108,3 +108,20 @@ def test_unsafe_yaml_rejected(tmp_path):
     path.write_text('!!python/object/apply:os.system [echo unsafe]')
     with pytest.raises(SetlistError, match='constructor'):
         load_setlist(path)
+
+
+def test_offset_field_loads_and_validates(tmp_path):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, offset=1.5,
+                                tempo=[dict(at=5, bpm=140)]))
+    result = load_setlist(path, duration_probe=lambda _: 10)
+    assert result.songs[0].offset == 1.5
+    assert result.songs[0].tempo_map(10).T(0) == 1.5
+
+
+@pytest.mark.parametrize('offset, probe', [(-1, None), ('x', None), (12, lambda _: 10),
+                                           (6, lambda _: 10)])
+def test_bad_offsets_rejected(tmp_path, offset, probe):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, offset=offset,
+                                tempo=[dict(at=5, bpm=140)]))
+    with pytest.raises(SetlistError, match='offset'):
+        load_setlist(path, duration_probe=probe)

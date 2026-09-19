@@ -136,3 +136,16 @@ def test_mac_priority_mock():
     api.pthread_setschedparam.return_value = 0
     assert raise_thread_priority(platform='darwin', posix=api)
     assert api.pthread_setschedparam.call_args.args[1] == 2
+
+
+def test_lead_in_sends_start_but_no_ticks_until_offset():
+    # First-beat offset: Start still opens the song (slaves reset and wait for
+    # F8), the lead-in is tick-free, and tick 0 fires exactly at the offset.
+    fake = Fake([TempoMap(120, offset=2.0)])
+    while fake.p.song_time < 3:
+        fake.advance(fake.engine.step())
+    assert fake.messages[0] == (0, START)
+    ticks = [t for t, b in fake.messages if b == CLOCK]
+    assert ticks[0] == pytest.approx(2.0)
+    assert min(ticks) >= 2.0
+    assert ticks[1] - ticks[0] == pytest.approx(60 / 120 / 24)

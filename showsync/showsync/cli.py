@@ -3,15 +3,18 @@ import argparse
 import gc
 import logging
 
+from .appstate import last_setlist, remember_setlist
 from .audio import AudioEngine
 from .clock import ClockEngine, open_midi_port
-from .gui import run
-from .setlist import load_setlist, save_song_order
+from .document import Document
+from .gui import main_loop
+from .setlist import SetlistError
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Audio-master backing tracks and MIDI clock')
-    parser.add_argument('setlist', nargs='?')
+    parser.add_argument('setlist', nargs='?',
+                        help='setlist YAML; omitted = reopen the last-used set (or start a new one)')
     parser.add_argument('--audio-device', type=lambda s: int(s) if s.isdecimal() else s)
     parser.add_argument('--midi-port', help='MIDI output index or exact name')
     parser.add_argument('--list-devices', action='store_true')
@@ -25,27 +28,29 @@ def main(argv=None):
         output = rtmidi.MidiOut()
         print('MIDI outputs:', list(enumerate(output.get_ports())))
         return 0
-    if not args.setlist:
-        parser.error('a setlist path is required')
-    audio = clock = midi = None
-    try:
-        audio = AudioEngine(load_setlist(args.setlist), device=args.audio_device)
-        midi = open_midi_port(args.midi_port)
-        if args.freeze_gc:
-            import sounddevice
-            audio.prepare()
-            gc.freeze()
-        clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]))
-        clock.start()
-        audio.start()
-        run(audio, clock, persist=lambda order: save_song_order(args.setlist, order))
-        return 0
-    except KeyboardInterrupt:
-        return 0
-    except Exception as exc:
-        logging.error('%s', exc)
-        return 1
-    finally:
+
+    frozen = False
+
+    def start_engines(setlist):
+        nonlocal frozen
+        audio = midi = clock = None
+        try:
+            audio = AudioEngine(setlist, device=args.audio_device)
+            midi = open_midi_port(args.midi_port)
+            if args.freeze_gc:
+                audio.prepare()
+                gc.freeze()
+                frozen = True
+            clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]))
+            clock.start()
+            audio.start()
+        except Exception:
+            close(audio, clock, midi)
+            raise
+        return audio, clock, lambda: close(audio, clock, midi)
+
+    def close(audio, clock, midi):
+        nonlocal frozen
         try:
             if clock:
                 clock.close()
@@ -56,5 +61,35 @@ def main(argv=None):
             finally:
                 if midi:
                     midi.close_port()
-                if args.freeze_gc:
+                if frozen:
                     gc.unfreeze()
+                    frozen = False
+
+    notice = ''
+    path = args.setlist or last_setlist()
+    document = Document()
+    if path:
+        try:
+            document = Document.load(path)
+            remember_setlist(document.path)
+        except SetlistError as exc:
+            if args.setlist:
+                logging.error('%s', exc)
+                return 1
+            notice = f'COULD NOT REOPEN LAST SETLIST: {exc}'
+    # An explicit, fully playable setlist starts the show immediately, as
+    # before; anything else opens quietly in the editor.
+    autoplay = bool(args.setlist) and not document.first_problem()
+    if args.setlist and not autoplay:
+        row, message = document.first_problem()
+        notice = f"NOT PLAYABLE YET — {f'{row.name}: ' if row else ''}{message}"
+    try:
+        from . import dialogs
+        return main_loop(document, start_engines=start_engines, dialogs=dialogs,
+                         remember=remember_setlist, autoplay=autoplay,
+                         notice=notice)
+    except KeyboardInterrupt:
+        return 0
+    except Exception as exc:
+        logging.error('%s', exc)
+        return 1

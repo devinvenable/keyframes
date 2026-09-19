@@ -56,7 +56,7 @@ Explicitly deferred:
 - A synced video playback channel.
 - Mixing showsync video with Keyframes output.
 
-## Run v1
+## Quick start — build a set in the app (no YAML needed)
 
 Use Python 3.11 or newer. From this `showsync/` directory:
 
@@ -64,6 +64,43 @@ Use Python 3.11 or newer. From this `showsync/` directory:
 python3 -m venv venv
 . venv/bin/activate
 python -m pip install -r requirements-dev.txt
+python main.py
+```
+
+Launched with no arguments, showsync reopens your last-used setlist
+automatically (the pointer lives in a small per-user state file); the first
+time, it opens a new empty set. From there everything happens in the window:
+
+1. **Add songs** — drag audio files (wav/aiff/flac/mp3/m4a) onto the window,
+   or press **A** for a native file picker. Each file becomes a row named
+   after the file; unsupported or undecodable files are rejected with a
+   notice.
+2. **Set each song's BPM** — select a row (Up/Down) and cell (Left/Right),
+   press **Enter**, type, **Enter** again. BPM is never guessed: you always
+   know the tempo your track was recorded at. A song with no BPM is marked
+   and the show cannot start until every row is valid.
+3. **Optional first-beat offset** — seconds into the file where beat 1 lands
+   (default 0). Audio before it plays as a lead-in: Start is sent at the
+   song's first frame, no clock ticks are sent through the lead-in, and the
+   first tick fires exactly on the offset, so clock-following gear plays its
+   first step on the true downbeat.
+4. **Rename / reorder / remove** — Enter on the name cell; Shift+Up/Down;
+   Delete twice.
+5. **Saving is automatic** — the first edit of a brand-new set asks where to
+   save (defaulting next to your first audio file); after that every edit
+   saves silently. **S** saves explicitly, **O** opens another setlist.
+6. **SPACE starts the show** — audio and MIDI devices are only opened for the
+   show itself. At the end of the set, **R** restarts from the top and **E**
+   returns to the editor (mid-show, editing is limited to reordering unplayed
+   songs — end the set or quit to change fields).
+
+The setlist is still stored as ordinary YAML, so hand edits between rehearsals
+(comments, `gap`, tempo ramps) are preserved verbatim by every in-app save —
+they're just never required.
+
+Devices and show-mode launch:
+
+```sh
 python main.py --list-devices
 python main.py path/to/setlist.yaml --audio-device DEVICE --midi-port PORT
 # Or install the showsync command:
@@ -73,8 +110,10 @@ showsync path/to/setlist.yaml --midi-port PORT
 
 `DEVICE` accepts an audio index or device-name substring; `PORT` accepts a
 MIDI output index or exact name. A single MIDI output is selected automatically;
-otherwise selection is required. Windows instructions and distribution notes
-are in [windows/README.txt](windows/README.txt).
+otherwise selection is required. Passing a fully playable setlist path starts
+the show immediately, exactly as before; a set that isn't playable yet opens
+in the editor with the reason on screen. Windows instructions and distribution
+notes are in [windows/README.txt](windows/README.txt).
 
 The [design and five-song example](docs/design-v1.md) define the YAML format.
 The original example is also in `tests/fixtures/fall2026.yaml`; its audio paths
