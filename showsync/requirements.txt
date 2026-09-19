@@ -1,5 +1,6 @@
 numpy>=2.2,<3
 PyYAML>=6.0,<7
+ruamel.yaml>=0.18,<0.19
 sounddevice>=0.5,<0.6
 soundfile>=0.13,<0.15
 av>=14,<18

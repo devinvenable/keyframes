@@ -68,6 +68,25 @@ def test_gap_keeps_ticks_and_next_song_restarts():
     assert [b for _, b in fake.messages][-3:] == [STOP, START, CLOCK]
 
 
+def test_end_of_set_restart_stop_then_start_at_song_one_tempo():
+    fake = Fake([TempoMap(100), TempoMap(140)])
+    fake.p = Position(1, 0, True, epoch=1)
+    fake.engine.step()
+    fake.p = replace(fake.p, playing=False, ended=True)
+    fake.engine.step()
+    assert [b for _, b in fake.messages] == [START, CLOCK, STOP]
+    base = fake.time
+    fake.p = Position(0, 0, True, epoch=2)  # restart: audio back at song 1
+    for _ in range(24):
+        fake.advance(fake.engine.step())
+    resumed = fake.messages[3:]
+    assert resumed[0][1] == START
+    ticks = [t - base for t, b in resumed if b == CLOCK]
+    assert len(ticks) == 24
+    # Clock resumes at song 1's 100 BPM, not the 140 BPM the set ended on.
+    assert ticks == pytest.approx([TempoMap(100).T(k / 24) for k in range(24)], abs=1e-9)
+
+
 def test_late_tick_does_not_shift_following_ticks_or_burst():
     fake = Fake([TempoMap(120)])
     fake.engine.step()

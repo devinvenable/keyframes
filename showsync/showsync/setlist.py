@@ -1,7 +1,9 @@
 """Strict, contextual validation around safely loaded, hand-edited YAML."""
 
 from dataclasses import dataclass
+import io
 import math
+import os
 from pathlib import Path
 import re
 
@@ -115,3 +117,34 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
         return Setlist(title, tuple(songs))
     except (OSError, ValueError, yaml.YAMLError) as exc:
         raise SetlistError(f"{context}: {exc}") from exc
+
+
+def save_song_order(path, order):
+    """Rewrite the setlist file with its songs permuted into `order`.
+
+    `order` maps new positions to the file's current song indices. The file is
+    hand-edited between rehearsals, so a plain dump is unacceptable: ruamel's
+    round-trip mode rewrites it with comments, quotes, and anchors intact
+    (byte-stable for an unchanged order; per-song comments travel with their
+    song). The replacement is written atomically so a crash mid-save cannot
+    truncate the show's setlist.
+    """
+    from ruamel.yaml import YAML, YAMLError
+    path = Path(path).expanduser().resolve()
+    try:
+        editor = YAML()
+        editor.preserve_quotes = True
+        editor.indent(mapping=2, sequence=4, offset=2)
+        editor.width = 4096
+        data = editor.load(path.read_text(encoding="utf-8"))
+        songs = data["songs"] if isinstance(data, dict) else None
+        if not isinstance(songs, list) or sorted(order) != list(range(len(songs))):
+            raise ValueError(f"order must be a permutation of the {len(songs or [])} songs on disk")
+        data["songs"] = [songs[i] for i in order]
+        buffer = io.StringIO()
+        editor.dump(data, buffer)
+        replacement = path.with_name(path.name + ".tmp")
+        replacement.write_text(buffer.getvalue(), encoding="utf-8")
+        os.replace(replacement, path)
+    except (OSError, ValueError, YAMLError) as exc:
+        raise SetlistError(f"{path}: {exc}") from exc

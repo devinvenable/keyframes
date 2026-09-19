@@ -121,6 +121,83 @@ def test_latency_pause_skip_end_use_audible_frames():
         engine.close()
 
 
+def wait_for_slot(engine, index, path=None, deadline=5):
+    limit = time.monotonic() + deadline
+    while time.monotonic() < limit:
+        slot = engine._slots.get(index)
+        if slot is not None and (path is None or slot.path == path) and slot.ring.available >= min(RATE, engine._layout.lengths[index]):
+            return slot
+        time.sleep(.005)
+    raise AssertionError(f'slot {index} for {path} never prebuffered')
+
+
+def test_reorder_updates_layout_and_redoes_prefetch():
+    songs = (Song('one', FIXTURES / 'tone.wav', 120), Song('two', FIXTURES / 'tone.flac', 140),
+             Song('three', FIXTURES / 'tone.aiff', 100, gap=.5))
+    engine = AudioEngine(Setlist('test', songs))
+    try:
+        engine.prepare()
+        wait_for_slot(engine, 1, FIXTURES / 'tone.flac')  # 1 s songs prefetch immediately
+        assert engine.move(0, 1) is None      # current song is locked
+        assert engine.move(1, -1) is None     # nothing may land on the current song
+        assert engine.move(2, -1) == 1        # 'three' now plays second
+        assert engine.order == (0, 2, 1)
+        assert [s.name for s in engine.setlist.songs] == ['one', 'three', 'two']
+        assert engine._layout.starts == (0, RATE, RATE + RATE + round(.5 * RATE))
+        assert engine.total_frames == engine._layout.starts[2] + RATE
+        # The stale 'two' prefetch is discarded and 'three' decoded in its place.
+        wait_for_slot(engine, 1, FIXTURES / 'tone.aiff')
+        engine._requested = (True, 0, 0)
+        out = callback(engine, RATE + 100)
+        with Decoder.open(FIXTURES / 'tone.aiff') as source:
+            np.testing.assert_allclose(out[-100:], source.read(100))
+        assert engine.underruns == 0
+    finally:
+        engine.close()
+
+
+def test_reorder_refused_near_boundary_and_while_skip_pending():
+    songs = (Song('one', FIXTURES / 'tone.wav', 120), Song('two', FIXTURES / 'tone.flac', 140),
+             Song('three', FIXTURES / 'tone.aiff', 100))
+    engine = AudioEngine(Setlist('test', songs))
+    engine._requested = (True, 0, 0)
+    engine.frames_played = RATE - 100      # playing, 100 frames before the boundary
+    assert engine.move(1, 1) is None
+    engine._requested = (False, 0, 0)      # paused there: the callback cannot cross
+    assert engine.move(1, 1) == 2
+    engine._requested = (True, 1, 2)       # skip still settling
+    assert engine.move(2, -1) is None
+
+
+def test_restart_after_end_and_ended_reorder():
+    now = [0.0]
+    engine = make_engine(now=lambda: now[0])
+    try:
+        engine.prepare()
+        wait_for_slot(engine, 1)
+        engine._requested = (True, 0, 0)
+        engine.skip()
+        callback(engine, 480)
+        engine.skip()
+        callback(engine, 480)
+        assert engine.position().ended
+        # The whole set is reorderable once it has ended.
+        assert engine.move(0, 1) == 1
+        assert engine.order == (1, 0)
+        assert engine.position().ended
+        engine.restart()
+        wait_for_slot(engine, 0, FIXTURES / 'tone.flac')
+        out = callback(engine, 480)
+        with Decoder.open(FIXTURES / 'tone.flac') as source:
+            np.testing.assert_allclose(out, source.read(480))
+        now[0] = .005
+        p = engine.position()
+        assert (p.song_index, p.ended, p.playing) == (0, False, True)
+        assert p.epoch == 3
+    finally:
+        engine.close()
+
+
 def test_callback_underrun_keeps_frame_counter():
     engine = make_engine()
     engine._requested = (True, 0, 0)

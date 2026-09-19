@@ -6,7 +6,7 @@ import logging
 from .audio import AudioEngine
 from .clock import ClockEngine, open_midi_port
 from .gui import run
-from .setlist import load_setlist
+from .setlist import load_setlist, save_song_order
 
 
 def main(argv=None):
@@ -38,7 +38,7 @@ def main(argv=None):
         clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]))
         clock.start()
         audio.start()
-        run(audio, clock)
+        run(audio, clock, persist=lambda order: save_song_order(args.setlist, order))
         return 0
     except KeyboardInterrupt:
         return 0

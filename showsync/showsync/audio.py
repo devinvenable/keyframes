@@ -7,7 +7,7 @@ this is a soft real-time Python engine, not a hard real-time guarantee.
 """
 from bisect import bisect_right
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 import math
 from pathlib import Path
@@ -192,10 +192,45 @@ class Anchor:
     epoch: int
 
 
+@dataclass(frozen=True)
+class Layout:
+    """One immutable snapshot of the set's timeline; swapped whole on reorder.
+
+    The callback, producer, and readers each take a single reference per pass,
+    so they can never see starts from one ordering and lengths from another.
+    A reorder only permutes entries after the currently sounding song, so every
+    frame the callback has already played means the same thing in both layouts.
+    """
+    setlist: object
+    order: tuple          # order[i] = index of songs[i] in the file on disk
+    starts: tuple
+    lengths: tuple
+    durations: tuple
+    maps: tuple
+    total_frames: int
+
+
+class MapsView:
+    """Stable per-song tempo map accessor that follows reorders.
+
+    The ClockEngine captures this once at wiring time; indexing always reads
+    the engine's current layout.
+    """
+    def __init__(self, engine):
+        self._engine = engine
+
+    def __getitem__(self, index):
+        return self._engine._layout.maps[index]
+
+    def __len__(self):
+        return len(self._engine._layout.maps)
+
+
 class _Slot:
     def __init__(self, path):
         self.ring = RingBuffer()
         self.decoder = Decoder.open(path)
+        self.path = path
         self.eof = False
 
     def fill(self):
@@ -215,26 +250,24 @@ class _Slot:
 class AudioEngine:
     def __init__(self, setlist, *, device=None, blocksize=256, now=time.monotonic,
                  stream_factory=None):
-        self.setlist = setlist
         self.device, self.blocksize, self.now = device, blocksize, now
         self._stream_factory = stream_factory
-        self.durations, self.lengths, self.maps = [], [], []
-        self.starts = []
-        cursor = 0
+        durations, lengths, maps = [], [], []
         for song in setlist.songs:
             try:
                 with Decoder.open(song.file) as decoder:
                     duration, length = decoder.duration, decoder.frames
-                self.maps.append(song.tempo_map(duration))
+                maps.append(song.tempo_map(duration))
             except Exception as exc:
                 raise SetlistError(f'song {song.name}: file {song.file}: {exc}') from exc
             if length <= 0:
                 raise SetlistError(f'song {song.name}: file contains no audio')
-            self.starts.append(cursor)
-            self.durations.append(duration)
-            self.lengths.append(length)
-            cursor += length + round(song.gap * RATE)
-        self.total_frames = self.starts[-1] + self.lengths[-1]
+            durations.append(duration)
+            lengths.append(length)
+        starts, total = self._positions(setlist.songs, lengths)
+        self._layout = Layout(setlist, tuple(range(len(lengths))), starts,
+                              tuple(lengths), tuple(durations), tuple(maps), total)
+        self.maps = MapsView(self)
         self.frames_played = 0
         self.underruns = 0
         self.error = None
@@ -247,6 +280,30 @@ class AudioEngine:
         self._worker = None
         self.stream = None
 
+    @staticmethod
+    def _positions(songs, lengths):
+        starts, cursor = [], 0
+        for song, length in zip(songs, lengths):
+            starts.append(cursor)
+            cursor += length + round(song.gap * RATE)
+        return tuple(starts), starts[-1] + lengths[-1]
+
+    @property
+    def setlist(self):
+        return self._layout.setlist
+
+    @property
+    def durations(self):
+        return self._layout.durations
+
+    @property
+    def total_frames(self):
+        return self._layout.total_frames
+
+    @property
+    def order(self):
+        return self._layout.order
+
     def prepare(self, timeout=15):
         if self._worker is None:
             self._worker = threading.Thread(target=self._produce, name='showsync-decode', daemon=True)
@@ -256,7 +313,7 @@ class AudioEngine:
             if self.error:
                 raise RuntimeError(self.error)
             slots = self._slots
-            if 0 in slots and slots[0].ring.available >= min(RATE, self.lengths[0]):
+            if 0 in slots and slots[0].ring.available >= min(RATE, self._layout.lengths[0]):
                 return
             time.sleep(.005)
         raise TimeoutError('audio prebuffer timed out')
@@ -277,14 +334,67 @@ class AudioEngine:
         self._requested = (not playing, serial, target)
 
     def skip(self):
+        layout = self._layout
         _, serial, _ = self._requested
         # Use queued position so rapid skips progress, even before the next callback.
-        index = max(bisect_right(self.starts, self.frames_played) - 1,
+        index = max(bisect_right(layout.starts, self.frames_played) - 1,
                     self._requested[2] if serial != self._skip_applied else 0)
-        target = min(index + 1, len(self.starts))
+        target = min(index + 1, len(layout.starts))
         self._requested = (True, serial + 1, target)
 
+    def restart(self):
+        """Take the whole set from the top: the skip path targeting song 1.
+
+        The epoch bump in the callback gives the clock its Stop (already sent
+        if the set had ended) then Start, so gear re-syncs at song 1's tempo.
+        """
+        _, serial, _ = self._requested
+        self._requested = (True, serial + 1, 0)
+
+    def move(self, index, delta):
+        """Move a not-yet-played song within the set; new index, or None if refused.
+
+        Movable songs are those after the one currently sounding (every song
+        once the set has ended). Refused while a skip/restart is settling and
+        inside the last half-second of a song: the check-then-swap below is not
+        atomic against the callback crossing into the next song, and the margin
+        keeps a boundary crossing from landing between the two.
+        """
+        layout = self._layout
+        playing, serial, _ = self._requested
+        if serial != self._skip_applied:
+            return None
+        count = len(layout.starts)
+        frame = self.frames_played
+        if frame >= layout.total_frames:
+            first = 0
+        else:
+            current = max(0, bisect_right(layout.starts, frame) - 1)
+            boundary = layout.starts[current + 1] if current + 1 < count else layout.total_frames
+            if playing and boundary - frame < RATE // 2:
+                return None
+            first = current + 1
+        target = index + delta
+        if index == target or not (first <= index < count and first <= target < count):
+            return None
+        ids = list(range(count))
+        ids.insert(target, ids.pop(index))
+        songs = tuple(layout.setlist.songs[i] for i in ids)
+        lengths = tuple(layout.lengths[i] for i in ids)
+        starts, total = self._positions(songs, lengths)
+        self._layout = Layout(replace(layout.setlist, songs=songs),
+                              tuple(layout.order[i] for i in ids), starts, lengths,
+                              tuple(layout.durations[i] for i in ids),
+                              tuple(layout.maps[i] for i in ids), total)
+        if frame >= layout.total_frames:
+            # Permuting gaps moves the last audible frame; stay at the end so
+            # the ended state survives the reorder.
+            self.frames_played = total
+            self._anchors.append(Anchor(total, total, self.now(), False, self._epoch))
+        return target
+
     def position(self):
+        layout = self._layout
         now = self.now()
         # Index the bounded history without copying thousands of queued anchors
         # on every clock spin. Appends may advance the window, never invalidate a
@@ -298,35 +408,44 @@ class AudioEngine:
         frame = float(anchor.frame)
         if anchor.playing:
             frame = min(anchor.end_frame, frame + max(0, now - anchor.stamp) * RATE)
-        ended = frame >= self.total_frames
-        index = min(len(self.starts) - 1, max(0, bisect_right(self.starts, frame) - 1))
-        seconds = (frame - self.starts[index]) / RATE
+        ended = frame >= layout.total_frames
+        index = min(len(layout.starts) - 1, max(0, bisect_right(layout.starts, frame) - 1))
+        seconds = (frame - layout.starts[index]) / RATE
         return Position(index, seconds, anchor.playing and not ended, anchor.epoch,
-                        ended, seconds >= self.durations[index] and not ended, frame)
+                        ended, seconds >= layout.durations[index] and not ended, frame)
 
     def _produce(self):
         logged = 0
         try:
             while not self._halt.is_set():
+                layout = self._layout
                 _, serial, target = self._requested
-                current = max(0, bisect_right(self.starts, self.frames_played) - 1)
+                current = max(0, bisect_right(layout.starts, self.frames_played) - 1)
                 if serial != self._skip_applied:
                     current = target
-                if current >= len(self.starts):
+                slots = dict(self._slots)
+                # A reorder leaves slot indices pointing at different songs:
+                # drop any slot whose decoder no longer matches its index.
+                stale = [index for index, slot in slots.items()
+                         if index >= len(layout.starts) or slot.path != layout.setlist.songs[index].file]
+                for index in stale:
+                    slots.pop(index).close()
+                if stale:
+                    self._slots = slots
+                if current >= len(layout.starts):
                     self._halt.wait(.002)
                     continue
                 wanted = {current}
-                remaining = self.starts[current] + self.lengths[current] - self.frames_played
-                if current + 1 < len(self.starts) and remaining <= 10 * RATE:
+                remaining = layout.starts[current] + layout.lengths[current] - self.frames_played
+                if current + 1 < len(layout.starts) and remaining <= 10 * RATE:
                     wanted.add(current + 1)
-                slots = dict(self._slots)
                 for index in wanted:
                     if index not in slots:
-                        slot = _Slot(self.setlist.songs[index].file)
+                        slot = _Slot(layout.setlist.songs[index].file)
                         if index == current and serial == self._skip_applied:
-                            slot.ring.consumed = max(0, self.frames_played - self.starts[index])
+                            slot.ring.consumed = max(0, self.frames_played - layout.starts[index])
                         # Fill before publishing; callback never observes an opening decoder.
-                        for _ in range(min(RATE, self.lengths[index]) // 4096 + 1):
+                        for _ in range(min(RATE, layout.lengths[index]) // 4096 + 1):
                             slot.fill()
                         slots[index] = slot
                     slots[index].fill()
@@ -345,13 +464,14 @@ class AudioEngine:
                 slot.close()
 
     def _callback(self, output, frames, timing, status):
+        layout = self._layout
         stamp = self.now() + (timing.outputBufferDacTime - timing.currentTime)
         output.fill(0)
         playing, serial, target = self._requested
         # A skip waits for the next prebuffer, with silence/Stop in the meantime.
         if serial != self._skip_applied:
-            if target >= len(self.starts) or target in self._slots:
-                self.frames_played = self.starts[target] if target < len(self.starts) else self.total_frames
+            if target >= len(layout.starts) or target in self._slots:
+                self.frames_played = layout.starts[target] if target < len(layout.starts) else layout.total_frames
                 self._skip_applied = serial
                 self._epoch += 1
             else:
@@ -359,14 +479,14 @@ class AudioEngine:
         if self.error:
             playing = False
         begin = self.frames_played
-        playing = playing and begin < self.total_frames
+        playing = playing and begin < layout.total_frames
         offset = 0
         missed = bool(status)
-        while playing and offset < frames and self.frames_played < self.total_frames:
-            index = bisect_right(self.starts, self.frames_played) - 1
-            local = self.frames_played - self.starts[index]
-            audio_left = self.lengths[index] - local
-            boundary = self.starts[index + 1] if index + 1 < len(self.starts) else self.total_frames
+        while playing and offset < frames and self.frames_played < layout.total_frames:
+            index = bisect_right(layout.starts, self.frames_played) - 1
+            local = self.frames_played - layout.starts[index]
+            audio_left = layout.lengths[index] - local
+            boundary = layout.starts[index + 1] if index + 1 < len(layout.starts) else layout.total_frames
             count = min(frames - offset, boundary - self.frames_played)
             if audio_left > 0:
                 count = min(count, audio_left)

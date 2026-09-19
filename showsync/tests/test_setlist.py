@@ -3,9 +3,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from showsync.setlist import load_setlist, position, SetlistError
+from showsync.setlist import load_setlist, position, save_song_order, SetlistError
 
 FIXTURES = Path(__file__).parent / 'fixtures'
+DEMO = Path(__file__).parent.parent / 'demo' / 'demo-setlist.yaml'
 
 
 def test_full_design_fixture():
@@ -64,6 +65,42 @@ def test_duration_checked_at_load(tmp_path):
                                 tempo=[dict(at=9, bpm=140, ramp=2)]))
     with pytest.raises(SetlistError, match='duration'):
         load_setlist(path, duration_probe=lambda _: 10)
+
+
+@pytest.mark.parametrize('source', [FIXTURES / 'fall2026.yaml', FIXTURES / 'smoke.yaml', DEMO])
+def test_save_order_unchanged_is_byte_stable(tmp_path, source):
+    target = tmp_path / source.name
+    text = source.read_text(encoding='utf-8')
+    target.write_text(text, encoding='utf-8')
+    count = len(load_setlist(target, check_files=False, duration_probe=lambda _: 360).songs)
+    save_song_order(target, list(range(count)))
+    assert target.read_text(encoding='utf-8') == text
+
+
+def test_save_order_reorders_and_keeps_comments(tmp_path):
+    target = tmp_path / 'set.yaml'
+    target.write_text((FIXTURES / 'fall2026.yaml').read_text(encoding='utf-8'), encoding='utf-8')
+    save_song_order(target, [4, 0, 1, 2, 3])
+    text = target.read_text(encoding='utf-8')
+    for comment in ('# hard jump into the bridge', '# back to verse tempo',
+                    '# ambient section: linear ramp 120 -> 140 over 45 s starting at 0:20',
+                    '# slow outro ramp-down'):
+        assert comment in text
+    # The outro comment travels with "Closer" to the top of the file.
+    assert text.index('# slow outro ramp-down') < text.index('Cold Open')
+    result = load_setlist(target, check_files=False, duration_probe=lambda _: 360)
+    assert [song.name for song in result.songs] == \
+        ['Closer', 'Cold Open', 'Signal Path', 'Interlude (beatless)', 'Fourteen Hundred']
+
+
+def test_save_order_rejects_bad_permutation(tmp_path):
+    target = tmp_path / 'set.yaml'
+    original = (FIXTURES / 'smoke.yaml').read_text(encoding='utf-8')
+    target.write_text(original, encoding='utf-8')
+    for order in ([0, 0, 1, 2, 3], [0, 1, 2], [0, 1, 2, 3, 5]):
+        with pytest.raises(SetlistError, match='permutation'):
+            save_song_order(target, order)
+    assert target.read_text(encoding='utf-8') == original
 
 
 def test_unsafe_yaml_rejected(tmp_path):
