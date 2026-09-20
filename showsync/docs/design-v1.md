@@ -90,7 +90,8 @@ Rules enforced by the validator:
   (`at + ramp <= next.at`); events must lie within the file's duration
   (checked at load, when durations are known).
 - `offset` must satisfy `0 <= offset < duration`; tempo event positions remain
-  absolute file positions and must be strictly after the offset.
+  absolute file positions and must not precede the offset (`at == offset` is
+  legal: the event takes effect exactly on beat 0, e.g. a whole-song ramp).
 - `Stop` is implied at end of set; `gap` inserts silence between songs while
   the clock keeps running at the outgoing tempo (see §4 Start/Stop semantics
   for the alternative).
@@ -340,7 +341,12 @@ pygame.
   editor over a mutable Document instead of the dashboard. Drag-and-drop audio
   files (pygame `DROPFILE`) or a native picker (stdlib tkinter, withdraw-root
   so no Tk loop competes with pygame's) add rows: name = filename stem, BPM
-  empty, offset 0. Per-row editing of name/BPM/offset, Shift+Up/Down reorder,
+  empty, offset 0. Per-row editing of name/BPM/offset plus one optional tempo
+  ramp (RAMP = end BPM, START = seconds into the file defaulting to the
+  offset, DUR = seconds defaulting to the end of the file), stored as a single
+  ordinary tempo event. Hand-authored maps the controls can't express (hard
+  jumps, several events) show a read-only "custom tempo map (edit in YAML)"
+  badge and pass through saves verbatim. Shift+Up/Down reorder,
   double-Delete remove. Every edit auto-saves through the ruamel round trip
   (a pathless new set asks where once, defaulting next to the first audio
   file). Playback is gated until every row is valid, then SPACE builds the

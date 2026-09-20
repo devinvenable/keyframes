@@ -84,12 +84,19 @@ time, it opens a new empty set. From there everything happens in the window:
    song's first frame, no clock ticks are sent through the lead-in, and the
    first tick fires exactly on the offset, so clock-following gear plays its
    first step on the true downbeat.
-4. **Rename / reorder / remove** — Enter on the name cell; Shift+Up/Down;
+4. **Optional tempo ramp** — one per song: **RAMP** is the BPM the song ends
+   at, **START** the ramp's start in seconds into the file (defaults to the
+   first-beat offset, i.e. beat 0), **DUR** its length in seconds (defaults to
+   the rest of the file; clear the cell to restore that). Rows with a ramp
+   read `120 ->140` on the show's setlist panel. Clearing RAMP removes the
+   ramp. A hand-written map the controls can't express (hard jumps, several
+   events) shows a read-only `custom` badge and is preserved untouched.
+5. **Rename / reorder / remove** — Enter on the name cell; Shift+Up/Down;
    Delete twice.
-5. **Saving is automatic** — the first edit of a brand-new set asks where to
+6. **Saving is automatic** — the first edit of a brand-new set asks where to
    save (defaulting next to your first audio file); after that every edit
    saves silently. **S** saves explicitly, **O** opens another setlist.
-6. **SPACE starts the show** — audio and MIDI devices are only opened for the
+7. **SPACE starts the show** — audio and MIDI devices are only opened for the
    show itself. At the end of the set, **R** restarts from the top and **E**
    returns to the editor (mid-show, editing is limited to reordering unplayed
    songs — end the set or quit to change fields).

@@ -10,9 +10,9 @@ import io
 import os
 from pathlib import Path
 
-from .setlist import (SUFFIXES, Setlist, SetlistError, Song, mapping,
-                      parse_song, song_context, string)
-from .tempomap import TempoMap
+from .setlist import (SUFFIXES, Setlist, SetlistError, Song, mapping, number,
+                      parse_song, position, song_context, string)
+from .tempomap import TempoEvent, TempoMap
 
 
 def probe_duration(path):
@@ -55,6 +55,16 @@ class Row:
 
     def song(self):
         return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset)
+
+    @property
+    def custom_tempo(self):
+        """Hand-authored map the simple controls can't express (jumps, 2+ events)."""
+        return bool(self.tempo) and (len(self.tempo) > 1 or not self.tempo[0].ramp)
+
+    @property
+    def ramp(self):
+        """The single editable ramp event, or None."""
+        return self.tempo[0] if self.tempo and not self.custom_tempo else None
 
 
 class Document:
@@ -174,6 +184,7 @@ class Document:
                         entry["name"] = row.name
                 self._set_number(entry, "bpm", row.bpm)
                 self._set_number(entry, "offset", row.offset or None)
+                self._sync_tempo(entry, row.tempo)
                 entries.append(entry)
             data["songs"] = entries
             buffer = io.StringIO()
@@ -193,6 +204,35 @@ class Document:
             return file.relative_to(root).as_posix()
         except ValueError:
             return str(file)
+
+    @classmethod
+    def _sync_tempo(cls, entry, events):
+        """Rewrite the entry's tempo list only when the editor changed it.
+
+        Hand-authored maps (m:ss positions, comments, extra events) reparse
+        equal to the row's untouched events, so they pass through verbatim.
+        """
+        from ruamel.yaml.comments import CommentedMap, CommentedSeq
+        raw = entry.get("tempo")
+        try:
+            current = tuple(TempoEvent(position(item.get("at")),
+                                       number(item.get("bpm"), "bpm", positive=True),
+                                       number(item.get("ramp", 0), "ramp"))
+                            for item in (raw if isinstance(raw, list) else ()))
+        except (AttributeError, ValueError):
+            current = None
+        if current == tuple(events):
+            return
+        if not events:
+            del entry["tempo"]
+            return
+        replacement = CommentedSeq()
+        for event in events:
+            item = CommentedMap()
+            for key, value in (("at", event.at), ("bpm", event.bpm), ("ramp", event.ramp)):
+                item[key] = int(value) if float(value).is_integer() else float(value)
+            replacement.append(item)
+        entry["tempo"] = replacement
 
     @staticmethod
     def _set_number(entry, key, value):

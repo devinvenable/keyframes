@@ -10,9 +10,17 @@ import time
 
 from .document import Document
 from .setlist import SetlistError
+from .tempomap import TempoEvent
 
-FIELDS = ('name', 'bpm', 'offset')
+FIELDS = ('name', 'bpm', 'offset', 'ramp', 'start', 'dur')
 EMPTY_HINT = 'Drop audio files here, or press O to open a setlist'
+CUSTOM_TEMPO = 'custom tempo map (edit in YAML)'
+
+
+def bpm_label(song):
+    """'120' alone, or '120->140' when the tempo map leaves the base bpm."""
+    final = song.tempo[-1].bpm if song.tempo else song.bpm
+    return f'{song.bpm:g}' if final == song.bpm else f'{song.bpm:g}->{final:g}'
 
 
 def timestamp(seconds):
@@ -101,6 +109,9 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
         nonlocal buffer
         row, name = document.rows[selected], FIELDS[field]
         value = buffer.strip()
+        if name in ('ramp', 'start', 'dur') and row.custom_tempo:
+            show(CUSTOM_TEMPO)  # unreachable via ENTER, which refuses the edit
+            return
         if name == 'name':
             if not value:
                 show('name must not be empty')
@@ -118,7 +129,7 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
                     show('BPM must be a number between 0 and 1000')
                     return
                 row.bpm = bpm
-        else:
+        elif name == 'offset':
             try:
                 offset = float(value or 0)
                 if offset < 0:
@@ -130,6 +141,60 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
                 show(f'offset must be under the file length ({row.duration:g}s)')
                 return
             row.offset = offset
+        elif name == 'ramp':
+            if not value:
+                row.tempo = ()
+            else:
+                try:
+                    end = float(value)
+                    if not 0 < end < 1000:
+                        raise ValueError
+                except ValueError:
+                    show('end BPM must be a number between 0 and 1000')
+                    return
+                if row.ramp:
+                    row.tempo = (TempoEvent(row.ramp.at, end, row.ramp.ramp),)
+                elif row.duration is None:
+                    show('cannot add a ramp: the file duration is unknown')
+                    return
+                elif row.offset >= row.duration:
+                    show('fix the first-beat offset first — it is past the end of the file')
+                    return
+                else:
+                    # New ramps run from beat 0 (the offset) to the end of the file.
+                    row.tempo = (TempoEvent(row.offset, end, row.duration - row.offset),)
+        else:
+            event = row.ramp
+            if event is None:
+                show('set an end BPM first to add a ramp')
+                return
+            if name == 'start':
+                try:
+                    start = float(value or 0)
+                    if start < 0:
+                        raise ValueError
+                except ValueError:
+                    show('ramp start must be nonnegative seconds')
+                    return
+                # A ramp that reached the end of the file keeps doing so.
+                to_end = row.duration is not None and event.at + event.ramp == row.duration
+                length = row.duration - start if to_end and start < row.duration else event.ramp
+                row.tempo = (TempoEvent(start, event.bpm, length),)
+            else:
+                if not value:
+                    if row.duration is None or event.at >= row.duration:
+                        show('cannot reach the end of the file from this ramp start')
+                        return
+                    length = row.duration - event.at
+                else:
+                    try:
+                        length = float(value)
+                        if length <= 0:
+                            raise ValueError
+                    except ValueError:
+                        show('ramp duration must be positive seconds')
+                        return
+                row.tempo = (TempoEvent(event.at, event.bpm, length),)
         buffer = None
         pygame.key.stop_text_input()
         autosave()
@@ -194,11 +259,18 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
                         field = (field + (1 if event.key == pygame.K_RIGHT else -1)) % len(FIELDS)
                     elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and rows:
                         row = rows[selected]
-                        current = {'name': row.name,
-                                   'bpm': '' if row.bpm is None else f'{row.bpm:g}',
-                                   'offset': f'{row.offset:g}'}[FIELDS[field]]
-                        buffer = current
-                        pygame.key.start_text_input()
+                        if field >= 3 and row.custom_tempo:
+                            show(CUSTOM_TEMPO)
+                        else:
+                            ramp = row.ramp
+                            current = {'name': row.name,
+                                       'bpm': '' if row.bpm is None else f'{row.bpm:g}',
+                                       'offset': f'{row.offset:g}',
+                                       'ramp': '' if ramp is None else f'{ramp.bpm:g}',
+                                       'start': '' if ramp is None else f'{ramp.at:g}',
+                                       'dur': '' if ramp is None else f'{ramp.ramp:g}'}[FIELDS[field]]
+                            buffer = current
+                            pygame.key.start_text_input()
                     elif event.key == pygame.K_DELETE and rows:
                         if time.monotonic() < delete_armed_until:
                             removed = rows.pop(selected)
@@ -251,11 +323,14 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
                 text(EMPTY_HINT, (500, 240), 1, True)
                 text('A add songs · O open · Q quit', (500, 300), center=True, color=dim)
             else:
-                for x, label in ((90, 'SONG'), (560, 'BPM'), (690, 'OFFSET'), (830, '')):
+                xs = (90, 350, 445, 555, 655, 760)
+                for x, label in zip(xs + (880,),
+                                    ('SONG', 'BPM', 'OFFSET', 'RAMP', 'START', 'DUR', '')):
                     text(label, (x, 108), color=dim)
                 top = 140
                 row_height = min(46, 340 // len(rows))
-                cells = {0: (70, 460), 1: (550, 120), 2: (680, 130)}
+                cells = {0: (70, 270), 1: (340, 95), 2: (435, 110),
+                         3: (545, 100), 4: (645, 105), 5: (750, 110)}
                 for i, row in enumerate(rows):
                     y = top + i * row_height
                     if i == selected:
@@ -263,19 +338,36 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
                         pygame.draw.rect(screen, dim, (x0, y - 4, width, row_height - 2),
                                          width=0 if buffer is not None else 2, border_radius=6)
                     problem = row.problem()
-                    name = row.name if len(row.name) <= 38 else row.name[:37] + '…'
+                    name = row.name if len(row.name) <= 20 else row.name[:19] + '…'
+                    ramp = row.ramp
+                    display = [f'{i + 1:>2}  {name}',
+                               '—' if row.bpm is None else f'{row.bpm:g}',
+                               f'{row.offset:g}s',
+                               'custom' if row.custom_tempo else
+                               '—' if ramp is None else f'->{ramp.bpm:g}',
+                               '' if ramp is None else f'{ramp.at:g}s',
+                               '' if ramp is None else f'{ramp.ramp:g}s']
+                    colors = [None, alert if row.bpm is None else None, None,
+                              dim if ramp is None else None, None, None]
                     editing_here = buffer is not None and i == selected
-                    text(f'{i + 1:>2}  ' + (buffer + '|' if editing_here and field == 0 else name), (90, y))
-                    text(buffer + '|' if editing_here and field == 1 else
-                         ('—' if row.bpm is None else f'{row.bpm:g}'), (560, y),
-                         color=alert if row.bpm is None and not editing_here else None)
-                    text(buffer + '|' if editing_here and field == 2 else f'{row.offset:g}s', (690, y))
+                    for j, x in enumerate(xs):
+                        if editing_here and field == j:
+                            value, color = buffer + '|', None
+                            if j == 0:
+                                value = f'{i + 1:>2}  {value}'
+                        else:
+                            value, color = display[j], colors[j]
+                        if value:
+                            text(value, (x, y), color=color)
                     if problem:
-                        text('!', (835, y), color=alert)
+                        text('!', (885, y), color=alert)
                 problem = rows[selected].problem()
                 if problem:
                     text(f'{rows[selected].name}: {problem}', (500, 468), center=True, color=alert)
-                text('ENTER edit · LEFT/RIGHT field · SHIFT+UP/DOWN move · DEL DEL remove · drop files to add',
+                elif rows[selected].custom_tempo and field >= 3:
+                    text(CUSTOM_TEMPO, (500, 468), center=True, color=dim)
+                text('ENTER edit · LEFT/RIGHT field · SHIFT+UP/DOWN move · DEL DEL remove · '
+                     'RAMP end BPM, START/DUR seconds',
                      (500, 495), center=True, color=dim)
             for rect, (label, _) in zip(rects, buttons):
                 pygame.draw.rect(screen, fg, rect, width=2, border_radius=8)
@@ -397,7 +489,7 @@ def run(audio, clock, *, persist=None, max_frames=None, editable=False,
                         pygame.draw.rect(screen, dim, (70, y - 4, 860, row_height - 2), border_radius=6)
                     # '>' rather than '▶': pygame's bundled font has no glyph for it.
                     marker = '>' if i == p.song_index and not p.ended else ' '
-                    text(f'{marker} {i + 1:>2}  {entry.name}  ({entry.bpm:g} BPM)', (90, y),
+                    text(f'{marker} {i + 1:>2}  {entry.name}  ({bpm_label(entry)} BPM)', (90, y),
                          color=fg if movable else dim)
                 text('UP/DOWN select   SHIFT+UP/DOWN move   TAB close', (500, 475), center=True, color=dim)
             else:
@@ -422,7 +514,7 @@ def run(audio, clock, *, persist=None, max_frames=None, editable=False,
                 if p.ended:
                     text('NEXT: press R to restart from the top', (55, 425), 1)
                 else:
-                    text(f'NEXT: {upcoming.name}  ({upcoming.bpm:g} BPM)' if upcoming else 'NEXT: end of set', (55, 425), 1)
+                    text(f'NEXT: {upcoming.name}  ({bpm_label(upcoming)} BPM)' if upcoming else 'NEXT: end of set', (55, 425), 1)
             for rect, (label, _) in zip(rects, buttons):
                 pygame.draw.rect(screen, fg, rect, width=2, border_radius=8)
                 text(label, rect.center, center=True)

@@ -81,7 +81,15 @@ def test_reject_bad_offsets(kwargs):
         TempoMap(120, **kwargs)
 
 
-@pytest.mark.parametrize('at', [1, 2])
+@pytest.mark.parametrize('at', [1, 1.999])
 def test_reject_events_inside_lead_in(at):
     with pytest.raises(ValueError, match='first-beat offset'):
         TempoMap(120, [E(at, 140)], offset=2)
+
+
+def test_ramp_may_begin_exactly_at_beat_zero():
+    # A whole-song glide: the ramp starts on the first-beat offset itself.
+    tempo = TempoMap(120, [E(2, 140, 10)], offset=2, duration=20)
+    assert tempo.bpm_at(2) == 120
+    assert tempo.bpm_at(12) == 140
+    assert tempo.ramp_target(7) == 140
