@@ -42,6 +42,8 @@ class Row:
     file_error: str | None = None
     source_index: int | None = None  # position in the songs list on disk; None = unsaved
 
+    offset_explicit: bool = False  # editor intent, including an explicitly entered zero
+
     def problem(self):
         if self.file_error:
             return self.file_error
@@ -96,7 +98,8 @@ class Document:
             rows = []
             for i, item in enumerate(raw or []):
                 context = song_context(path, i, item)
-                row = Row(**parse_song(item, root, require_bpm=False), source_index=i)
+                row = Row(**parse_song(item, root, require_bpm=False), source_index=i,
+                          offset_explicit="offset" in item)
                 if not row.file.is_file():
                     row.file_error = "audio file not found"
                 else:
@@ -183,7 +186,7 @@ class Document:
                     if str(entry.get("name")) != row.name:
                         entry["name"] = row.name
                 self._set_number(entry, "bpm", row.bpm)
-                self._set_number(entry, "offset", row.offset or None)
+                self._set_number(entry, "offset", row.offset if row.offset_explicit else row.offset or None)
                 self._sync_tempo(entry, row.tempo)
                 entries.append(entry)
             data["songs"] = entries

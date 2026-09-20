@@ -6,6 +6,7 @@ from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication, QLineEdit, QMessageBox
 
+from showsync.bpmdetect import BeatGrid
 from showsync.document import Document, Row
 from showsync.gui import bpm_cell, bpm_label
 from showsync.setlist import Song, load_setlist
@@ -265,3 +266,74 @@ def test_bpm_label_shows_ramp_range():
     assert bpm_label(Song('B', TONE, 120, tempo=(TempoEvent(10, 140, 20),))) == '120->140'
     assert bpm_label(Song('C', TONE, 120, tempo=(TempoEvent(10, 126, 0), TempoEvent(50, 120, 0)))) == '120'
     assert bpm_cell(Row('A', TONE, 123), 'manual') == '123'
+
+
+@pytest.mark.parametrize('source', ['load', 'drop'])
+def test_precise_grid_is_saved_and_drives_playback(qtbot, window_factory, tmp_path, source):
+    target = tmp_path / 'grid.yaml'
+    target.write_text(f'songs:\n  - name: Blank\n    file: {TONE}\n')
+    grid = BeatGrid(112.371234567, .237891234)
+    doc = Document.load(target) if source == 'load' else Document(target)
+    w = window_factory(doc, estimator=lambda *a, **kw: grid)
+    if source == 'drop':
+        drop(w, [TONE])
+    qtbot.waitUntil(lambda: w.document.rows[0].bpm is not None)
+    row = w.document.rows[0]
+    assert row.bpm == grid.bpm and row.offset == grid.offset
+    assert w.model.index(0, 3).data().startswith('~')
+    saved = Document.load(target).rows[0]
+    assert saved.bpm == grid.bpm and saved.offset == grid.offset
+    playback = doc.setlist().songs[0].tempo_map(1)
+    assert playback.T(0) == grid.offset
+    assert playback.T(1) == pytest.approx(grid.offset + 60 / grid.bpm)
+    edit(qtbot, w, 0, 3, '0.2')
+    assert w.model.index(0, 3).data() == '0.2'
+
+
+@pytest.mark.parametrize('source', ['loaded', 'editing'])
+def test_explicit_zero_offset_survives_pending_analysis(qtbot, window_factory, tmp_path, source):
+    target = tmp_path / 'zero.yaml'
+    target.write_text(f'songs:\n  - name: Song\n    file: {TONE}\n    offset: 0\n')
+    doc = Document.load(target) if source == 'loaded' else Document(target)
+    if source == 'editing':
+        doc.add_files([TONE])
+    release = threading.Event()
+    def estimator(*args, cancelled):
+        while not release.wait(.005):
+            if cancelled():
+                return None
+        return BeatGrid(112.371234567, .237891234)
+    w = window_factory(doc, estimator=estimator)
+    if source == 'editing':
+        # Entering the cell itself protects an unfinished edit from the worker.
+        w.table.edit(w.model.index(0, 3))
+        QApplication.processEvents()
+    # Saving an explicit zero must not erase intent before the result arrives.
+    doc.save()
+    assert Document.load(target).rows[0].offset_explicit
+    release.set()
+    qtbot.waitUntil(lambda: doc.rows[0].bpm is not None)
+    assert doc.rows[0].bpm == 112.371234567
+    assert doc.rows[0].offset == 0
+
+
+def test_pending_grid_cannot_overwrite_bpm_or_tempo_map(qtbot, window_factory, tmp_path):
+    doc = Document(tmp_path / 'intent.yaml')
+    doc.add_files([TONE, TONE])
+    release = threading.Event()
+    def estimator(*args, cancelled):
+        while not release.wait(.005):
+            if cancelled():
+                return None
+        return BeatGrid(112.371234567, .237891234)
+    w = window_factory(doc, estimator=estimator)
+    edit(qtbot, w, 0, 2, '123')
+    edit(qtbot, w, 1, 4, '140')
+    original = doc.rows[1].tempo
+    release.set()
+    w.suggestions.worker.join(2)
+    w.refresh()
+    assert doc.rows[0].bpm == 123 and doc.rows[0].offset == 0
+    assert doc.rows[1].bpm is None and doc.rows[1].offset == 0
+    assert doc.rows[1].tempo == original
+    assert w.suggestions.state(doc.rows[1]) == 'manual'

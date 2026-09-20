@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from showsync.bpmdetect import Cancelled, Suggestions, estimate_bpm
+from showsync.bpmdetect import BeatGrid, Cancelled, Suggestions, estimate_bpm, estimate_grid
 from showsync.document import Row
 
 
@@ -23,9 +23,8 @@ def demos(tmp_path_factory):
     return directory
 
 
-@pytest.mark.parametrize('name, expected', [('100', 100), ('140', 140), ('ramp', 140)])
+@pytest.mark.parametrize('name, expected', [('100', 100), ('140', 140)])
 def test_demo_accuracy(demos, name, expected):
-    # Ramp chooses the dominant 140 BPM section, not a ramp reconstruction.
     assert estimate_bpm(demos / f'demo-{name}.wav') == pytest.approx(expected, abs=2)
 
 
@@ -132,3 +131,94 @@ def test_deleted_active_row_does_not_fill_replacement():
     finally:
         release.set()
         worker.close()
+
+
+def test_ramp_is_not_misrepresented_as_a_constant_grid(demos):
+    assert estimate_grid(demos / 'demo-ramp.wav') is None
+
+
+def rhythmic_file(path, bpm, offset, seconds=240, *, busy=False, rate=48000):
+    """Known beat times independent of the detector and playback tempo map."""
+    rng = np.random.default_rng(89)
+    audio = np.zeros(round(seconds * rate), dtype=np.float32)
+    beats = np.arange(offset, seconds - .1, 60 / bpm)
+    t = np.arange(round(.04 * rate)) / rate
+    kick = .7 * np.sin(2 * np.pi * 90 * t) * np.exp(-t * 100)
+    hat = rng.normal(0, .08, len(t)) * np.exp(-t * 200)
+    for i, beat in enumerate(beats):
+        # Missing beats, changing accents, offbeat hats and a quiet background
+        # exercise regression against more than identical isolated impulses.
+        if not busy or i % 13 != 8:
+            start = round(beat * rate)
+            audio[start:start + len(kick)] += kick * (1 if i % 4 == 0 else .7)
+        if busy:
+            start = round((beat + 30 / bpm) * rate)
+            end = min(len(audio), start + len(hat))
+            if end > start:
+                audio[start:end] += hat[:end-start]
+    if busy:
+        audio += .001 * rng.normal(size=len(audio)).astype(np.float32)
+    sf.write(path, audio, rate)
+    return beats
+
+
+@pytest.mark.parametrize('bpm, offset, busy, rate', [
+    (112.37, 0, False, 48000), (137.123, .237, True, 44100),
+    (73.891, 2.183, True, 48000), (179.731, .419, False, 48000),
+])
+def test_full_song_precision_and_tick_counting_slave(tmp_path, bpm, offset, busy, rate):
+    from showsync.tempomap import TempoMap
+    path = tmp_path / 'precise.wav'
+    beats = rhythmic_file(path, bpm, offset, busy=busy, rate=rate)
+    grid = estimate_grid(path)
+    assert grid is not None
+    assert grid.offset == pytest.approx(offset, abs=.01)
+    assert grid.bpm == pytest.approx(bpm, abs=.003)
+    assert abs(grid.bpm - bpm) * 240 / 60 < .02  # end-to-end tempo drift in beats
+    tempo = TempoMap(grid.bpm, offset=grid.offset)
+    # Slave advances one step for each 24 received F8 ticks. Use all scheduled
+    # tick times, not rounded BPM labels; compare each step with fixture audio.
+    ticks = np.array([tempo.T(k / 24) for k in range(len(beats) * 24)])
+    slave_steps = ticks[::24]
+    assert np.max(np.abs(slave_steps - beats)) * bpm / 60 < .05
+    assert abs((slave_steps[-1] - beats[-1]) - (slave_steps[0] - beats[0])) * bpm / 60 < .02
+
+
+@pytest.mark.parametrize('kind', ['silence', 'tone', 'irregular'])
+def test_nonrhythmic_audio_is_inconclusive(tmp_path, kind):
+    rate = 48000
+    audio = np.zeros(rate * 30, dtype=np.float32)
+    if kind == 'tone':
+        audio = (.1 * np.sin(2 * np.pi * 440 * np.arange(len(audio)) / rate)).astype(np.float32)
+    elif kind == 'irregular':
+        rng = np.random.default_rng(891)
+        for start in rng.integers(0, len(audio) - 2000, 45):
+            audio[start:start + 2000] += rng.normal(0, .1, 2000) * np.exp(-np.arange(2000) / 200)
+    path = tmp_path / 'nonrhythmic.wav'
+    sf.write(path, audio, rate)
+    assert estimate_grid(path) is None
+
+
+@pytest.mark.parametrize('explicit, offset, expected', [(False, 0, .237), (True, 0, 0), (False, .5, .5)])
+def test_grid_suggestion_respects_offset_intent(explicit, offset, expected):
+    row = Row('Song', Path('song'), None, offset=offset, offset_explicit=explicit)
+    worker = Suggestions(lambda *a, **kw: BeatGrid(112.371234, .237))
+    try:
+        worker.update([row])
+        worker.worker.join(2)
+        assert worker.update([row]) == [row]
+        assert row.bpm == 112.371234
+        assert row.offset == expected
+    finally:
+        worker.close()
+
+
+def test_tempo_change_outside_old_analysis_window_is_inconclusive(tmp_path):
+    first, second = tmp_path / 'first.wav', tmp_path / 'second.wav'
+    rhythmic_file(first, 112.37, 0, seconds=180)
+    rhythmic_file(second, 119.23, 0, seconds=60)
+    a, rate = sf.read(first)
+    b, _ = sf.read(second)
+    path = tmp_path / 'change.wav'
+    sf.write(path, np.concatenate((a, b)), rate)
+    assert estimate_grid(path) is None

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QStackedWidget, QStyledItemDelegate, QTableView, QVBoxLayout, QWidget,
 )
 
-from .bpmdetect import Suggestions, estimate_bpm
+from .bpmdetect import Suggestions, estimate_grid
 from .document import Document
 from .tempomap import TempoEvent
 
@@ -77,8 +77,10 @@ class SongModel(QAbstractTableModel):
                 return CUSTOM_TEMPO
             if col == 1:
                 return str(row.file)
+            if col == 3 and self.window.suggestions.offset_estimated(row):
+                return 'Estimated first beat — double-click to confirm or correct'
             if col == 2:
-                return {'estimated': 'Estimated BPM — double-click to confirm or correct',
+                return {'estimated': 'Estimated beat grid — double-click BPM or offset to correct',
                         'no estimate': 'No estimate — enter BPM manually'}.get(
                             self.window.suggestions.state(row), row.problem())
             return row.problem()
@@ -92,6 +94,8 @@ class SongModel(QAbstractTableModel):
         if role == Qt.DisplayRole:
             if col == 2:
                 return bpm_cell(row, self.window.suggestions.state(row))
+            if col == 3 and self.window.suggestions.offset_estimated(row):
+                return '~' + values[col]
             if col == 4 and row.custom_tempo:
                 return 'Custom'
         return values[col]
@@ -114,6 +118,7 @@ class SongModel(QAbstractTableModel):
                 offset = self.number(value or '0', 'Offset')
                 if row.duration is not None and offset >= row.duration:
                     raise ValueError(f'Offset must be under the file length ({row.duration:g}s)')
+                row.offset_explicit = True
                 row.offset = offset
             elif field == 'ramp':
                 if not value:
@@ -172,6 +177,8 @@ class SongDelegate(QStyledItemDelegate):
         if index.column() == 2:
             window = index.model().window
             window.suggestions.manual(window.document.rows[index.row()])
+        elif index.column() == 3:
+            index.model().window.document.rows[index.row()].offset_explicit = True
         return QLineEdit(parent)
 
     def setEditorData(self, editor, index):
@@ -184,7 +191,7 @@ class SongDelegate(QStyledItemDelegate):
 
 class MainWindow(QMainWindow):
     def __init__(self, document, *, start_engines, dialogs=None, remember=None,
-                 estimator=estimate_bpm, settings=None, notice='',
+                 estimator=estimate_grid, settings=None, notice='',
                  clock_offset_ms=0, offset_changed=None, devices=None):
         super().__init__()
         if dialogs is None:
@@ -587,7 +594,7 @@ class MainWindow(QMainWindow):
             message = row.problem() or (CUSTOM_TEMPO if row.custom_tempo else '')
             state = self.suggestions.state(row)
             if state == 'estimated' and not row.problem():
-                message = 'Estimated BPM (~) — double-click the BPM to confirm or correct.'
+                message = 'Estimated beat grid (~) — double-click BPM or offset to correct.'
             elif state == 'no estimate' and row.bpm is None:
                 message = 'No estimate — enter BPM manually.'
             self.row_notice.setText(f'{row.name}: {message}' if message else '')

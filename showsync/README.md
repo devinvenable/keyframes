@@ -73,12 +73,21 @@ time, it opens a new empty set. From there everything happens in the window:
 
 1. **Add Songs** — click the button or drop wav/aiff/flac/mp3/m4a files onto
    the editor. Unsupported or undecodable files produce a notice.
-2. **Set each song's BPM** — double-click a table cell to edit. Empty BPMs
-   are analyzed in the background, showing Queued / Analyzing / **~118.5**.
-   Double-click a suggestion to confirm it or enter a correction. Estimates
-   auto-save as ordinary numbers; existing BPMs and manual edits always win.
-   Inconclusive material shows **No estimate** and needs a manual BPM.
-3. **Optional first-beat offset** — seconds into the file where beat 1 lands.
+2. **Tempo and first beat are detected automatically** — songs without a BPM
+   or tempo map are analyzed in the background, showing Queued / Analyzing.
+   Steady rhythmic tracks get precise BPM and first-beat offset suggestions
+   marked **~**. Double-click either cell to confirm or correct it. The full
+   precision is saved and used for MIDI clock timing, even when the table
+   shows fewer digits. Audio is never stretched or modified.
+   Existing BPMs, tempo maps, and manual BPM edits always win. Existing offsets
+   (including an explicit zero) and offset edits also remain authoritative.
+   Saved estimates become ordinary values and are not reanalyzed on reopening;
+   clear the BPM to request fresh analysis when reopening the set.
+   Beatless material, changing tempos, or inconsistent grids show **No estimate**
+   and need a manual BPM / tempo map.
+3. **First-beat offset** — seconds into the file where beat 1 lands. Detection
+   fits the first supported rhythmic pulse; it does not infer musical meter,
+   bar one, or whether an intro is a pickup. Correct the offset if needed.
    Audio before it is a lead-in: MIDI Start goes out at the first audio frame,
    and the first clock tick lands at the offset.
 4. **Optional tempo ramp** — enter **End BPM**, **Ramp start (s)**, and
