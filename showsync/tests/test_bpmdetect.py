@@ -113,3 +113,22 @@ def test_close_cancels_active_work_and_never_starts_queue():
     assert not worker.worker.is_alive()
     assert calls == [Path('0')]
     assert worker.results.empty()
+
+
+def test_deleted_active_row_does_not_fill_replacement():
+    release = threading.Event()
+    def estimator(path, *, cancelled):
+        assert release.wait(2)
+        return 120.0
+    deleted = Row('same', Path('same.wav'), None)
+    replacement = Row('same', Path('same.wav'), None)
+    worker = Suggestions(estimator)
+    try:
+        worker.update([deleted])
+        release.set()
+        worker.worker.join(2)
+        assert worker.update([replacement]) == []
+        assert deleted.bpm is None and replacement.bpm is None
+    finally:
+        release.set()
+        worker.close()

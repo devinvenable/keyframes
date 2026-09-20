@@ -288,7 +288,8 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
                         text('!', (835, y), color=alert)
                 problem = rows[selected].problem()
                 status = suggestions.state(rows[selected])
-                if status in ('analyzing', 'no estimate', 'estimated'):
+                if (status in ('analyzing', 'no estimate', 'estimated')
+                        and problem in (None, 'BPM not set')):
                     problem = {'analyzing': 'Analyzing BPM…',
                                'no estimate': 'No estimate — enter BPM manually',
                                'estimated': 'Estimated BPM (~) — Enter to confirm or edit'}[status]
