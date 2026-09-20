@@ -206,7 +206,8 @@ the extrapolation term keeping readers smooth between callbacks.
 ### Principle: invert the tempo map against the audio clock
 
 The tempo map gives `B(t)` (beats at song-time *t*) and its inverse `T(b)`
-(song-time of beat *b*) — both closed-form (§5). A set-level clock map translates these maps onto a continuous beat grid
+(song-time of beat *b*) — both closed-form (§5). A set-level clock map
+translates these maps onto a continuous beat grid
 (see handover below). Tick *k* must fire at `T_set(k/24)` in absolute audio
 time, i.e. at a specific **audio frame**. The clock thread:
 
@@ -221,10 +222,10 @@ loop:
     midiout.send(0xF8); k_next += 1
 ```
 
-Because every tick is scheduled from the **absolute** beat index against the
-**absolute** audio position, errors never accumulate: a late tick does not
-push later ticks; drift is structurally impossible. Ramps need no special
-casing — `T(b)` just returns non-uniform tick spacing through the ramp.
+Every ideal deadline comes from the **absolute** beat index against the
+**absolute** audio position. A late tick does not move later ideal deadlines;
+the rate-limited catch-up below can temporarily lag that grid while recovering.
+Ramps need no special casing — `T(b)` returns non-uniform tick spacing.
 
 ### Live rig compensation
 
