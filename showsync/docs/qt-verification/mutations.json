@@ -1,0 +1,116 @@
+[
+  {
+    "test": "showsync/tests/test_editor.py::test_build_a_set_from_nothing_and_start_it",
+    "mutation": "self.stack.setCurrentWidget(self.editor)",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_rename_move_delete_and_declined_save",
+    "mutation": "row.name = row.name",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_async_bpm_suggestion_is_rendered_saved_and_confirmed",
+    "mutation": "if not self._saving and self.suggestions.update(self.document.rows):\n                self.dirty = True",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_pending_suggestion_cannot_overwrite_manual_edit",
+    "mutation": "and True\n                    and self.state(row) in ('analyzing', 'manual')",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_timer_does_not_overwrite_text_while_editing",
+    "mutation": "if True:",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_inconclusive_and_invalid_values_stay_unplayable",
+    "mutation": "if False:",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_ramp_controls_recreate_the_demo_ramp_up_song",
+    "mutation": "row.tempo = (TempoEvent(event.at, event.bpm, length + 1),)",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_ramp_defaults_track_offset_and_run_to_end",
+    "mutation": "row.tempo = (TempoEvent(0, end, row.duration),)",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_start_and_duration_require_end_bpm_and_custom_map_is_readonly",
+    "mutation": "if True:",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_open_new_recents_and_save_as_keep_audio_paths",
+    "mutation": "replacement._source['audio_root'] = '.'",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_unsaved_new_cancel_and_failed_save_as_preserve_document",
+    "mutation": "if True:\n            return True",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_editor.py::test_bpm_label_shows_ramp_range",
+    "mutation": "return f'{song.bpm:g}'",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_gui.py::test_dashboard_buttons_mode_switch_end_restart_editor",
+    "mutation": "self.state_label.setText('Unknown')",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_gui.py::test_reorder_upcoming_and_live_restart_confirmation",
+    "mutation": "self.document.rows = list(self.baseline)",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_gui.py::test_confirm_close_while_playing_sends_stop_before_audio_close",
+    "mutation": "if False:",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_gui.py::test_menu_fullscreen_stop_and_return_confirmation",
+    "mutation": "self.showNormal()",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_gui.py::test_snapshot_refresh_is_reader_and_displays_lead_in_paused_gap",
+    "mutation": "'Gap' if p.gap else 'Playing'",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_gui.py::test_failed_start_and_runtime_failure_return_to_editor",
+    "mutation": "self.notice('Could not start')",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "showsync/tests/test_gui.py::test_no_argument_cli_keeps_existing_appstate_startup",
+    "mutation": "path = args.setlist",
+    "exit_code": 1,
+    "assertion_failure": true
+  }
+]

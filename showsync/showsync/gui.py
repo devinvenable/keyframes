@@ -638,7 +638,9 @@ class MainWindow(QMainWindow):
         state = ('End of set' if p.ended else 'Paused' if not p.playing else
                  'Gap' if p.gap else 'Lead-in' if p.song_time < song.offset else 'Playing')
         self.state_label.setText(state)
-        self.playback.setStyleSheet('background: #fff1d6; color: #594018' if state == 'Paused' else '')
+        style = 'background: #fff1d6; color: #594018' if state == 'Paused' else ''
+        if self.playback.styleSheet() != style:
+            self.playback.setStyleSheet(style)
         duration = audio.durations[p.song_index]
         elapsed = min(duration, p.song_time)
         self.time_label.setText(f'{timestamp(elapsed)} elapsed    /    {timestamp(duration - elapsed)} remaining')

@@ -1,0 +1,27 @@
+{
+  "platform": "xcb",
+  "display": ":0",
+  "input_port": "Midi Through:Midi Through Port-0 14:0",
+  "track": "/home/devin/src/2026/midi/songs/neon_undertow_trimmed.wav",
+  "screenshots": [
+    "01-empty-editor.png",
+    "02-bpm-suggestion.png",
+    "03-playing.png",
+    "04-paused.png",
+    "05-end-of-set.png",
+    "06-restarted.png",
+    "07-returned-editor.png"
+  ],
+  "suggested_bpm": 111.9,
+  "audio_underruns": 2,
+  "clock_dropped_ticks": 0,
+  "restart_song_time": 1.018654950571557,
+  "measured_bpm": 143.29272497672693,
+  "measured_ticks": 2501,
+  "measurement_seconds": 43.617008476983756,
+  "midi_start_count": 5,
+  "midi_stop_count": 5,
+  "errors": [],
+  "exit_code": 0,
+  "passed": false
+}

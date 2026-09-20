@@ -1,0 +1,19 @@
+{
+  "expected_bpm": 112,
+  "platform": "xcb",
+  "route": "Midi Through Port-0",
+  "connections": [
+    "client 0: 'System' [type=kernel]\n    0 'Timer           '\n\tConnecting To: 142:0\n    1 'Announce        '\n\tConnecting To: 142:0\nclient 14: 'Midi Through' [type=kernel]\n    0 'Midi Through Port-0'\n\tConnecting To: 128:0\n\tConnected From: 129:0[real:0]\nclient 36: 'MIDIPLUS TBOX 2x2' [type=kernel,card=5]\n    0 'MIDIPLUS TBOX 2x2 Midi Out 1'\n    1 'MIDIPLUS TBOX 2x2 Midi Out 2'\nclient 128: 'RtMidiIn Client' [type=user,pid=1972649]\n    0 'RtMidi input    '\n\tConnected From: 14:0\nclient 129: 'RtMidiOut Client' [type=user,pid=1972649]\n    0 'RtMidi output   '\n\tConnecting To: 14:0[real:0]\nclient 142: 'PipeWire-System' [type=user,pid=2629]\n    0 'input           '\n\tConnected From: 0:1, 0:0\nclient 143: 'PipeWire-RT-Event' [type=user,pid=2629]\n    0 'input           '\n",
+    "client 0: 'System' [type=kernel]\n    0 'Timer           '\n\tConnecting To: 142:0\n    1 'Announce        '\n\tConnecting To: 142:0\nclient 14: 'Midi Through' [type=kernel]\n    0 'Midi Through Port-0'\n\tConnecting To: 128:0\n\tConnected From: 129:0[real:0]\nclient 36: 'MIDIPLUS TBOX 2x2' [type=kernel,card=5]\n    0 'MIDIPLUS TBOX 2x2 Midi Out 1'\n    1 'MIDIPLUS TBOX 2x2 Midi Out 2'\nclient 128: 'RtMidiIn Client' [type=user,pid=1972649]\n    0 'RtMidi input    '\n\tConnected From: 14:0\nclient 129: 'RtMidiOut Client' [type=user,pid=1972649]\n    0 'RtMidi output   '\n\tConnecting To: 14:0[real:0]\nclient 142: 'PipeWire-System' [type=user,pid=2629]\n    0 'input           '\n\tConnected From: 0:1, 0:0\nclient 143: 'PipeWire-RT-Event' [type=user,pid=2629]\n    0 'input           '\n",
+    "client 0: 'System' [type=kernel]\n    0 'Timer           '\n\tConnecting To: 142:0\n    1 'Announce        '\n\tConnecting To: 142:0\nclient 14: 'Midi Through' [type=kernel]\n    0 'Midi Through Port-0'\n\tConnecting To: 128:0\n\tConnected From: 129:0[real:0]\nclient 36: 'MIDIPLUS TBOX 2x2' [type=kernel,card=5]\n    0 'MIDIPLUS TBOX 2x2 Midi Out 1'\n    1 'MIDIPLUS TBOX 2x2 Midi Out 2'\nclient 128: 'RtMidiIn Client' [type=user,pid=1972649]\n    0 'RtMidi input    '\n\tConnected From: 14:0\nclient 129: 'RtMidiOut Client' [type=user,pid=1972649]\n    0 'RtMidi output   '\n\tConnecting To: 14:0[real:0]\nclient 142: 'PipeWire-System' [type=user,pid=2629]\n    0 'input           '\n\tConnected From: 0:1, 0:0\nclient 143: 'PipeWire-RT-Event' [type=user,pid=2629]\n    0 'input           '\n",
+    "client 0: 'System' [type=kernel]\n    0 'Timer           '\n\tConnecting To: 142:0\n    1 'Announce        '\n\tConnecting To: 142:0\nclient 14: 'Midi Through' [type=kernel]\n    0 'Midi Through Port-0'\n\tConnecting To: 128:0\n\tConnected From: 129:0[real:0]\nclient 36: 'MIDIPLUS TBOX 2x2' [type=kernel,card=5]\n    0 'MIDIPLUS TBOX 2x2 Midi Out 1'\n    1 'MIDIPLUS TBOX 2x2 Midi Out 2'\nclient 128: 'RtMidiIn Client' [type=user,pid=1972649]\n    0 'RtMidi input    '\n\tConnected From: 14:0\nclient 129: 'RtMidiOut Client' [type=user,pid=1972649]\n    0 'RtMidi output   '\n\tConnecting To: 14:0[real:0]\nclient 142: 'PipeWire-System' [type=user,pid=2629]\n    0 'input           '\n\tConnected From: 0:1, 0:0\nclient 143: 'PipeWire-RT-Event' [type=user,pid=2629]\n    0 'input           '\n"
+  ],
+  "underruns": 0,
+  "dropped_ticks": 0,
+  "exit_code": 0,
+  "ticks": 540,
+  "start_count": 1,
+  "stop_count": 1,
+  "measured_bpm": 111.99483212995865,
+  "passed": true
+}
