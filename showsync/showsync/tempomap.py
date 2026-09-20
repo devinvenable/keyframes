@@ -49,8 +49,8 @@ def validate_events(bpm, events, duration=None, offset=0.0):
         prefix = f"tempo[{i}]"
         if not math.isfinite(event.at) or event.at < 0:
             raise ValueError(f"{prefix}.at must be finite and nonnegative")
-        if offset and event.at <= offset:
-            raise ValueError(f"{prefix}.at must be after the first-beat offset ({offset:g}s)")
+        if offset and event.at < offset:
+            raise ValueError(f"{prefix}.at must not be before the first-beat offset ({offset:g}s)")
         if event.at <= previous:
             raise ValueError(f"{prefix}.at must be strictly ascending")
         if event.at < end:
