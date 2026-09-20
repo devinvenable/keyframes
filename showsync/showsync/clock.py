@@ -43,10 +43,10 @@ class ClockEngine:
                 self.send(START)
             self._active = True
             # A new song/restart must begin at tick zero: slaves count clocks.
-            # Resume retains the existing song position, without skipping any
-            # additional indices merely because compensation is positive.
-            self._tick = (max(self._tick, math.ceil(tempo.B(max(0.0, p.song_time)) * 24 - 1e-8))
-                          if key == self._key else 0)
+            # Resume retains the next unsent index, including when the audio
+            # position has advanced slightly before the pause was observed.
+            if key != self._key:
+                self._tick = 0
             self._key = key
             self._startup_until = math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8)
         target = tempo.T(self._tick / 24)

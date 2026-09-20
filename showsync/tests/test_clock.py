@@ -45,7 +45,8 @@ def test_pause_resume_skip_end_order():
     assert [b for _, b in fake.messages] == [START, CLOCK, STOP]
     fake.p = replace(fake.p, playing=True, song_time=.2)
     fake.engine.step()
-    assert fake.messages[-1][1] == START
+    assert [b for _, b in fake.messages][-2:] == [START, CLOCK]
+    assert fake.engine._tick == 2  # resume emitted the next unsent index, 1
     fake.p = Position(1, 0, True, epoch=1)
     fake.engine.step()
     assert [b for _, b in fake.messages][-3:] == [STOP, START, CLOCK]
