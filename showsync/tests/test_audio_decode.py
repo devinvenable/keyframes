@@ -177,7 +177,9 @@ def test_reorder_refused_near_boundary_and_while_skip_pending():
     engine._requested = (True, 0, 0)
     engine.frames_played = RATE - 100      # playing, 100 frames before the boundary
     assert engine.move(1, 1) is None
-    engine._requested = (False, 0, 0)      # paused there: the callback cannot cross
+    engine._requested = (False, 0, 0)      # incoming clocks may already have fired
+    assert engine.move(1, 1) is None
+    engine.frames_played = 0
     assert engine.move(1, 1) == 2
     engine._requested = (True, 1, 2)       # skip still settling
     assert engine.move(2, -1) is None

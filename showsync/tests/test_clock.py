@@ -57,14 +57,14 @@ def test_pause_resume_skip_end_order():
     assert all(b in (START, CLOCK, STOP) for _, b in fake.messages)
 
 
-def test_gap_keeps_ticks_and_next_song_restarts():
+def test_gap_keeps_ticks_and_manual_skip_restarts():
     fake = Fake([TempoMap(120, [E(.2, 180, .4)]), TempoMap(90)])
     fake.engine.step()
     fake.p = replace(fake.p, song_time=.8, gap=True)
     fake.engine.step()
     assert sum(b == START for _, b in fake.messages) == 1
     assert fake.messages[-1][1] == CLOCK
-    fake.p = Position(1, 0, True)
+    fake.p = Position(1, 0, True, epoch=1)
     fake.engine.step()
     assert [b for _, b in fake.messages][-3:] == [STOP, START, CLOCK]
 
@@ -88,14 +88,15 @@ def test_end_of_set_restart_stop_then_start_at_song_one_tempo():
     assert ticks == pytest.approx([TempoMap(100).T(k / 24) for k in range(24)], abs=1e-9)
 
 
-def test_late_tick_does_not_shift_following_ticks_or_burst():
+def test_late_tick_keeps_indices_and_limits_catchup_rate():
     fake = Fake([TempoMap(120)])
     fake.engine.step()
     fake.advance(.2)
     delay = fake.engine.step()
     assert len(fake.messages) == 3
-    assert fake.engine.dropped_ticks == 8
-    assert fake.time + delay == pytest.approx(10 / 48)
+    assert fake.engine.dropped_ticks == 0
+    assert fake.engine._tick == 2
+    assert delay == pytest.approx(1 / 96)
 
 
 def test_sleep_then_spin_is_driven_by_audio():
@@ -177,10 +178,11 @@ def test_live_offset_keeps_transport_and_absolute_phase(offset):
     assert fake.p.epoch == before.epoch
     assert [b for _, b in fake.messages if b != CLOCK] == [START]
     ticks = [t for t, b in fake.messages if b == CLOCK][-20:]
-    # Settled timestamps are on the shifted absolute grid, including after drops.
+    # Settled timestamps are on the shifted absolute grid, including after catch-up.
     assert [(t + offset / 1000) * 48 for t in ticks] == pytest.approx(
         [round((t + offset / 1000) * 48) for t in ticks], abs=1e-8)
-    assert fake.engine.dropped_ticks == (1 if offset > 0 else 0)
+    assert fake.engine.dropped_ticks == 0
+    assert fake.engine._tick == sum(b == CLOCK for _, b in fake.messages)
 
 
 @pytest.mark.parametrize('offset', [-32, 32])
@@ -210,8 +212,8 @@ def test_positive_offset_preserves_startup_indices_and_slave_steps(offset, event
         if byte == CLOCK:
             indices.append(fake.engine._tick)
     fake.engine.send = send
-    # Initial play, gap -> next song, and restart all reset the slave counter.
-    for epoch, song in [(0, 0), (0, 1), (1, 0)]:
+    # Initial play, manual skip, and restart all reset the slave counter.
+    for epoch, song in [(0, 0), (1, 1), (2, 0)]:
         fake.p = Position(song, 0, True, epoch=epoch)
         fake.messages.clear()
         indices.clear()
@@ -239,7 +241,7 @@ def test_transport_toggle_message_sequences(enabled, close_active):
     fake.engine.send_transport = enabled
     fake.engine.clock_offset_ms = 32
     expected = []
-    for epoch, song in [(0, 0), (0, 1), (1, 0)]:
+    for epoch, song in [(0, 0), (1, 1), (2, 0)]:
         fake.p = Position(song, 0, True, epoch=epoch)
         for _ in range(3):
             fake.advance(fake.engine.step())

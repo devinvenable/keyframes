@@ -43,6 +43,7 @@ class Row:
     source_index: int | None = None  # position in the songs list on disk; None = unsaved
 
     offset_explicit: bool = False  # editor intent, including an explicitly entered zero
+    restart: bool = False
 
     def problem(self):
         if self.file_error:
@@ -56,7 +57,8 @@ class Row:
         return None
 
     def song(self):
-        return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset)
+        return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset,
+                    self.restart)
 
     @property
     def custom_tempo(self):
@@ -187,6 +189,8 @@ class Document:
                         entry["name"] = row.name
                 self._set_number(entry, "bpm", row.bpm)
                 self._set_number(entry, "offset", row.offset if row.offset_explicit else row.offset or None)
+                if entry.get("restart", False) != row.restart:
+                    entry["restart"] = row.restart
                 self._sync_tempo(entry, row.tempo)
                 entries.append(entry)
             data["songs"] = entries

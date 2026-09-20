@@ -1,11 +1,62 @@
 """Absolute beat-index MIDI scheduling against an injected audio position."""
 import math
+from bisect import bisect_right
+from dataclasses import dataclass
 import threading
 import time
 
 from .priority import raise_thread_priority
+from .audio import RATE
 
 CLOCK, START, STOP = 0xF8, 0xFA, 0xFC
+
+
+@dataclass(frozen=True)
+class ClockSection:
+    song: int
+    tempo: object
+    anchor: float  # absolute audio seconds of this map's beat zero
+    beat: int     # beat zero's index since the last intentional restart
+
+    def T(self, beat):
+        return self.anchor + self.tempo.T(beat - self.beat) - self.tempo.offset
+
+    def B(self, seconds):
+        return self.beat + self.tempo.B(max(0, seconds - self.anchor + self.tempo.offset))
+
+
+class ClockTimeline:
+    """Absolute audio-time schedule, ending at the next explicit pattern reset.
+
+    Quantize each incoming *actual* first beat to the closest existing beat
+    in time (ties go earlier), then translate that song's entire tempo map.
+    The error is local, never added to the next song's audio anchor. Several
+    very short songs can share a beat: the last map wins that boundary.
+    """
+    def __init__(self, layout, first):
+        tempo = layout.maps[first]
+        self.sections = [ClockSection(first, tempo, layout.starts[first] / RATE + tempo.offset, 0)]
+        for song in range(first + 1, len(layout.maps)):
+            if layout.setlist.songs[song].restart:
+                break
+            tempo = layout.maps[song]
+            desired = layout.starts[song] / RATE + tempo.offset
+            lower = math.floor(self.B(desired) + 1e-9)
+            beat = min((lower, lower + 1), key=lambda b: abs(self.T(b) - desired))
+            anchor = self.T(beat)
+            # A short incoming song can supersede a still-future handover.
+            while self.sections and self.sections[-1].beat >= beat:
+                self.sections.pop()
+            self.sections.append(ClockSection(song, tempo, anchor, beat))
+        self.sections = tuple(self.sections)
+
+    def T(self, beat):
+        index = bisect_right(self.sections, beat, key=lambda s: s.beat) - 1
+        return self.sections[max(0, index)].T(beat)
+
+    def B(self, seconds):
+        index = bisect_right(self.sections, seconds, key=lambda s: s.anchor) - 1
+        return self.sections[max(0, index)].B(seconds)
 
 
 class ClockEngine:
@@ -19,49 +70,71 @@ class ClockEngine:
         self._active = False
         self._tick = 0
         self._startup_until = -1
+        self._timeline = None
+        self._layout = None
+        self._first_song = 0
+        self._last_sent_time = None
+        self._last_target = None
         self._halt = threading.Event()
         self._thread = None
         self.error = None
-        self.dropped_ticks = 0
+        self.dropped_ticks = 0  # Vestigial status API: indices are never dropped.
         self.priority_raised = False
 
     def step(self):
         """Process current state/tick; return seconds until next work (fake-clock API)."""
         p = self.position()
         key = (p.epoch, p.song_index)
-        if self._active and (not p.playing or p.ended or key != self._key):
+        reset = self._key is None or p.epoch != self._key[0]
+        if self._key is not None and p.layout is not None and not reset:
+            reset = any(song.restart for song in
+                        p.layout.setlist.songs[self._key[1] + 1:p.song_index + 1])
+        if self._active and (not p.playing or p.ended or reset):
             if self.send_transport:
                 self.send(STOP)
             self._active = False
         if not p.playing or p.ended:
             return .001
-        tempo = self.maps[p.song_index]
+        if reset:
+            self._first_song = p.song_index
+            self._tick = 0
+            self._last_sent_time = self._last_target = None
+        if p.layout is not None:
+            if reset or p.layout is not self._layout:
+                self._timeline = ClockTimeline(p.layout, self._first_song)
+                self._layout = p.layout
+            tempo = self._timeline
+            audio_time = p.frame / RATE
+        else:
+            # Injected single-song/intentional-transport tests need no layout.
+            # Natural transitions require future starts for early handovers.
+            if not reset and p.song_index != self._key[1]:
+                raise ValueError('Continuous song transitions require Position.layout')
+            tempo = self.maps[p.song_index]
+            audio_time = p.song_time
         # Snapshot once: positive compensation advances MIDI, never audio.
-        clock_time = p.song_time + self.clock_offset_ms / 1000.0
+        clock_time = audio_time + self.clock_offset_ms / 1000.0
         if not self._active:
             if self.send_transport:
                 self.send(START)
             self._active = True
-            # A new song/restart must begin at tick zero: slaves count clocks.
-            # Resume retains the next unsent index, including when the audio
-            # position has advanced slightly before the pause was observed.
-            if key != self._key:
-                self._tick = 0
-            self._key = key
+            # Resume retains the next unsent index; intentional restarts reset.
             self._startup_until = math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8)
+        self._key = key
         target = tempo.T(self._tick / 24)
         remaining = target - clock_time
+        if self._tick > self._startup_until + 1 and self._last_sent_time is not None:
+            # Catch up at no more than twice the scheduled rate. Every F8 is
+            # retained; after recovery the absolute audio deadlines win again.
+            interval = max(0, target - self._last_target)
+            remaining = max(remaining, self._last_sent_time + interval / 2 - audio_time)
         if remaining <= 1e-9:
-            # Clamp pre-start deadlines to this start, emitting every index.
-            # Only established playback may drop stale ticks after an OS stall
-            # or live offset increase; doing so at Start shifts slave step counts.
-            if self._tick > self._startup_until:
-                latest = max(self._tick, math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8))
-                self.dropped_ticks += latest - self._tick
-                self._tick = latest
             self.send(CLOCK)
+            self._last_sent_time, self._last_target = audio_time, target
             self._tick += 1
             remaining = tempo.T(self._tick / 24) - clock_time
+            if self._tick > self._startup_until + 1:
+                remaining = max(remaining, (tempo.T(self._tick / 24) - target) / 2)
         return max(0, remaining)
 
     def _run(self):

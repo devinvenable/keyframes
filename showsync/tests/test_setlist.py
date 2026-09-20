@@ -42,7 +42,21 @@ def test_relative_paths_and_defaults(tmp_path):
     result = load_setlist(write(tmp_path, dict(name='Song', file='song.wav', bpm=120)))
     assert result.songs[0].file == tmp_path / 'song.wav'
     assert result.songs[0].gap == 0
+    assert result.songs[0].restart is False
     assert result.title == 'set'
+
+
+@pytest.mark.parametrize('restart', [True, False])
+def test_restart_boolean_loads(tmp_path, restart):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, restart=restart))
+    assert load_setlist(path).songs[0].restart is restart
+
+
+@pytest.mark.parametrize('restart', ['true', 1, None])
+def test_restart_rejects_non_boolean(tmp_path, restart):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, restart=restart))
+    with pytest.raises(SetlistError, match='restart must be a boolean'):
+        load_setlist(path)
 
 
 @pytest.mark.parametrize('change, field', [({'bpm': False}, 'bpm'), ({'bpm': 0}, 'bpm'),

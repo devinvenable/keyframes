@@ -27,6 +27,7 @@ class Song:
     gap: float = 0.0
     tempo: tuple[TempoEvent, ...] = ()
     offset: float = 0.0  # beat 0 anchors here (seconds); earlier audio is lead-in
+    restart: bool = False  # intentionally reset external patterns at this song
 
     def tempo_map(self, duration=None):
         return TempoMap(self.bpm, self.tempo, duration, self.offset)
@@ -79,7 +80,7 @@ def parse_song(row, root, *, require_bpm=True):
     The editor's lenient Document rows and the strict playback loader share
     this, so a set saved mid-edit (bpm still unset) reopens instead of erroring.
     """
-    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset"}, "song")
+    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "restart"}, "song")
     name = string(row.get("name"), "name")
     file = (root / string(row.get("file"), "file")).resolve()
     if file.suffix.lower() not in SUFFIXES:
@@ -88,6 +89,9 @@ def parse_song(row, root, *, require_bpm=True):
     bpm = number(bpm, "bpm", positive=True) if (require_bpm or bpm is not None) else None
     gap = number(row.get("gap", 0), "gap")
     offset = number(row.get("offset", 0), "offset")
+    restart = row.get("restart", False)
+    if not isinstance(restart, bool):
+        raise ValueError("restart must be a boolean")
     raw_events = row.get("tempo", [])
     if not isinstance(raw_events, list):
         raise ValueError("tempo must be a list")
@@ -100,7 +104,8 @@ def parse_song(row, root, *, require_bpm=True):
                                      number(raw.get("ramp", 0), "ramp")))
         except ValueError as exc:
             raise ValueError(f"tempo[{j}].{exc}") from exc
-    return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset)
+    return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset,
+                restart=restart)
 
 
 def song_context(path, index, row):

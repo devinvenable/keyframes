@@ -7,7 +7,7 @@ this is a soft real-time Python engine, not a hard real-time guarantee.
 """
 from bisect import bisect_right
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import logging
 import math
 from pathlib import Path
@@ -181,6 +181,7 @@ class Position:
     ended: bool = False
     gap: bool = False
     frame: float = 0.0
+    layout: object = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,12 @@ class Layout:
     durations: tuple
     maps: tuple
     total_frames: int
+
+    @property
+    def reorder_margin(self):
+        # Clock handover can precede audio by half a beat, plus rig advance.
+        slowest = min(min(s.bpm0, s.bpm1) for m in self.maps for s in m.segments)
+        return max(.5, 30 / slowest + .250)
 
 
 class MapsView:
@@ -357,12 +364,13 @@ class AudioEngine:
 
         Movable songs are those after the one currently sounding (every song
         once the set has ended). Refused while a skip/restart is settling and
-        inside the last half-second of a song: the check-then-swap below is not
-        atomic against the callback crossing into the next song, and the margin
-        keeps a boundary crossing from landing between the two.
+        inside the clock lookahead margin (at least half a second): incoming
+        clocks can precede the audio boundary by half a beat plus rig advance.
+        The guard also applies when paused: emitted clocks cannot be retracted.
+        It keeps a callback boundary from landing inside the check-then-swap.
         """
         layout = self._layout
-        playing, serial, _ = self._requested
+        _, serial, _ = self._requested
         if serial != self._skip_applied:
             return None
         count = len(layout.starts)
@@ -372,7 +380,7 @@ class AudioEngine:
         else:
             current = max(0, bisect_right(layout.starts, frame) - 1)
             boundary = layout.starts[current + 1] if current + 1 < count else layout.total_frames
-            if playing and boundary - frame < RATE // 2:
+            if boundary - frame < layout.reorder_margin * RATE:
                 return None
             first = current + 1
         target = index + delta
@@ -413,7 +421,7 @@ class AudioEngine:
         index = min(len(layout.starts) - 1, max(0, bisect_right(layout.starts, frame) - 1))
         seconds = (frame - layout.starts[index]) / RATE
         return Position(index, seconds, anchor.playing and not ended, anchor.epoch,
-                        ended, seconds >= layout.durations[index] and not ended, frame)
+                        ended, seconds >= layout.durations[index] and not ended, frame, layout)
 
     def _produce(self):
         logged = 0

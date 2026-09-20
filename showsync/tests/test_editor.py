@@ -29,6 +29,32 @@ def edit(qtbot, window, row, column, value):
     QApplication.processEvents()
 
 
+def test_restart_checkbox_autosaves_custom_map_and_preserves_comments(qtbot, window_factory, tmp_path):
+    target = tmp_path / 'restart.yaml'
+    text = (f'title: "Keep quotes"\nsongs:\n  - name: Pattern\n    file: {TONE}\n'
+            '    bpm: 120\n    restart: false  # intentional choice\n'
+            '    tempo:\n      - at: 0.1  # custom jump\n        bpm: 140\n')
+    target.write_text(text)
+    doc = Document.load(target)
+    doc.save()
+    assert target.read_text() == text
+    w = window_factory(doc)
+    index = w.model.index(0, 7)
+    assert index.data(Qt.CheckStateRole) == Qt.Unchecked
+    assert w.model.flags(index) & Qt.ItemIsUserCheckable
+    w.table.setCurrentIndex(index)
+    qtbot.keyClick(w.table, Qt.Key_Space)
+    assert index.data(Qt.CheckStateRole) == Qt.Checked
+    assert load_setlist(target).songs[0].restart is True
+    assert doc.setlist().songs[0].restart is True
+    saved = target.read_text()
+    assert 'restart: true' in saved and '# intentional choice' in saved
+    assert '# custom jump' in saved and '"Keep quotes"' in saved
+    qtbot.keyClick(w.table, Qt.Key_Space)
+    assert Document.load(target).rows[0].restart is False
+    assert target.read_text() == text
+
+
 def drop(window, paths):
     mime = QMimeData()
     mime.setUrls([QUrl.fromLocalFile(str(p.resolve())) for p in paths])
