@@ -275,6 +275,7 @@ class AudioEngine:
         self._anchors = deque([Anchor(0, 0, -math.inf, False, 0)], maxlen=2048)
         self._requested = (False, 0, 0)  # playing, skip serial, target song
         self._skip_applied = 0
+        self._skip_ready = 0  # producer publishes only after preparing this request
         self._epoch = 0
         self._halt = threading.Event()
         self._worker = None
@@ -421,13 +422,16 @@ class AudioEngine:
                 layout = self._layout
                 _, serial, target = self._requested
                 current = max(0, bisect_right(layout.starts, self.frames_played) - 1)
+                rewind = (serial != self._skip_applied and serial != self._skip_ready
+                          and target <= current)
                 if serial != self._skip_applied:
                     current = target
                 slots = dict(self._slots)
                 # A reorder leaves slot indices pointing at different songs:
                 # drop any slot whose decoder no longer matches its index.
                 stale = [index for index, slot in slots.items()
-                         if index >= len(layout.starts) or slot.path != layout.setlist.songs[index].file]
+                         if index >= len(layout.starts) or slot.path != layout.setlist.songs[index].file
+                         or (rewind and index >= target)]
                 for index in stale:
                     slots.pop(index).close()
                 if stale:
@@ -452,6 +456,10 @@ class AudioEngine:
                 for index in set(slots) - wanted:
                     slots.pop(index).close()
                 self._slots = slots
+                # Publish buffers before readiness. The callback cannot accept an
+                # old ring while we reopen a backward target (or a newer request
+                # while this pass is still decoding an earlier serial).
+                self._skip_ready = serial
                 if self.underruns != logged:
                     LOG.warning('audio underrun: %d callback(s); output silence, timeline continues', self.underruns)
                     logged = self.underruns
@@ -470,7 +478,7 @@ class AudioEngine:
         playing, serial, target = self._requested
         # A skip waits for the next prebuffer, with silence/Stop in the meantime.
         if serial != self._skip_applied:
-            if target >= len(layout.starts) or target in self._slots:
+            if target >= len(layout.starts) or (serial == self._skip_ready and target in self._slots):
                 self.frames_played = layout.starts[target] if target < len(layout.starts) else layout.total_frames
                 self._skip_applied = serial
                 self._epoch += 1

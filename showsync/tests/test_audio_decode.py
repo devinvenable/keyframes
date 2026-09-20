@@ -1,6 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 import time
+import threading
 
 import numpy as np
 import pytest
@@ -108,6 +109,7 @@ def test_latency_pause_skip_end_use_audible_frames():
         assert not engine.position().playing
         assert engine.position().song_time == pytest.approx(.01)
         engine.skip()
+        wait_for_skip(engine)
         callback(engine, 480, latency=.02)
         assert engine.position().song_index == 0
         now[0] = .075
@@ -115,6 +117,7 @@ def test_latency_pause_skip_end_use_audible_frames():
         assert engine.position().song_time == pytest.approx(.005)
         assert engine.position().epoch == 1
         engine.skip()
+        wait_for_skip(engine)
         callback(engine, 480)
         assert engine.position().ended
     finally:
@@ -129,6 +132,17 @@ def wait_for_slot(engine, index, path=None, deadline=5):
             return slot
         time.sleep(.005)
     raise AssertionError(f'slot {index} for {path} never prebuffered')
+
+
+def wait_for_skip(engine):
+    limit = time.monotonic() + 5
+    while time.monotonic() < limit:
+        if (engine._requested[2] >= len(engine.maps)
+                or engine._skip_ready == engine._requested[1]):
+            return
+        assert engine.error is None
+        time.sleep(.001)
+    raise AssertionError('skip never prepared')
 
 
 def test_reorder_updates_layout_and_redoes_prefetch():
@@ -177,8 +191,10 @@ def test_restart_after_end_and_ended_reorder():
         wait_for_slot(engine, 1)
         engine._requested = (True, 0, 0)
         engine.skip()
+        wait_for_skip(engine)
         callback(engine, 480)
         engine.skip()
+        wait_for_skip(engine)
         callback(engine, 480)
         assert engine.position().ended
         # The whole set is reorderable once it has ended.
@@ -186,6 +202,7 @@ def test_restart_after_end_and_ended_reorder():
         assert engine.order == (1, 0)
         assert engine.position().ended
         engine.restart()
+        wait_for_skip(engine)
         wait_for_slot(engine, 0, FIXTURES / 'tone.flac')
         out = callback(engine, 480)
         with Decoder.open(FIXTURES / 'tone.flac') as source:
@@ -195,6 +212,84 @@ def test_restart_after_end_and_ended_reorder():
         assert (p.song_index, p.ended, p.playing) == (0, False, True)
         assert p.epoch == 3
     finally:
+        engine.close()
+
+
+@pytest.mark.parametrize('initial, gap, offset, presses', [
+    (137, 0, 0, 1),             # partially consumed first song
+    (RATE + 137, 0, 0, 1),      # partially consumed second song
+    (137, 0, .1, 1),            # still in the first-beat lead-in
+    (RATE + 137, .25, 0, 1),    # silent inter-song gap
+    (137, 0, 0, 3),             # several requests before decoding finishes
+])
+def test_restart_replays_audio_and_resets_clock(monkeypatch, initial, gap, offset, presses):
+    from showsync.clock import CLOCK, START, STOP, ClockEngine
+
+    now = [0.0]
+    songs = (Song('one', FIXTURES / 'tone.wav', 120, gap=gap, offset=offset),
+             Song('two', FIXTURES / 'tone.flac', 140))
+    engine = AudioEngine(Setlist('test', songs), now=lambda: now[0])
+    messages = []
+    clock = ClockEngine(engine.maps, engine.position,
+                        lambda byte: messages.append((now[0], byte)))
+    release = threading.Event()
+    opening = threading.Event()
+    try:
+        engine.prepare()
+        wait_for_slot(engine, 1)
+        engine._requested = (True, 0, 0)
+        callback(engine, initial)
+        now[0] = (initial - 1) / RATE
+        clock.step()
+        assert engine.position().playing
+        messages.clear()
+        old_epoch = engine.position().epoch
+
+        # Hold new decoders so the callback must silence a pending rewind,
+        # even while the original, partially consumed slot still exists.
+        original_open = Decoder.open
+        def blocked_open(path):
+            opening.set()
+            assert release.wait(5), 'test did not release decoder'
+            return original_open(path)
+        monkeypatch.setattr(Decoder, 'open', blocked_open)
+        engine.restart()
+        if presses > 1:
+            assert opening.wait(5), 'rewind did not reopen the decoder'
+        for _ in range(presses - 1):
+            engine.restart()
+        out = callback(engine, 256)
+        np.testing.assert_array_equal(out, 0)
+        assert engine.position().epoch == old_epoch
+        assert engine.frames_played == initial
+        clock.step()
+        assert [byte for _, byte in messages] == [STOP]
+
+        release.set()
+        wait_for_skip(engine)
+        base = now[0]
+        out = callback(engine, 30_000)
+        with original_open(songs[0].file) as source:
+            np.testing.assert_array_equal(out, source.read(len(out)))
+        assert engine.position().epoch == old_epoch + 1
+        assert engine._skip_applied == engine._requested[1]
+        # Interpolate within the real audio anchor using the injected time.
+        clock.step()
+        now[0] = base + offset
+        for tick in range(24):
+            now[0] = base + offset + tick / 48
+            clock.step()
+        assert [byte for _, byte in messages if byte != CLOCK] == [STOP, START]
+        ticks = [stamp - base for stamp, byte in messages if byte == CLOCK]
+        assert ticks == pytest.approx([offset + tick / 48 for tick in range(24)])
+        # The second song's stale ring must also be discarded on rewind.
+        wait_for_slot(engine, 1)
+        out = callback(engine, RATE - 30_000 + round(gap * RATE) + 137)
+        with original_open(songs[1].file) as source:
+            np.testing.assert_array_equal(out[-137:], source.read(137))
+        assert engine.position().epoch == old_epoch + 1
+    finally:
+        release.set()
         engine.close()
 
 
