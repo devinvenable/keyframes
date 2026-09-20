@@ -184,9 +184,11 @@ def test_ramp_controls_recreate_the_demo_ramp_up_song(monkeypatch, tmp_path):
     ]
     edit(monkeypatch, document, batches)
     saved = load_setlist(tmp_path / 'set.yaml', duration_probe=lambda _: 40.0)
-    demo = load_setlist(Path(__file__).parents[1] / 'demo' / 'demo-setlist.yaml',
+    # frozen copy of the original demo setlist — demo/demo-setlist.yaml itself
+    # is rewritten by live GUI use and must never back a test
+    demo = load_setlist(Path(__file__).parent / 'fixtures' / 'demo_ramp_reference.yaml',
                         check_files=False)
-    hand_written = demo.songs[1]
+    hand_written = demo.songs[2]
     assert hand_written.name == 'Ramp Up'
     assert saved.songs[0].bpm == hand_written.bpm == 120
     assert saved.songs[0].tempo == hand_written.tempo
