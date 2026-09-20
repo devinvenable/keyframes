@@ -1,0 +1,38 @@
+[
+  {
+    "test": "fresh_play",
+    "mutation": "hardware or ports -> ports",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "preferences_persist",
+    "mutation": "appstate.remember_devices(**values) -> pass",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "unplugged_fallback",
+    "mutation": "self.midi_name = midi -> self.midi_name = self.midi",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "single_and_no_ports",
+    "mutation": "self.notice = 'No MIDI output connected \u2014 playing audio only.' -> self.notice = ''",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "refresh_cancel",
+    "mutation": "self.refresh_button.clicked.connect(self.refresh_devices) -> # disconnected",
+    "exit_code": 1,
+    "assertion_failure": true
+  },
+  {
+    "test": "cli_precedence_and_audio_only",
+    "mutation": "self.midi = midi if self.midi_override else saved['midi'] -> self.midi = saved['midi']",
+    "exit_code": 1,
+    "assertion_failure": true
+  }
+]
