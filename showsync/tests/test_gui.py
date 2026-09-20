@@ -169,7 +169,7 @@ def cli_window(monkeypatch, tmp_path, qtbot, window_factory):
     from showsync import appstate, cli, gui
 
     monkeypatch.setattr(appstate, 'state_file', lambda: tmp_path / 'state.json')
-    engines = Mock()
+    engines = Mock(side_effect=RuntimeError('Unexpected engine startup'))
     monkeypatch.setattr(cli, 'AudioEngine', engines)
     windows = []
 
