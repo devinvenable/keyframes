@@ -138,10 +138,13 @@ def test_explicit_restart_resets_only_that_boundary_and_respects_transport(trans
     if transport:
         assert messages[1][0] == pytest.approx(1.13, abs=.005)
         assert messages[2][0] == messages[1][0]
+    assert fake.indices.count(0) == 2
     reset = fake.indices.index(0, 1)
+    assert reset == 55  # No incoming tempo lookahead across an explicit reset.
     assert fake.indices[:reset] == list(range(reset))
     assert fake.indices[reset:] == list(range(len(fake.indices) - reset))
     ticks = [t for t, b in fake.events if b == CLOCK]
+    assert ticks[:reset] == pytest.approx([k / 48 for k in range(reset)], abs=1e-8)
     assert ticks[reset] == pytest.approx(1.25, abs=1e-8)
     assert not any(1.13 <= t < 1.25 - 1e-8 for t in ticks)
 
