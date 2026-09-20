@@ -1,5 +1,10 @@
 # Task 87: startup clock counts and transport preference
 
+> Historical T87 verification. T93 supersedes natural song resets and all
+> steady-state tick dropping: natural boundaries now keep continuous indices,
+> and late ticks use rate-limited catch-up. Startup index preservation below
+> remains in force. See [current clock design](design-v1.md#continuous-handover-and-beatbar-position).
+
 Positive compensation now clamps pre-start tick deadlines instead of dropping
 indices. At 100 BPM with +32 ms, indices 0 and 1 fire at startup, index 2
 at 18 ms, then ticks retain their 25 ms interval. Tests check every index and

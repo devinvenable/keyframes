@@ -85,10 +85,14 @@ class ClockEngine:
         """Process current state/tick; return seconds until next work (fake-clock API)."""
         p = self.position()
         key = (p.epoch, p.song_index)
+        first_song = p.song_index
         reset = self._key is None or p.epoch != self._key[0]
         if self._key is not None and p.layout is not None and not reset:
-            reset = any(song.restart for song in
-                        p.layout.setlist.songs[self._key[1] + 1:p.song_index + 1])
+            for index in range(self._key[1] + 1, p.song_index + 1):
+                if p.layout.setlist.songs[index].restart:
+                    # A stall may cross the reset and another natural boundary.
+                    # Recover from the last requested reset, not the later song.
+                    reset, first_song = True, index
         if self._active and (not p.playing or p.ended or reset):
             if self.send_transport:
                 self.send(STOP)
@@ -96,7 +100,7 @@ class ClockEngine:
         if not p.playing or p.ended:
             return .001
         if reset:
-            self._first_song = p.song_index
+            self._first_song = first_song
             self._tick = 0
             self._last_sent_time = self._last_target = None
         if p.layout is not None:

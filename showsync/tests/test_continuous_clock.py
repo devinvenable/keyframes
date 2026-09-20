@@ -173,6 +173,24 @@ def test_skip_restart_pause_keep_intentional_transport_with_real_layout():
     assert fake.indices[-1] >= tick
 
 
+def test_stall_crossing_restart_and_natural_boundary_recovers_from_requested_reset():
+    timeline = layout([song(120), song(90, restart=True, offset=.1), song(150)], [1.13, 1, 3])
+    fake = SetClock(timeline)
+    fake.run_until(.8)
+    before = len(fake.indices)
+    fake.time = 3
+    fake.run_until(3.1)
+    assert [b for _, b in fake.events if b != CLOCK] == [START, STOP, START]
+    assert fake.clock._first_song == 1
+    assert fake.indices[before:] == list(range(len(fake.indices) - before))
+    # Reset beat zero belongs to 1.23s. The 150 BPM song takes over at beat 1,
+    # 1.23 + 2/3 seconds. Recovery reaches that absolute grid, not a new grid
+    # beginning at song 3's 2.13-second start.
+    ticks = [t for t, b in fake.events if b == CLOCK and t > 3.00001]
+    assert ticks
+    assert ticks[-1] == pytest.approx(1.23 + 2 / 3 + (fake.indices[-1] / 24 - 1) * .4)
+
+
 def test_multi_second_stall_catches_up_at_twice_rate_then_locks_to_audio():
     fake = SetClock(layout([song(120)], [12]))
     fake.run_until(1)
