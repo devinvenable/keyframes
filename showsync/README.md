@@ -69,7 +69,11 @@ python main.py
 
 Launched with no arguments, showsync reopens your last-used setlist
 automatically (the pointer lives in a small per-user state file); the first
-time, it opens a new empty set. From there everything happens in the window:
+time, it opens a new empty set. Passing a file (`python main.py path/to/setlist.yaml`)
+opens that set in the same editor and adds it to **File → Recent Sets**.
+Playback starts only when you choose **Play**. Incomplete songs stay editable
+with their problems marked; unreadable setlists show a notice in the window.
+From there everything happens in the window:
 
 1. **Add Songs** — click the button or drop wav/aiff/flac/mp3/m4a files onto
    the editor. Unsupported or undecodable files produce a notice.

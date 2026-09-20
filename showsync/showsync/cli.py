@@ -16,7 +16,7 @@ from .setlist import SetlistError
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Audio-master backing tracks and MIDI clock')
     parser.add_argument('setlist', nargs='?',
-                        help='setlist YAML; omitted = reopen the last-used set (or start a new one)')
+                        help='open setlist YAML in the editor; omitted = reopen the last-used set (or start a new one)')
     parser.add_argument('--audio-device', type=lambda s: int(s) if s.isdecimal() else s)
     parser.add_argument('--midi-port', help='MIDI output index or exact name')
     parser.add_argument('--list-devices', action='store_true')
@@ -92,21 +92,16 @@ def main(argv=None):
     if path:
         try:
             document = Document.load(path)
-            remember_setlist(document.path)
         except SetlistError as exc:
-            if args.setlist:
-                logging.error('%s', exc)
-                return 1
-            notice = f'COULD NOT REOPEN LAST SETLIST: {exc}'
-    # An explicit, fully playable setlist starts the show immediately, as
-    # before; anything else opens quietly in the editor.
-    autoplay = bool(args.setlist) and not document.first_problem()
-    if args.setlist and not autoplay:
-        row, message = document.first_problem()
+            action = 'OPEN SETLIST' if args.setlist else 'REOPEN LAST SETLIST'
+            notice = f'COULD NOT {action}: {exc}'
+    problem = document.first_problem()
+    if args.setlist and not notice and problem:
+        row, message = problem
         notice = f"NOT PLAYABLE YET — {f'{row.name}: ' if row else ''}{message}"
     try:
         return main_loop(document, start_engines=start_engines,
-                         remember=remember_setlist, autoplay=autoplay,
+                         remember=remember_setlist,
                          notice=notice, clock_offset_ms=offset,
                          offset_changed=change_offset, devices=devices)
     except KeyboardInterrupt:

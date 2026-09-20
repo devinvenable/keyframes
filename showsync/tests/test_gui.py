@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
@@ -157,9 +158,94 @@ def test_no_argument_cli_keeps_existing_appstate_startup(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, 'main_loop', lambda doc, **kw: captured.append((doc, kw)) or 0)
     assert cli.main([]) == 0
     assert captured[0][0].path == path
-    assert captured[0][1]['autoplay'] is False
+    assert not captured[0][1].get('autoplay', False)
     assert cli.main([str(path)]) == 0
-    assert captured[1][1]['autoplay'] is True
+    assert not captured[1][1].get('autoplay', False)
+
+
+@pytest.fixture
+def cli_window(monkeypatch, tmp_path, qtbot, window_factory):
+    from unittest.mock import Mock
+    from showsync import appstate, cli, gui
+
+    monkeypatch.setattr(appstate, 'state_file', lambda: tmp_path / 'state.json')
+    engines = Mock()
+    monkeypatch.setattr(cli, 'AudioEngine', engines)
+    windows = []
+
+    def build(doc, **kwargs):
+        window = window_factory(doc, **kwargs)
+        windows.append(window)
+        return window
+
+    def exec_():
+        # Process startup callbacks too: a scheduled Play must not escape this check.
+        qtbot.wait(50)
+        return 0
+
+    monkeypatch.setattr(gui, 'MainWindow', build)
+    monkeypatch.setattr(gui, 'QApplication', SimpleNamespace(
+        instance=lambda: SimpleNamespace(exec=exec_)))
+
+    def launch(args):
+        assert cli.main(args) == 0
+        window = windows[-1]
+        assert window.isVisible()
+        assert window.stack.currentWidget() is window.editor
+        assert window.open_action.isEnabled()
+        engines.assert_not_called()
+        return window
+
+    return launch
+
+
+@pytest.mark.parametrize('content, problem', [
+    (f'songs: [{{name: Song, file: {TONE}, bpm: 120}}]', None),
+    (f'songs: [{{name: Song, file: {TONE}}}]', 'BPM not set'),
+    ('songs: [{name: Song, file: missing.wav, bpm: 120}]', 'audio file not found'),
+    ('songs: []', 'the set has no songs'),
+])
+def test_cli_setlist_opens_editor_and_records_recent(cli_window, tmp_path, content, problem):
+    from showsync import appstate
+
+    path = tmp_path / 'set.yaml'
+    path.write_text(content)
+    window = cli_window([str(path)])
+    assert window.document.path == path
+    assert appstate.last_setlist() == path
+    assert window.settings.value('recentSets', [], type=list) == [str(path)]
+    assert window.play_button.isEnabled()
+    if problem:
+        assert problem in window.statusBar().currentMessage()
+        if window.document.rows:
+            assert window.model.data(window.model.index(0, 0), Qt.ToolTipRole) == problem
+        window.play_button.click()
+        assert window.audio is None
+        assert problem in window.statusBar().currentMessage()
+    else:
+        assert window.model.rowCount() == 1
+        assert window.document.rows[0].bpm == 120
+
+
+@pytest.mark.parametrize('content', [None, 'songs: [', 'songs: not-a-list'])
+def test_cli_unreadable_setlist_keeps_gui_open(cli_window, tmp_path, content):
+    from showsync import appstate
+
+    previous = tmp_path / 'previous.yaml'
+    previous.write_text('songs: []')
+    appstate.remember_setlist(previous)
+    path = tmp_path / 'bad.yaml'
+    if content is not None:
+        path.write_text(content)
+    window = cli_window([str(path)])
+    assert 'COULD NOT OPEN SETLIST:' in window.statusBar().currentMessage()
+    assert str(path) in window.statusBar().currentMessage()
+    assert window.document.path is None
+    assert appstate.last_setlist() == previous
+    assert str(path) not in window.settings.value('recentSets', [], type=list)
+    window.play_button.click()
+    assert window.audio is None
+    assert 'the set has no songs' in window.statusBar().currentMessage()
 
 
 def test_live_offset_control_does_not_touch_audio(window_factory, tmp_path):

@@ -227,6 +227,8 @@ class MainWindow(QMainWindow):
         self.timer.start()
         self.update_title()
         self.refresh()
+        if document.path:
+            self.record_path()
         if notice:
             self.notice(notice)
 
@@ -769,15 +771,13 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
-def main_loop(document, *, start_engines, dialogs=None, remember=None, autoplay=False, notice='',
+def main_loop(document, *, start_engines, dialogs=None, remember=None, notice='',
               clock_offset_ms=0, offset_changed=None, devices=None):
     app = QApplication.instance() or QApplication([])
     window = MainWindow(document, start_engines=start_engines, dialogs=dialogs,
                         remember=remember, notice=notice, clock_offset_ms=clock_offset_ms,
                         offset_changed=offset_changed, devices=devices)
     window.show()
-    if autoplay:
-        QTimer.singleShot(0, window.play)
     try:
         return app.exec()
     finally:
