@@ -349,6 +349,17 @@ pygame.
   but never required. The saved file may hold songs without a BPM yet: the
   Document loader is lenient, while the engine-facing loader stays strict.
   At END OF SET, E closes the engines and re-enters the editor.
+- **BPM suggestions**: empty rows loaded or added in the editor queue a single
+  background worker. NumPy spectral flux and autocorrelation over up to 90 s
+  of middle-file audio (existing Decoder, 12 kHz mono analysis) search 60–200
+  BPM; near ties prefer 90–180 BPM and the shorter beat period. Weak transient
+  or periodic evidence yields no estimate. The demo ramp returns its dominant
+  140 BPM section, not a reconstructed ramp. Estimates display `~` until
+  Enter/edit, and save as normal BPM numbers without schema changes. Only the
+  main thread applies results, by row identity and only while still empty and
+  untouched. The worker is cancelled and joined before leaving the editor,
+  so analysis never overlaps playback. Sequential decoding may traverse the
+  prefix to reach the middle (the MP3 decoder cannot seek).
 - Tab toggles a setlist panel (kept off the glanceable performance screen):
   Up/Down select, Shift+Up/Down move a song that has not started yet (any song
   once the set has ended); refusals show an on-screen notice. The new order is

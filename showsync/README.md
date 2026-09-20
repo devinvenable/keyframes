@@ -76,9 +76,14 @@ time, it opens a new empty set. From there everything happens in the window:
    after the file; unsupported or undecodable files are rejected with a
    notice.
 2. **Set each song's BPM** — select a row (Up/Down) and cell (Left/Right),
-   press **Enter**, type, **Enter** again. BPM is never guessed: you always
-   know the tempo your track was recorded at. A song with no BPM is marked
-   and the show cannot start until every row is valid.
+   press **Enter**, type, **Enter** again. Empty BPM cells are analyzed in the
+   background, one song at a time (queued / spinning indicator). A result such
+   as **~118.5** is an editable estimate: Enter on its BPM cell confirms it,
+   or type a correction. Estimates auto-save as ordinary numbers; the `~` is
+   only a UI marker. Existing BPMs and manual edits are never overwritten.
+   Beatless or inconclusive audio stays empty with a “No estimate” notice;
+   enter its intended tempo yourself. The show needs every row to be valid.
+   Analysis stops before playback and does not detect tempo ramps.
 3. **Optional first-beat offset** — seconds into the file where beat 1 lands
    (default 0). Audio before it plays as a lead-in: Start is sent at the
    song's first frame, no clock ticks are sent through the lead-in, and the

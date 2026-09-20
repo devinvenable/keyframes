@@ -34,11 +34,16 @@ def render(path, seconds, bpm_of_t):
     print(f"wrote {path} ({seconds}s)")
 
 
-render(HERE / "demo-100.wav", 40, lambda t: 100.0)
-# 10s at 120, then linear ramp to 140 over 20s, then 140 to the end
-render(
-    HERE / "demo-ramp.wav",
-    45,
-    lambda t: 120.0 if t < 10 else (120.0 + (t - 10) / 20 * 20 if t < 30 else 140.0),
-)
-render(HERE / "demo-140.wav", 30, lambda t: 140.0)
+def main(directory=HERE):
+    render(directory / "demo-100.wav", 40, lambda t: 100.0)
+    # 10s at 120, then linear ramp to 140 over 20s, then 140 to the end
+    render(
+        directory / "demo-ramp.wav",
+        45,
+        lambda t: 120.0 if t < 10 else (120.0 + (t - 10) / 20 * 20 if t < 30 else 140.0),
+    )
+    render(directory / "demo-140.wav", 30, lambda t: 140.0)
+
+
+if __name__ == "__main__":
+    main()

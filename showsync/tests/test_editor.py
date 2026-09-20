@@ -145,3 +145,119 @@ def test_lead_in_state_shown(monkeypatch):
     monkeypatch.setattr(pygame.event, 'get', lambda: [])
     # Renders the LEAD-IN state without error; position 0 < offset.
     assert run(engine, SimpleNamespace(error=None), max_frames=2) == 'quit'
+
+
+@pytest.mark.parametrize('source', ['load', 'drop', 'picker'])
+def test_async_bpm_suggestion_is_rendered_saved_and_confirmed(monkeypatch, tmp_path, source):
+    import threading
+    import pygame
+    from showsync import gui
+    monkeypatch.setenv('SDL_VIDEODRIVER', 'dummy')
+    target = tmp_path / 'suggestions.yaml'
+    target.write_text(f'songs:\n  - name: Existing\n    file: {TONE}\n    bpm: 99\n')
+    document = Document.load(target)
+    if source == 'load':
+        target.write_text(target.read_text() + f'  - name: Blank\n    file: {TONE}\n')
+        document = Document.load(target)
+    entered, release = threading.Event(), threading.Event()
+    instances, calls, rendered = [], [], []
+    class Worker(gui.Suggestions):
+        def __init__(self, estimator):
+            super().__init__(estimator)
+            instances.append(self)
+    monkeypatch.setattr(gui, 'Suggestions', Worker)
+    original_text = gui._text
+    def text(*args):
+        draw = original_text(*args)
+        def capture(value, *args, **kwargs):
+            rendered.append(value)
+            return draw(value, *args, **kwargs)
+        return capture
+    monkeypatch.setattr(gui, '_text', text)
+    def estimator(path, *, cancelled):
+        calls.append(path)
+        entered.set()
+        assert release.wait(2)
+        return 118.5
+    frame = 0
+    def events():
+        nonlocal frame
+        frame += 1
+        if frame == 1:
+            if source == 'drop':
+                return [pygame.event.Event(pygame.DROPFILE, file=str(TONE))]
+            if source == 'picker':
+                return [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_a)]
+        if frame == 3:
+            assert entered.wait(2)
+            assert any(value.startswith('...') for value in rendered)
+            release.set()
+            instances[0].worker.join(2)
+        if frame == 5:
+            assert document.rows[1].bpm == 118.5
+            assert '~118.5' in rendered
+            assert Document.load(target).rows[1].bpm == 118.5
+            return [pygame.event.Event(pygame.KEYDOWN, key=k) for k in
+                    (pygame.K_DOWN, pygame.K_RIGHT, pygame.K_RETURN, pygame.K_ESCAPE)]
+        if frame == 6:
+            assert instances[0].state(document.rows[1]) == 'manual'
+            assert gui.bpm_cell(document.rows[1], 'manual') == '118.5'
+            return [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q)]
+        return []
+    monkeypatch.setattr(pygame.event, 'get', events)
+    try:
+        assert gui.editor(document, dialogs=Dialogs(files=[TONE]), estimator=estimator,
+                          max_frames=8) == 'quit'
+    finally:
+        release.set()
+    assert calls == [TONE.resolve()]
+    assert document.rows[0].bpm == 99
+    assert not instances[0].worker.is_alive()
+
+
+def test_editor_manual_bpm_wins_and_play_cancels_detection(monkeypatch):
+    import threading
+    import pygame
+    from showsync.bpmdetect import Cancelled
+    entered, exited = threading.Event(), threading.Event()
+    def estimator(path, *, cancelled):
+        entered.set()
+        while not cancelled():
+            exited.wait(.001)
+        exited.set()
+        raise Cancelled
+    document = Document()
+    document.add_files([TONE])
+    batches = [[], [key(pygame.K_RIGHT), key(pygame.K_RETURN)],
+               typing('123') + [key(pygame.K_RETURN)], [key(pygame.K_SPACE)]]
+    drive(monkeypatch, batches)
+    assert editor(document, estimator=estimator, max_frames=6) == 'play'
+    assert entered.is_set() and exited.is_set()
+    assert document.rows[0].bpm == 123
+
+
+def test_editor_inconclusive_notice_stays_unplayable(monkeypatch):
+    import pygame
+    from showsync import gui
+    document = Document()
+    document.add_files([TONE])
+    workers, rendered = [], []
+    class Worker(gui.Suggestions):
+        def __init__(self, estimator):
+            super().__init__(estimator)
+            workers.append(self)
+    monkeypatch.setattr(gui, 'Suggestions', Worker)
+    monkeypatch.setattr(gui, '_text', lambda *args: lambda value, *a, **k: rendered.append(value))
+    drive(monkeypatch, [])
+    frame = 0
+    def events():
+        nonlocal frame
+        frame += 1
+        if frame == 1:
+            workers[0].worker.join(2)
+        return [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE)]
+    monkeypatch.setattr(pygame.event, 'get', events)
+    assert editor(document, estimator=lambda path, **kw: None, max_frames=3) == 'quit'
+    assert document.rows[0].bpm is None
+    assert any('No estimate' in value for value in rendered)
+    assert any("CAN'T START" in value for value in rendered)

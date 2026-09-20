@@ -8,6 +8,7 @@ the set. No engine writes happen from rendering.
 from pathlib import Path
 import time
 
+from .bpmdetect import Suggestions, estimate_bpm
 from .document import Document
 from .setlist import SetlistError
 
@@ -43,8 +44,16 @@ def _text(screen, fonts, fg):
     return text
 
 
+def bpm_cell(row, state):
+    if row.bpm is not None:
+        return ('~' if state == 'estimated' else '') + f'{row.bpm:g}'
+    if state == 'analyzing':
+        return '...' + '|/-\\'[int(time.monotonic() * 6) % 4]
+    return {'queued': 'queued', 'no estimate': 'none'}.get(state, '—')
+
+
 def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
-           quit_on_exit=True):
+           quit_on_exit=True, estimator=estimate_bpm):
     """Edit the set until the performer starts it; the show never sees this UI.
 
     Returns 'play', 'quit', or ('open', path). Every successful edit saves
@@ -65,6 +74,7 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
     save_declined = False
     delete_armed_until = 0
     frames = 0
+    suggestions = Suggestions(estimator)
 
     def show(message, seconds=4):
         nonlocal flash, flash_until
@@ -144,6 +154,8 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
     try:
         while True:
             rows = document.rows
+            if suggestions.update(rows):
+                autosave()
             selected = max(0, min(selected, len(rows) - 1))
             buttons = [('A ADD SONGS', 'add'), ('S SAVE', 'save'),
                        ('SPACE START', 'play'), ('Q QUIT', 'quit')]
@@ -194,6 +206,8 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
                         field = (field + (1 if event.key == pygame.K_RIGHT else -1)) % len(FIELDS)
                     elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and rows:
                         row = rows[selected]
+                        if FIELDS[field] == 'bpm':
+                            suggestions.manual(row)
                         current = {'name': row.name,
                                    'bpm': '' if row.bpm is None else f'{row.bpm:g}',
                                    'offset': f'{row.offset:g}'}[FIELDS[field]]
@@ -267,12 +281,17 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
                     editing_here = buffer is not None and i == selected
                     text(f'{i + 1:>2}  ' + (buffer + '|' if editing_here and field == 0 else name), (90, y))
                     text(buffer + '|' if editing_here and field == 1 else
-                         ('—' if row.bpm is None else f'{row.bpm:g}'), (560, y),
+                         bpm_cell(row, suggestions.state(row)), (560, y),
                          color=alert if row.bpm is None and not editing_here else None)
                     text(buffer + '|' if editing_here and field == 2 else f'{row.offset:g}s', (690, y))
                     if problem:
                         text('!', (835, y), color=alert)
                 problem = rows[selected].problem()
+                status = suggestions.state(rows[selected])
+                if status in ('analyzing', 'no estimate', 'estimated'):
+                    problem = {'analyzing': 'Analyzing BPM…',
+                               'no estimate': 'No estimate — enter BPM manually',
+                               'estimated': 'Estimated BPM (~) — Enter to confirm or edit'}[status]
                 if problem:
                     text(f'{rows[selected].name}: {problem}', (500, 468), center=True, color=alert)
                 text('ENTER edit · LEFT/RIGHT field · SHIFT+UP/DOWN move · DEL DEL remove · drop files to add',
@@ -290,6 +309,7 @@ def editor(document, *, dialogs=None, remember=None, notice='', max_frames=None,
             if max_frames is not None and frames >= max_frames:
                 return 'quit'
     finally:
+        suggestions.close()
         if quit_on_exit:
             pygame.quit()
 
