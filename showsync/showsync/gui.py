@@ -185,7 +185,7 @@ class SongDelegate(QStyledItemDelegate):
 class MainWindow(QMainWindow):
     def __init__(self, document, *, start_engines, dialogs=None, remember=None,
                  estimator=estimate_bpm, settings=None, notice='',
-                 clock_offset_ms=0, offset_changed=None):
+                 clock_offset_ms=0, offset_changed=None, devices=None):
         super().__init__()
         if dialogs is None:
             from .dialogs import Dialogs
@@ -194,6 +194,10 @@ class MainWindow(QMainWindow):
         self.document, self.start_engines = document, start_engines
         self.clock_offset_ms = clock_offset_ms
         self.offset_changed = offset_changed
+        self.devices = devices
+        self.midi_status = QLabel()
+        self.midi_status.setTextFormat(Qt.PlainText)
+        self.statusBar().addPermanentWidget(self.midi_status)
         self.estimator = estimator
         self.suggestions = Suggestions(estimator)
         self.settings = settings if settings is not None else QSettings('ShowSync', 'ShowSync')
@@ -344,6 +348,26 @@ class MainWindow(QMainWindow):
         layout.addWidget(buttons)
         dialog.exec()
 
+    def device_preferences(self):
+        if self.devices is None:
+            return
+        from .device_dialog import DeviceDialog
+        DeviceDialog(self.devices, self).exec()
+
+    def prepare_devices(self):
+        if self.devices is None:
+            return
+        from .devices import midi_outputs, audio_outputs
+        try:
+            ports = midi_outputs()
+        except Exception:
+            ports = []
+        try:
+            outputs = audio_outputs()
+        except Exception:
+            outputs = []
+        self.devices.resolve(ports, outputs)
+
     def action(self, menu, text, callback, shortcut=None):
         action = QAction(text, self)
         if shortcut:
@@ -362,6 +386,7 @@ class MainWindow(QMainWindow):
         self.recent_menu.aboutToShow.connect(self.populate_recents)
         file_menu.addSeparator()
         self.action(file_menu, '&Quit', self.close, 'Ctrl+Q')
+        self.devices_action = self.action(file_menu, 'Preferences…', self.device_preferences)
         self.offset_action = self.action(file_menu, 'MIDI clock offset…', self.clock_preferences)
         set_menu = self.menuBar().addMenu('&Set')
         self.play_action = self.action(set_menu, '&Play Set', self.play)
@@ -577,6 +602,7 @@ class MainWindow(QMainWindow):
             row, message = blocked
             self.notice(f'Cannot play — {row.name + ": " if row else ""}{message}')
             return
+        self.prepare_devices()
         self.suggestions.close()
         try:
             self.audio, self.clock, self.close_engines = self.start_engines(self.document.setlist())
@@ -584,10 +610,12 @@ class MainWindow(QMainWindow):
             self.suggestions = Suggestions(self.estimator)
             self.notice(f'Could not start the show: {exc}')
             return
+        if self.devices is not None:
+            self.midi_status.setText(f'MIDI: {self.devices.midi_name or "No output (audio only)"}')
         self.baseline = list(self.document.rows)
         self.populate_queue()
         self.stack.setCurrentWidget(self.playback)
-        self.notice('')
+        self.notice(self.devices.notice if self.devices else '')
         self.refresh()
 
     def shutdown_engines(self):
@@ -598,6 +626,7 @@ class MainWindow(QMainWindow):
                 close()  # CLI factory sends MIDI Stop, then closes audio and MIDI.
         finally:
             self.audio = self.clock = None
+            self.midi_status.clear()
 
     def return_to_editor(self, *, confirm=True):
         if self.audio is None:
@@ -655,6 +684,7 @@ class MainWindow(QMainWindow):
     def refresh(self):
         """30 Hz reader: no transport mutations or MIDI sends in painting."""
         live = self.audio is not None
+        self.devices_action.setEnabled(not live)
         self.play_action.setEnabled(not live)
         self.pause_action.setEnabled(live)
         self.skip_action.setEnabled(live)
@@ -733,11 +763,11 @@ class MainWindow(QMainWindow):
 
 
 def main_loop(document, *, start_engines, dialogs=None, remember=None, autoplay=False, notice='',
-              clock_offset_ms=0, offset_changed=None):
+              clock_offset_ms=0, offset_changed=None, devices=None):
     app = QApplication.instance() or QApplication([])
     window = MainWindow(document, start_engines=start_engines, dialogs=dialogs,
                         remember=remember, notice=notice, clock_offset_ms=clock_offset_ms,
-                        offset_changed=offset_changed)
+                        offset_changed=offset_changed, devices=devices)
     window.show()
     if autoplay:
         QTimer.singleShot(0, window.play)

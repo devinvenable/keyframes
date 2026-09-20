@@ -8,6 +8,7 @@ from .appstate import last_setlist, remember_setlist, clock_offset_ms, remember_
 from .audio import AudioEngine
 from .clock import ClockEngine, open_midi_port
 from .document import Document
+from .devices import Devices
 from .gui import main_loop
 from .setlist import SetlistError
 
@@ -43,19 +44,24 @@ def main(argv=None):
         print('MIDI outputs:', list(enumerate(output.get_ports())))
         return 0
 
+    devices = Devices(args.midi_port, args.audio_device)
     frozen = False
 
     def start_engines(setlist):
         nonlocal frozen
         audio = midi = clock = None
         try:
-            audio = AudioEngine(setlist, device=args.audio_device)
-            midi = open_midi_port(args.midi_port)
+            audio = AudioEngine(setlist, device=devices.audio_index)
+            try:
+                midi = open_midi_port(devices.midi_name) if devices.midi_name is not None else None
+            except Exception:
+                devices.midi_name = None
+                devices.notice = 'MIDI output disconnected — playing audio only.'
             if args.freeze_gc:
                 audio.prepare()
                 gc.freeze()
                 frozen = True
-            clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]),
+            clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]) if midi is not None else None,
                                 clock_offset_ms=offset)
             clock.start()
             audio.start()
@@ -102,7 +108,7 @@ def main(argv=None):
         return main_loop(document, start_engines=start_engines,
                          remember=remember_setlist, autoplay=autoplay,
                          notice=notice, clock_offset_ms=offset,
-                         offset_changed=change_offset)
+                         offset_changed=change_offset, devices=devices)
     except KeyboardInterrupt:
         return 0
     except Exception as exc:

@@ -65,3 +65,13 @@ def _update_state(values, path=None):
         os.replace(replacement, path)
     except OSError:
         pass
+
+
+def device_choices(path=None):
+    data = _read_state(Path(path) if path else state_file())
+    return {key: data.get(f'{key}_output') if isinstance(data.get(f'{key}_output'), str)
+            else None for key in ('midi', 'audio')}
+
+
+def remember_devices(path=None, **choices):
+    _update_state({f'{key}_output': value for key, value in choices.items()}, path)

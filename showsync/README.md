@@ -118,8 +118,18 @@ showsync path/to/setlist.yaml --midi-port PORT
 ```
 
 `DEVICE` accepts an audio index or device-name substring; `PORT` accepts a
-MIDI output index or exact name. A single MIDI output is selected automatically;
-otherwise selection is required. Passing a fully playable setlist path starts
+MIDI output index or exact name. These flags override saved device choices for
+this run only.
+
+**File → Preferences…** offers MIDI and audio output dropdowns with a refresh
+button. Explicit choices are saved on this machine. Play never asks you to
+configure devices: audio uses the system default unless you picked an output;
+MIDI uses your saved output, otherwise the first hardware output (preferring
+ports without “Through”, “virtual”, or “loopback” in their names), then the first
+available output. With no MIDI output, the show plays audio only. Unplugged
+choices fall back automatically with a status notice, without erasing your saved
+choice. The active MIDI output appears in the status bar during playback.
+Stop playback to change device preferences. Passing a fully playable setlist path starts
 the show immediately, exactly as before; a set that isn't playable yet opens
 in the editor with the reason on screen. Windows instructions and distribution
 notes are in [windows/README.txt](windows/README.txt).
