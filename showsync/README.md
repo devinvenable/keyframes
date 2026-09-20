@@ -134,6 +134,11 @@ the show immediately, exactly as before; a set that isn't playable yet opens
 in the editor with the reason on screen. Windows instructions and distribution
 notes are in [windows/README.txt](windows/README.txt).
 
+Preferences also includes **Send MIDI Start/Stop**, enabled by default and
+saved on this machine. Turn it off to send clock ticks only and trigger your
+gear manually. This applies to the next playback, including song transitions,
+pause, restart, end of set, and closing playback.
+
 The [design and five-song example](docs/design-v1.md) define the YAML format.
 The original example is also in `tests/fixtures/fall2026.yaml`; its audio paths
 are placeholders. All source files are checked before opening the audio device,
@@ -194,7 +199,11 @@ playing, without restarting transport or changing the audio. Large increases
 can skip stale ticks; decreases briefly wait before continuing at the new
 phase. Tune before the performance. The click test includes a 500 ms silent
 lead-in so even positive offsets can advance its very first tick. Without
-sufficient lead-in, clocks due before playback starts cannot be sent.
+sufficient lead-in, clocks due before playback starts are clamped to startup
+and emitted in order, with compressed initial intervals. No leading tick
+indices are skipped, so tick-counting slaves stay step-aligned. The same rule
+applies at song transitions and restart. At +32 ms and 100 BPM, ticks 0 and 1
+are sent at startup, tick 2 at 18 ms, and subsequent intervals are 25 ms.
 
 The offset is saved per machine in ShowSync's existing `state.json`, separate
 from setlists. `--clock-offset 32` overrides it for one run; adjustments during

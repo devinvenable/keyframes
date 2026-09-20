@@ -49,6 +49,15 @@ def remember_clock_offset(value, path=None):
     _update_state({"clock_offset_ms": value}, path)
 
 
+def send_transport(path=None):
+    value = _read_state(Path(path) if path else state_file()).get('send_transport', True)
+    return value if isinstance(value, bool) else True
+
+
+def remember_send_transport(value, path=None):
+    _update_state({'send_transport': value}, path)
+
+
 def remember_setlist(setlist_path, path=None):
     _update_state({"last_setlist": str(Path(setlist_path).resolve())}, path)
 

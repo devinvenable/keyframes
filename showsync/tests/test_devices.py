@@ -116,3 +116,33 @@ def test_cli_precedence_and_audio_only(rig, monkeypatch):
     clock.call_args.args[2](248)
     midi.assert_not_called()
     close()
+
+
+def test_transport_preference_accept_cancel_and_engine_wiring(qtbot, rig, monkeypatch):
+    selection = devices.Devices()
+    dialog = DeviceDialog(selection)
+    qtbot.addWidget(dialog)
+    assert dialog.send_transport.isChecked()
+    dialog.send_transport.setChecked(False)
+    dialog.reject()
+    assert selection.send_transport is True
+    assert devices.Devices().send_transport is True
+    dialog = DeviceDialog(selection)
+    qtbot.addWidget(dialog)
+    dialog.send_transport.setChecked(False)
+    dialog.accept()
+    assert selection.send_transport is False
+    assert devices.Devices().send_transport is False
+
+    captured = []
+    engine = Mock()
+    monkeypatch.setattr(cli, 'AudioEngine', Mock())
+    monkeypatch.setattr(cli, 'ClockEngine', engine)
+    monkeypatch.setattr(cli, 'last_setlist', lambda: None)
+    monkeypatch.setattr(cli, 'main_loop', lambda doc, **kw: captured.append(kw) or 0)
+    for enabled in (False, True):
+        appstate.remember_send_transport(enabled)
+        assert cli.main([]) == 0
+        _, _, close = captured[-1]['start_engines'](None)
+        assert engine.call_args.kwargs['send_transport'] is enabled
+        close()

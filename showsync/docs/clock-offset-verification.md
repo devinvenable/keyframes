@@ -36,7 +36,10 @@ measurement of speaker latency or a human listening test.
 Positive offsets can place initial ticks before playback starts. For a
 reliable beat-zero label (`ticks[::24]`), the calibration fixture adds 500 ms
 silence and sets the first-beat offset to 0.5 seconds. Otherwise dropped
-startup ticks can cause this counting probe to label the wrong beat phase.
+startup ticks could cause this counting probe to label the wrong beat phase
+in the task 83 implementation. Task 87 corrects that behavior: pre-start
+deadlines are clamped and all leading indices are emitted. The historical
+measurements below used the lead-in fixture.
 
 | Clock offset | Median click minus MIDI beat | Offset spread |
 |---|---:|---:|

@@ -62,7 +62,7 @@ def main(argv=None):
                 gc.freeze()
                 frozen = True
             clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]) if midi is not None else None,
-                                clock_offset_ms=offset)
+                                clock_offset_ms=offset, send_transport=devices.send_transport)
             clock.start()
             audio.start()
         except Exception:

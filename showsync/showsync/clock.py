@@ -9,13 +9,16 @@ CLOCK, START, STOP = 0xF8, 0xFA, 0xFC
 
 
 class ClockEngine:
-    def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep, clock_offset_ms=0):
+    def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep,
+                 clock_offset_ms=0, send_transport=True):
         self.maps, self.position, self.send = maps, position, send
         self.now, self.sleep = now, sleep
         self.clock_offset_ms = clock_offset_ms
+        self.send_transport = send_transport
         self._key = None
         self._active = False
         self._tick = 0
+        self._startup_until = -1
         self._halt = threading.Event()
         self._thread = None
         self.error = None
@@ -27,7 +30,8 @@ class ClockEngine:
         p = self.position()
         key = (p.epoch, p.song_index)
         if self._active and (not p.playing or p.ended or key != self._key):
-            self.send(STOP)
+            if self.send_transport:
+                self.send(STOP)
             self._active = False
         if not p.playing or p.ended:
             return .001
@@ -35,18 +39,26 @@ class ClockEngine:
         # Snapshot once: positive compensation advances MIDI, never audio.
         clock_time = p.song_time + self.clock_offset_ms / 1000.0
         if not self._active:
-            self.send(START)
+            if self.send_transport:
+                self.send(START)
             self._active = True
+            # A new song/restart must begin at tick zero: slaves count clocks.
+            # Resume retains the existing song position, without skipping any
+            # additional indices merely because compensation is positive.
+            self._tick = (max(self._tick, math.ceil(tempo.B(max(0.0, p.song_time)) * 24 - 1e-8))
+                          if key == self._key else 0)
             self._key = key
-            self._tick = max(0, math.ceil(tempo.B(max(0.0, clock_time)) * 24 - 1e-8))
+            self._startup_until = math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8)
         target = tempo.T(self._tick / 24)
         remaining = target - clock_time
         if remaining <= 1e-9:
-            # Do not emit a burst of stale ticks after an OS stall. Absolute phase
-            # is retained; diagnostic count makes missed clocks visible.
-            latest = max(self._tick, math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8))
-            self.dropped_ticks += latest - self._tick
-            self._tick = latest
+            # Clamp pre-start deadlines to this start, emitting every index.
+            # Only established playback may drop stale ticks after an OS stall
+            # or live offset increase; doing so at Start shifts slave step counts.
+            if self._tick > self._startup_until:
+                latest = max(self._tick, math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8))
+                self.dropped_ticks += latest - self._tick
+                self._tick = latest
             self.send(CLOCK)
             self._tick += 1
             remaining = tempo.T(self._tick / 24) - clock_time
@@ -73,7 +85,8 @@ class ClockEngine:
     def _stop(self):
         if self._active:
             try:
-                self.send(STOP)
+                if self.send_transport:
+                    self.send(STOP)
             finally:
                 self._active = False
 

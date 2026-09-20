@@ -48,3 +48,18 @@ def test_invalid_clock_offset_defaults_to_zero(tmp_path):
     for value in [True, '32', None, 251, -251, float('nan'), float('inf')]:
         state.write_text(json.dumps({'clock_offset_ms': value}))
         assert clock_offset_ms(state) == 0
+
+
+def test_send_transport_persistence_and_default(tmp_path):
+    import json
+    from showsync.appstate import send_transport, remember_send_transport, remember_clock_offset, clock_offset_ms
+    state = tmp_path / 'state.json'
+    assert send_transport(state) is True
+    remember_clock_offset(32, state)
+    for enabled in (False, True):
+        remember_send_transport(enabled, state)
+        assert send_transport(state) is enabled
+        assert clock_offset_ms(state) == 32
+    for invalid in (None, 0, 1, 'false', []):
+        state.write_text(json.dumps({'send_transport': invalid}))
+        assert send_transport(state) is True

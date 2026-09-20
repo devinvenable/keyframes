@@ -1,9 +1,10 @@
 """Native playback device preferences."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLabel, QPushButton, QVBoxLayout,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLabel, QPushButton, QVBoxLayout,
 )
 from . import devices as hardware
+from . import appstate
 
 
 class DeviceDialog(QDialog):
@@ -22,6 +23,10 @@ class DeviceDialog(QDialog):
         self.audio = QComboBox()
         form.addRow('MIDI output', self.midi)
         form.addRow('Audio output', self.audio)
+        self.send_transport = QCheckBox('Send MIDI Start/Stop')
+        self.send_transport.setChecked(devices.send_transport)
+        self.send_transport.setToolTip('Turn off to send clock ticks only and trigger your gear manually.')
+        form.addRow(self.send_transport)
         layout.addLayout(form)
         self.refresh_button = QPushButton('Refresh devices')
         self.refresh_button.clicked.connect(self.refresh_devices)
@@ -76,4 +81,6 @@ class DeviceDialog(QDialog):
 
     def accept(self):
         self.devices.choose(self.midi.currentData(), self.audio.currentData())
+        self.devices.send_transport = self.send_transport.isChecked()
+        appstate.remember_send_transport(self.devices.send_transport)
         super().accept()

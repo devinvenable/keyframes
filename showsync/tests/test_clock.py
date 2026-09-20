@@ -195,3 +195,66 @@ def test_offset_survives_skip_restart(offset):
             fake.advance(fake.engine.step())
         ticks = [t - base for t, b in fake.messages if b == CLOCK]
         assert ticks == pytest.approx([maps[song].T(k / 24) - offset / 1000 for k in range(3)])
+
+
+@pytest.mark.parametrize('offset', [32, 250])
+@pytest.mark.parametrize('events', [[], [E(.3, 180, .7)]])
+def test_positive_offset_preserves_startup_indices_and_slave_steps(offset, events):
+    tempo = TempoMap(100, events)
+    fake = Fake([tempo, tempo])
+    fake.engine.clock_offset_ms = offset
+    indices = []
+    def send(byte):
+        fake.messages.append((fake.time, byte))
+        if byte == CLOCK:
+            indices.append(fake.engine._tick)
+    fake.engine.send = send
+    # Initial play, gap -> next song, and restart all reset the slave counter.
+    for epoch, song in [(0, 0), (0, 1), (1, 0)]:
+        fake.p = Position(song, 0, True, epoch=epoch)
+        fake.messages.clear()
+        indices.clear()
+        base = fake.time
+        for _ in range(96):
+            fake.advance(fake.engine.step())
+        ticks = [t - base for t, b in fake.messages if b == CLOCK]
+        expected = [max(0, tempo.T(k / 24) - offset / 1000) for k in range(96)]
+        assert indices == list(range(96))
+        assert ticks == pytest.approx(expected, abs=1e-9)
+        assert ticks[0] == ticks[1] == 0
+        assert fake.engine.dropped_ticks == 0
+        # Model a six-clocks-per-step slave using ONLY received clock counts.
+        slave_steps = [t for count, t in enumerate(ticks) if count % 6 == 0]
+        assert slave_steps == pytest.approx(
+            [max(0, tempo.T(step / 4) - offset / 1000) for step in range(16)], abs=1e-9)
+        fake.p = replace(fake.p, gap=True)
+        fake.advance(fake.engine.step())
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+@pytest.mark.parametrize('close_active', [True, False])
+def test_transport_toggle_message_sequences(enabled, close_active):
+    fake = Fake([TempoMap(100), TempoMap(100)])
+    fake.engine.send_transport = enabled
+    fake.engine.clock_offset_ms = 32
+    expected = []
+    for epoch, song in [(0, 0), (0, 1), (1, 0)]:
+        fake.p = Position(song, 0, True, epoch=epoch)
+        for _ in range(3):
+            fake.advance(fake.engine.step())
+        if expected:
+            expected.append(STOP)
+        expected.extend([START, CLOCK, CLOCK, CLOCK])
+    fake.p = replace(fake.p, playing=False)
+    fake.engine.step()
+    expected.append(STOP)
+    fake.p = replace(fake.p, playing=True)
+    fake.advance(fake.engine.step())
+    fake.engine.step()
+    expected.extend([START, CLOCK, CLOCK])
+    if not close_active:
+        fake.p = replace(fake.p, ended=True)
+        fake.engine.step()
+    fake.engine.close()
+    expected.append(STOP)
+    assert [b for _, b in fake.messages] == (expected if enabled else [b for b in expected if b == CLOCK])

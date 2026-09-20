@@ -28,6 +28,7 @@ class Devices:
         self.audio = audio if self.audio_override else saved['audio']
         self.midi_name = None
         self.audio_index = None
+        self.send_transport = appstate.send_transport()
 
     def resolve(self, ports, outputs):
         self.notice = ''
