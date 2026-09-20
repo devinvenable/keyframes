@@ -84,8 +84,7 @@ def main(argv=None):
         row, message = document.first_problem()
         notice = f"NOT PLAYABLE YET — {f'{row.name}: ' if row else ''}{message}"
     try:
-        from . import dialogs
-        return main_loop(document, start_engines=start_engines, dialogs=dialogs,
+        return main_loop(document, start_engines=start_engines,
                          remember=remember_setlist, autoplay=autoplay,
                          notice=notice)
     except KeyboardInterrupt:

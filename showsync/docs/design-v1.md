@@ -22,7 +22,7 @@ Out of scope (deferred by spec): time-stretching, video playback, video mixing.
                        │            python-rtmidi out:
                        │            0xF8 ticks, Start/Stop
                        ▼
-                  GUI (gui.py, pygame): song / BPM / elapsed / next up
+                  GUI (gui.py, PySide6): song / BPM / elapsed / next up
                   transport: play ▸ pause ⏸ skip ⏭
 ```
 
@@ -298,82 +298,60 @@ positions within file duration.
 
 ---
 
-## 6. GUI
+## 6. GUI — Qt / PySide6 (supersedes the original Pygame UI)
 
-### Framework: **pygame**
+Decision `showsync-qt-pivot` (midi:D5) replaces the keyboard-first Pygame
+interface with a conventional desktop application that David can discover
+without knowing shortcuts. PySide6 supplies LGPL pip wheels and PyInstaller
+support; its larger distribution size is accepted.
 
-Consistent with the locked "same toolchain family as Keyframes" decision and
-this repo's reality: pygame is already a working dependency with a solved
-Windows packaging path (`keyframes/windows/`, `test_windows_packaging.py`),
-and the performance screen is a glanceable dashboard — exactly what pygame
-draws well at trivial cost. tkinter rejected (inconsistent packaging/fonts
-across OSes, ugly at "readable from across the stage" sizes); DearPyGui
-rejected (new heavyweight dependency for four text fields and three buttons).
-The GUI loop runs at ~30 fps in the **main thread** (pygame requirement on
-macOS) and only *reads* published state; audio and clock threads never touch
-pygame.
+A single `QMainWindow` owns a `QStackedWidget` with editor and playback views.
+Standard window chrome supports resize/maximize/close. The menu bar provides:
 
-### Performance screen wireframe
+- File: New Set, Open, Save, Save As, Recent Sets, Quit.
+- Set: Play Set, Pause / Resume, Skip, Restart, Stop, Return to Editor.
+- View: Fullscreen (F11).
+- Help: About.
 
-```
-┌────────────────────────────────────────────────────────────┐
-│  FALL 2026 SET                                   3/5 songs │
-│                                                            │
-│              INTERLUDE (BEATLESS)                          │  ← current song, huge
-│                                                            │
-│        ▶  128.4 BPM  (ramping → 140)                       │  ← live bpm_at(t), huge
-│                                                            │
-│        01:12  ────────●──────────────  -02:48              │  ← elapsed / bar / remaining
-│                                                            │
-│  NEXT:  Fourteen Hundred  (140 BPM)                        │
-│                                                            │
-│      [ SPACE pause ]   [ N skip ]   [ Q quit ]             │
-└────────────────────────────────────────────────────────────┘
-```
+A prominent Play Set button switches from editor to playback. Visible transport
+buttons accompany the large song, live BPM/ramp target, elapsed/remaining,
+progress, state, and next-song readouts. Paused uses amber; lead-in, gap, and
+end-of-set are explicit states. End of set offers Restart and Return to Editor.
+Live restart, early return, and window close ask for confirmation. Stop closes
+the devices and returns to editing. Shortcuts are menu accelerators, never
+primary instructions painted on the dashboard.
 
-- State colour: playing = normal, paused = whole screen dimmed amber (visible
-  peripheral cue), ramp active = BPM shown with target, lead-in (audio before
-  a song's first-beat `offset`) = LEAD-IN.
-- Input: keyboard + click on the big buttons; the setlist path CLI argument is
-  optional — no argument reopens the last-used set (per-user state file) or a
-  new empty one.
-- **Setlist editor (pre-show)**: launching without a playable show opens an
-  editor over a mutable Document instead of the dashboard. Drag-and-drop audio
-  files (pygame `DROPFILE`) or a native picker (stdlib tkinter, withdraw-root
-  so no Tk loop competes with pygame's) add rows: name = filename stem, BPM
-  empty, offset 0. Per-row editing of name/BPM/offset plus one optional tempo
-  ramp (RAMP = end BPM, START = seconds into the file defaulting to the
-  offset, DUR = seconds defaulting to the end of the file), stored as a single
-  ordinary tempo event. Hand-authored maps the controls can't express (hard
-  jumps, several events) show a read-only "custom tempo map (edit in YAML)"
-  badge and pass through saves verbatim. Shift+Up/Down reorder,
-  double-Delete remove. Every edit auto-saves through the ruamel round trip
-  (a pathless new set asks where once, defaulting next to the first audio
-  file). Playback is gated until every row is valid, then SPACE builds the
-  engines (audio/MIDI devices are only claimed for the show itself). YAML
-  stays the storage format — hand edits, gaps, and tempo ramps are respected
-  but never required. The saved file may hold songs without a BPM yet: the
-  Document loader is lenient, while the engine-facing loader stays strict.
-  At END OF SET, E closes the engines and re-enters the editor.
-- **BPM suggestions**: empty rows loaded or added in the editor queue a single
-  background worker. NumPy spectral flux and autocorrelation over up to 90 s
-  of middle-file audio (existing Decoder, 12 kHz mono analysis) search 60–200
-  BPM; near ties prefer 90–180 BPM and the shorter beat period. Weak transient
-  or periodic evidence yields no estimate. The demo ramp returns its dominant
-  140 BPM section, not a reconstructed ramp. Estimates display `~` until
-  Enter/edit, and save as normal BPM numbers without schema changes. Only the
-  main thread applies results, by row identity and only while still empty and
-  untouched. The worker is cancelled and joined before leaving the editor,
-  so analysis never overlaps playback. Sequential decoding may traverse the
-  prefix to reach the middle (the MP3 decoder cannot seek).
-- Tab toggles a setlist panel (kept off the glanceable performance screen):
-  Up/Down select, Shift+Up/Down move a song that has not started yet (any song
-  once the set has ended); refusals show an on-screen notice. The new order is
-  written back to the setlist YAML via a ruamel.yaml round trip, preserving
-  hand-written comments (byte-stable when the order is unchanged).
-- End of set shows a Restart control: R (or its button) restarts from song 1 —
-  Stop was already sent, restart sends Start per §4. Mid-show R requires a
-  second press within 3 s.
+The editor is a `QTableView` adapter over the unchanged `Document`. Columns are
+song, file, BPM, offset, end BPM, ramp start, ramp duration. Native Qt dialogs
+and file drops add audio; Move Up/Down reorder; Remove confirms deletion.
+Cells use a native delegate; the BPM cell shows Queued, animated Analyzing,
+~estimate, or confirmed numeric values. The existing Suggestions worker is
+polled only in the editor, cancelled/joined before starting playback, and never
+replaces a manual BPM. Periodic refresh does not reset an active cell editor.
+
+Document remains lenient, autosaves every edit through the ruamel round trip,
+and gates playback with the first problem's song name. New sets ask for a path
+once; after cancellation, only explicit Save asks again. Save As preserves audio
+references when relocating a set. Custom tempo maps stay read-only in the simple
+ramp cells. A simple ramp defaults to offset → end of file; clearing its duration
+restores that end point. The original frozen demo ramp fixture remains the
+reference for editor-to-engine equivalence.
+
+No-argument CLI launch reads existing `appstate` and opens the editor. Qt
+`QSettings` adds a ten-entry Recent Sets list. The engine factory still belongs
+to CLI wiring. The main-thread QTimer runs every 33 ms and only reads engine
+snapshots; the callback and MIDI thread never call Qt. Transport handlers call
+the existing engine APIs. Shutdown closes the clock (sending Stop), audio,
+and MIDI in that order. Live reorder still uses `AudioEngine.move` and persists
+the resulting order through Document.
+
+Historical rationale: the original Pygame choice reused Keyframes' toolchain
+and packaging, and cheaply drew a glanceable performance dashboard at 30 fps.
+Tkinter was rejected for inconsistent packaging/fonts; DearPyGui added a heavy
+dependency for a small dashboard. That rationale suited display-only use, but
+editing a set exposed an unintended keyboard-first, chromeless workflow. Qt
+supersedes the GUI choice; audio, clock, tempo math, Document, BPM estimator,
+and appstate remain GUI-independent and unchanged by this rewrite.
 
 ---
 
@@ -384,7 +362,7 @@ showsync/
   README.md
   docs/design-v1.md          (this doc)
   requirements.txt           sounddevice, soundfile, av, mido, python-rtmidi,
-                             pygame, PyYAML, numpy
+                             PySide6, PyYAML, ruamel.yaml, numpy
   main.py                    CLI entry: parse args, load setlist, wire engines, run GUI loop
   showsync/
     __init__.py
@@ -393,7 +371,7 @@ showsync/
     audio.py                 Decoder interface (soundfile/PyAV), resampler,
                              ring buffer, OutputStream callback, frame counter
     clock.py                 clock thread, tick scheduling, Start/Stop, transport state
-    gui.py                   pygame screen + input handling
+    gui.py                   Qt window, table adapter, stacked views + input handling
   tests/
     test_setlist.py
     test_tempomap.py
