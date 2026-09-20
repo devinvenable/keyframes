@@ -51,9 +51,14 @@ semantics are unchanged from the previous release.
 | Dropped `songs/neon_undertow_trimmed.wav`; suggestion **~111.9** saved | [02-bpm-suggestion.png](02-bpm-suggestion.png) |
 | Confirmed **112**, Play Set opens playback | [03-playing.png](03-playing.png) |
 | Pause; resume continues playback | [04-paused.png](04-paused.png) |
-| Natural end of the 49.162-second track; Restart and Return visible | [05-end-of-set.png](05-end-of-set.png) |
+| End-of-set view; Restart and Return visible | [05-end-of-set.png](05-end-of-set.png) |
 | Restart button begins at the top (position about 1 second) | [06-restarted.png](06-restarted.png) |
 | Skip reaches end; Return to Editor closes engines | [07-returned-editor.png](07-returned-editor.png) |
+
+The full flow reached the natural end of the 49.162-second track. The first
+end-state screenshot landed one GUI refresh before the label changed; the
+published end-state image was recaptured in a short real-engine Skip check,
+waiting for the displayed End of set label before capturing.
 
 The screenshot runs logged two audio underruns by natural end, and two more
 around restart/skip; they recorded zero dropped MIDI ticks at natural end.
@@ -76,7 +81,11 @@ The earlier full desktop runs saw five Start/Stop pairs instead of the expected
 three, with mixed readings of 143 and 160 BPM. They are **excluded from tempo
 validation**, but their UI assertions all succeeded. The PM confirmed concurrent
 MIDI Through probes during the first run; the second run also contained extra
-transport messages, with no source attribution established. The original
+transport messages. The PM subsequently relayed Devin's identification of a
+hardware echo path: ShowSync → TBOX → slaved KeyStep → KeyStep MIDI OUT →
+TBOX MIDI IN. This explains duplicate clock/transport in system MIDI listeners;
+we did not alter the user's hardware routing or attribute individual recorded
+events to a physical source. The original
 reports and raw events remain in `desktop-run*.json` and `midi-received*.json`;
 their `passed: false` reflects the invalid combined tempo measurement. This
 machine was being used concurrently for other audio/MIDI work.
