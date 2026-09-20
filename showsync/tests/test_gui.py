@@ -160,3 +160,51 @@ def test_no_argument_cli_keeps_existing_appstate_startup(monkeypatch, tmp_path):
     assert captured[0][1]['autoplay'] is False
     assert cli.main([str(path)]) == 0
     assert captured[1][1]['autoplay'] is True
+
+
+def test_live_offset_control_does_not_touch_audio(window_factory, tmp_path):
+    changes = []
+    w = window_factory(document(tmp_path), offset_changed=changes.append)
+    w.play()
+    requested = w.audio._requested
+    w.clock.clock_offset_ms = 0
+    w.offset_spin.setValue(32)
+    assert w.clock.clock_offset_ms == 32
+    assert changes[-1] == 32
+    assert w.audio._requested == requested
+    assert 'Positive = earlier' in w.offset_spin.toolTip()
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication, QDoubleSpinBox
+    def adjust_dialog():
+        dialog = QApplication.activeModalWidget()
+        dialog.findChild(QDoubleSpinBox).setValue(-32)
+        dialog.accept()
+    QTimer.singleShot(0, adjust_dialog)
+    w.offset_action.trigger()
+    assert w.offset_spin.value() == w.clock.clock_offset_ms == -32
+    assert w.audio._requested == requested
+
+
+def test_cli_clock_offset_override_is_temporary(monkeypatch):
+    from showsync import cli
+    from unittest.mock import Mock
+    captured = []
+    save = Mock()
+    engine = Mock()
+    monkeypatch.setattr(cli, 'AudioEngine', Mock())
+    monkeypatch.setattr(cli, 'open_midi_port', Mock())
+    monkeypatch.setattr(cli, 'ClockEngine', engine)
+    monkeypatch.setattr(cli, 'clock_offset_ms', lambda: 17)
+    monkeypatch.setattr(cli, 'last_setlist', lambda: None)
+    monkeypatch.setattr(cli, 'remember_clock_offset', save)
+    monkeypatch.setattr(cli, 'main_loop', lambda doc, **kw: captured.append(kw) or 0)
+    assert cli.main(['--clock-offset', '32']) == 0
+    assert captured[-1]['clock_offset_ms'] == 32
+    captured[-1]['offset_changed'](33)
+    save.assert_not_called()
+    captured[-1]['start_engines'](None)
+    assert engine.call_args.kwargs['clock_offset_ms'] == 33
+    assert cli.main([]) == 0
+    assert captured[-1]['clock_offset_ms'] == 17
+    captured[-1]['offset_changed'](-12)
+    save.assert_called_once_with(-12)

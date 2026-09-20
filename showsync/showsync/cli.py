@@ -2,8 +2,9 @@
 import argparse
 import gc
 import logging
+import math
 
-from .appstate import last_setlist, remember_setlist
+from .appstate import last_setlist, remember_setlist, clock_offset_ms, remember_clock_offset
 from .audio import AudioEngine
 from .clock import ClockEngine, open_midi_port
 from .document import Document
@@ -19,7 +20,20 @@ def main(argv=None):
     parser.add_argument('--midi-port', help='MIDI output index or exact name')
     parser.add_argument('--list-devices', action='store_true')
     parser.add_argument('--freeze-gc', action='store_true', help='Freeze startup objects to reduce GC timing pauses')
+    parser.add_argument('--clock-offset', type=float, metavar='MS',
+                        help='MIDI clock offset (-250..250 ms); positive = earlier ticks; this run only')
     args = parser.parse_args(argv)
+    if args.clock_offset is not None and (not math.isfinite(args.clock_offset) or
+                                          not -250 <= args.clock_offset <= 250):
+        parser.error('--clock-offset must be between -250 and 250 ms')
+    offset = clock_offset_ms() if args.clock_offset is None else args.clock_offset
+
+    def change_offset(value):
+        nonlocal offset
+        offset = value
+        if args.clock_offset is None:
+            remember_clock_offset(value)
+
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     if args.list_devices:
         import sounddevice as sd
@@ -41,7 +55,8 @@ def main(argv=None):
                 audio.prepare()
                 gc.freeze()
                 frozen = True
-            clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]))
+            clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]),
+                                clock_offset_ms=offset)
             clock.start()
             audio.start()
         except Exception:
@@ -86,7 +101,8 @@ def main(argv=None):
     try:
         return main_loop(document, start_engines=start_engines,
                          remember=remember_setlist, autoplay=autoplay,
-                         notice=notice)
+                         notice=notice, clock_offset_ms=offset,
+                         offset_changed=change_offset)
     except KeyboardInterrupt:
         return 0
     except Exception as exc:

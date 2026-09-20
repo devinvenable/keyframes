@@ -36,6 +36,10 @@ def render(path, seconds, bpm_of_t):
 
 def main(directory=HERE):
     render(directory / "demo-100.wav", 40, lambda t: 100.0)
+    # A calibration lead-in allows advancing even tick zero by up to 250 ms.
+    samples, rate = sf.read(directory / "demo-100.wav", always_2d=True)
+    sf.write(directory / "click-test.wav",
+             np.concatenate([np.zeros((RATE // 2, 2)), samples]), rate)
     # 10s at 120, then linear ramp to 140 over 20s, then 140 to the end
     render(
         directory / "demo-ramp.wav",

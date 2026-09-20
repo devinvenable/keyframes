@@ -119,7 +119,7 @@ def test_add_remove_reorder_and_offset_removal(tmp_path):
     assert 'offset: 2' in path.read_text(encoding='utf-8')
     document.rows[1].offset = 0.0
     document.save()
-    assert 'offset' not in path.read_text(encoding='utf-8')
+    assert 'offset:' not in path.read_text(encoding='utf-8')
 
 
 def test_save_new_set_writes_portable_paths(tmp_path):

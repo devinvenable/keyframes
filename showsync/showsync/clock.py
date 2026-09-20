@@ -9,9 +9,10 @@ CLOCK, START, STOP = 0xF8, 0xFA, 0xFC
 
 
 class ClockEngine:
-    def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep):
+    def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep, clock_offset_ms=0):
         self.maps, self.position, self.send = maps, position, send
         self.now, self.sleep = now, sleep
+        self.clock_offset_ms = clock_offset_ms
         self._key = None
         self._active = False
         self._tick = 0
@@ -31,22 +32,24 @@ class ClockEngine:
         if not p.playing or p.ended:
             return .001
         tempo = self.maps[p.song_index]
+        # Snapshot once: positive compensation advances MIDI, never audio.
+        clock_time = p.song_time + self.clock_offset_ms / 1000.0
         if not self._active:
             self.send(START)
             self._active = True
             self._key = key
-            self._tick = max(0, math.ceil(tempo.B(p.song_time) * 24 - 1e-8))
+            self._tick = max(0, math.ceil(tempo.B(max(0.0, clock_time)) * 24 - 1e-8))
         target = tempo.T(self._tick / 24)
-        remaining = target - p.song_time
+        remaining = target - clock_time
         if remaining <= 1e-9:
             # Do not emit a burst of stale ticks after an OS stall. Absolute phase
             # is retained; diagnostic count makes missed clocks visible.
-            latest = max(self._tick, math.floor(tempo.B(p.song_time) * 24 + 1e-8))
+            latest = max(self._tick, math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8))
             self.dropped_ticks += latest - self._tick
             self._tick = latest
             self.send(CLOCK)
             self._tick += 1
-            remaining = tempo.T(self._tick / 24) - p.song_time
+            remaining = tempo.T(self._tick / 24) - clock_time
         return max(0, remaining)
 
     def _run(self):

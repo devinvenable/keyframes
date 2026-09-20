@@ -7,7 +7,8 @@ import time
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QHeaderView, QHBoxLayout, QLabel,
+    QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QHeaderView, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMessageBox, QProgressBar, QPushButton,
     QStackedWidget, QStyledItemDelegate, QTableView, QVBoxLayout, QWidget,
 )
@@ -183,13 +184,16 @@ class SongDelegate(QStyledItemDelegate):
 
 class MainWindow(QMainWindow):
     def __init__(self, document, *, start_engines, dialogs=None, remember=None,
-                 estimator=estimate_bpm, settings=None, notice=''):
+                 estimator=estimate_bpm, settings=None, notice='',
+                 clock_offset_ms=0, offset_changed=None):
         super().__init__()
         if dialogs is None:
             from .dialogs import Dialogs
             dialogs = Dialogs(self)
         self.dialogs, self.remember = dialogs, remember
         self.document, self.start_engines = document, start_engines
+        self.clock_offset_ms = clock_offset_ms
+        self.offset_changed = offset_changed
         self.estimator = estimator
         self.suggestions = Suggestions(estimator)
         self.settings = settings if settings is not None else QSettings('ShowSync', 'ShowSync')
@@ -297,7 +301,48 @@ class MainWindow(QMainWindow):
         self.stop_button = self.button('Stop', self.stop, controls)
         self.editor_button = self.button('Return to Editor', self.return_to_editor, controls)
         layout.addLayout(controls)
+        offset_row = QHBoxLayout()
+        offset_row.addWidget(QLabel('MIDI clock offset (ms)'))
+        self.offset_spin = self.make_offset_spin()
+        offset_row.addWidget(self.offset_spin)
+        self.button('−10 ms', lambda: self.offset_spin.setValue(self.clock_offset_ms - 10), offset_row)
+        self.button('+10 ms', lambda: self.offset_spin.setValue(self.clock_offset_ms + 10), offset_row)
+        layout.addLayout(offset_row)
+        layout.addWidget(QLabel('Increase if gear sounds late; decrease if gear sounds early.'))
         self.stack.addWidget(self.playback)
+
+    def make_offset_spin(self):
+        spin = QDoubleSpinBox()
+        spin.setRange(-250, 250)
+        spin.setDecimals(1)
+        spin.setSingleStep(1)
+        spin.setValue(self.clock_offset_ms)
+        spin.setToolTip('Positive = earlier MIDI ticks; negative = later. Live while playing.')
+        spin.valueChanged.connect(self.set_clock_offset)
+        return spin
+
+    def set_clock_offset(self, value):
+        self.clock_offset_ms = value
+        if self.clock is not None:
+            self.clock.clock_offset_ms = value
+        self.offset_spin.blockSignals(True)
+        self.offset_spin.setValue(value)
+        self.offset_spin.blockSignals(False)
+        if self.offset_changed:
+            self.offset_changed(value)
+
+    def clock_preferences(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('MIDI clock offset (ms)')
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel('Positive = earlier ticks; negative = later.\n'
+                               'Increase if gear sounds late; decrease if gear sounds early.\n'
+                               'Changes apply live. Use arrows for 1 ms; Ctrl+arrows for 10 ms.'))
+        layout.addWidget(self.make_offset_spin())
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     def action(self, menu, text, callback, shortcut=None):
         action = QAction(text, self)
@@ -317,6 +362,7 @@ class MainWindow(QMainWindow):
         self.recent_menu.aboutToShow.connect(self.populate_recents)
         file_menu.addSeparator()
         self.action(file_menu, '&Quit', self.close, 'Ctrl+Q')
+        self.offset_action = self.action(file_menu, 'MIDI clock offset…', self.clock_preferences)
         set_menu = self.menuBar().addMenu('&Set')
         self.play_action = self.action(set_menu, '&Play Set', self.play)
         self.pause_action = self.action(set_menu, 'Pause / Resume', self.pause, 'Space')
@@ -686,10 +732,12 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
-def main_loop(document, *, start_engines, dialogs=None, remember=None, autoplay=False, notice=''):
+def main_loop(document, *, start_engines, dialogs=None, remember=None, autoplay=False, notice='',
+              clock_offset_ms=0, offset_changed=None):
     app = QApplication.instance() or QApplication([])
     window = MainWindow(document, start_engines=start_engines, dialogs=dialogs,
-                        remember=remember, notice=notice)
+                        remember=remember, notice=notice, clock_offset_ms=clock_offset_ms,
+                        offset_changed=offset_changed)
     window.show()
     if autoplay:
         QTimer.singleShot(0, window.play)

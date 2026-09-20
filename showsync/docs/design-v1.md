@@ -210,7 +210,7 @@ The tempo map gives `B(t)` (beats at song-time *t*) and its inverse `T(b)`
 
 ```
 loop:
-    t_now   = current song time (from published frame counter, §3)
+    t_now   = current song time (from published frame counter, §3) + clock_offset_ms / 1000
     k_next  = next undelivered tick index
     t_tick  = T(k_next / 24)
     dt      = t_tick - t_now
@@ -223,6 +223,30 @@ Because every tick is scheduled from the **absolute** beat index against the
 **absolute** audio position, errors never accumulate: a late tick does not
 push later ticks; drift is structurally impossible. Ramps need no special
 casing — `T(b)` just returns non-uniform tick spacing through the ramp.
+
+### Live rig compensation
+
+A Linux monitor/loopback probe measured MIDI ticks about 32 ms behind audio,
+including before the Qt migration. Reported output latency does not model the
+whole rig. `clock_offset_ms` (−250..+250, default 0) shifts only the clock's
+snapshot of song time: tick k is due at `T(k/24) - clock_offset_ms/1000`.
+Positive means earlier MIDI: **increase if gear sounds late; decrease if gear
+sounds early**. Audio frames, tempo maps, transport epochs, Start and Stop
+remain unchanged. One scalar snapshot is read per scheduler iteration; its
+10 ms sleep cap bounds reaction time. Positive jumps use the existing stale
+tick dropping rule (no burst); negative jumps wait on the next absolute tick.
+The adjusted position may be negative at startup: beat lookup clamps to zero,
+but deadline comparisons retain the signed time so delayed tick zero waits.
+Clocks due before transport starts cannot be emitted; use a lead-in longer
+than positive compensation when the first beat must retain exact phase.
+
+Playback and File-menu controls update live, with 1 ms fine and 10 ms coarse
+steps. The rig preference is merged into appstate `state.json` independently
+of the last-setlist pointer. `--clock-offset MS` overrides it without persisting
+changes during that run. Skip/restart and new engine creation retain the
+session value. Tune by ear with `demo/click-test.yaml` (generated audio has
+500 ms silent lead-in), comparing external gear to the clicks; +32 ms is the
+motivating Linux example, not a universal default.
 
 ### Threading model
 
@@ -431,7 +455,7 @@ Each phase is one agent-sized task, independently verifiable:
 | Risk | Mitigation |
 |---|---|
 | **Python timing jitter on MIDI clock** (GC, scheduler, Windows timer) | Ticks scheduled against absolute beat index × audio frame counter (no cumulative error); sleep-to-2ms-then-spin; thread priority raise; optional `gc.freeze`; measured, not assumed, via the jitter harness (phase 3/5 gates on σ < 0.5 ms). Residual risk: a pathologically loaded machine — mitigated operationally (dedicated performance laptop). |
-| **Cross-platform audio latency differences** | Latency shifts *audio* relative to the room, but clock and audio share the frame counter so they cannot separate — the sync contract survives any latency. Output latency is also reported by PortAudio and subtracted when publishing position, keeping MIDI aligned with what's *audible*, not what's queued. `--audio-device` + `latency='low'` for tuning per machine. |
+| **Cross-platform audio latency differences** | The shared frame counter prevents drift, but a constant rig-specific phase offset can remain; the live MIDI clock offset compensates it. Output latency is also reported by PortAudio and subtracted when publishing position, keeping MIDI aligned with what's *audible*, not what's queued. `--audio-device` + `latency='low'` for tuning per machine. |
 | **Gapless across different sample rates** | Single never-closed 48 kHz stream; per-song resampling at decode time; next-song prefetch so the boundary is a pointer swap. |
 | **m4a decoder dependency (PyAV) packaging** | PyAV ships bundled-FFmpeg wheels for all three OSes; isolated behind the `Decoder` interface so it can be swapped (or m4a re-exported as flac) without touching the engine. |
 | **No SPP: gear restarts patterns on resume** | Documented v1 semantic (decision midi:D2 excludes SPP); pause is a show-stop anyway. Revisit SPP in v2 if it bites in rehearsal. |

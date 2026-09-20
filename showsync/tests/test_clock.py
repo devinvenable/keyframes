@@ -149,3 +149,49 @@ def test_lead_in_sends_start_but_no_ticks_until_offset():
     assert ticks[0] == pytest.approx(2.0)
     assert min(ticks) >= 2.0
     assert ticks[1] - ticks[0] == pytest.approx(60 / 120 / 24)
+
+
+@pytest.mark.parametrize('offset', [-250, -32, 32, 250])
+@pytest.mark.parametrize('events', [[], [E(.5, 180, 1)]])
+def test_clock_offset_shifts_ticks_exactly(offset, events):
+    tempo = TempoMap(120, events, offset=.5)
+    fake = Fake([tempo])
+    fake.engine.clock_offset_ms = offset
+    while len([b for _, b in fake.messages if b == CLOCK]) < 80:
+        fake.advance(fake.engine.step())
+    ticks = [t for t, b in fake.messages if b == CLOCK]
+    assert ticks == pytest.approx([tempo.T(k / 24) - offset / 1000 for k in range(80)], abs=1e-9)
+
+
+@pytest.mark.parametrize('offset', [-32, 32])
+def test_live_offset_keeps_transport_and_absolute_phase(offset):
+    tempo = TempoMap(120)
+    fake = Fake([tempo])
+    for _ in range(48):
+        fake.advance(fake.engine.step())
+    before = fake.p
+    fake.engine.clock_offset_ms = offset
+    for _ in range(30):
+        fake.advance(fake.engine.step())
+    assert fake.p.epoch == before.epoch
+    assert [b for _, b in fake.messages if b != CLOCK] == [START]
+    ticks = [t for t, b in fake.messages if b == CLOCK][-20:]
+    # Settled timestamps are on the shifted absolute grid, including after drops.
+    assert [(t + offset / 1000) * 48 for t in ticks] == pytest.approx(
+        [round((t + offset / 1000) * 48) for t in ticks], abs=1e-8)
+    assert fake.engine.dropped_ticks == (1 if offset > 0 else 0)
+
+
+@pytest.mark.parametrize('offset', [-32, 32])
+def test_offset_survives_skip_restart(offset):
+    maps = [TempoMap(120, offset=.5), TempoMap(90, offset=.5)]
+    fake = Fake(maps)
+    fake.engine.clock_offset_ms = offset
+    for epoch, song in enumerate([0, 1, 0]):
+        fake.p = Position(song, 0, True, epoch=epoch)
+        fake.messages.clear()
+        base = fake.time
+        for _ in range(4):
+            fake.advance(fake.engine.step())
+        ticks = [t - base for t, b in fake.messages if b == CLOCK]
+        assert ticks == pytest.approx([maps[song].T(k / 24) - offset / 1000 for k in range(3)])

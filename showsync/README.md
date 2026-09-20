@@ -164,3 +164,28 @@ A short runnable five-codec demo is `tests/fixtures/smoke.yaml`. Optional
 `--freeze-gc` on the main CLI and jitter harness freezes startup objects to
 reduce garbage-collector pauses; measure on the target machine before relying
 on it. It does not provide real-time scheduling guarantees.
+
+### Tune MIDI clock timing for your rig
+
+A Linux phase measurement found MIDI about **32 ms later** than the audible
+clicks, consistently across the older and Qt versions. PortAudio's reported
+latency cannot account for the entire audio and downstream MIDI/gear path.
+
+Run `python demo/make_demo.py`, then play `demo/click-test.yaml`. Enable a
+repeating beat on your external gear and adjust **MIDI clock offset (ms)** in
+the playback view until it lands on the clicks. **Increase if gear sounds
+late; decrease if gear sounds early.** Positive values send ticks earlier;
+negative values send them later. For the measured Linux rig, try **+32 ms**.
+Use the spinbox for 1 ms steps or the ±10 ms buttons for coarse tuning.
+The same live control is available under **File → MIDI clock offset…**.
+
+The range is −250 to +250 ms, default 0. Changes apply immediately while
+playing, without restarting transport or changing the audio. Large increases
+can skip stale ticks; decreases briefly wait before continuing at the new
+phase. Tune before the performance. The click test includes a 500 ms silent
+lead-in so even positive offsets can advance its very first tick. Without
+sufficient lead-in, clocks due before playback starts cannot be sent.
+
+The offset is saved per machine in ShowSync's existing `state.json`, separate
+from setlists. `--clock-offset 32` overrides it for one run; adjustments during
+that overridden run also remain temporary. Restarting or skipping retains it.

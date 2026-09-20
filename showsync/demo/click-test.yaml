@@ -1,0 +1,7 @@
+title: MIDI clock calibration
+audio_root: .
+songs:
+  - name: 100 BPM calibration clicks
+    file: click-test.wav
+    bpm: 100
+    offset: 0.5  # silent lead-in lets positive compensation advance tick zero

@@ -2,3 +2,4 @@
 .hypothesis/
 .pytest_cache/
 demo/demo-*.wav
+demo/click-test.wav
