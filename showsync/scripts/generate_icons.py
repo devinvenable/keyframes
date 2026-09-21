@@ -14,7 +14,8 @@ def main():
         raise SystemExit('Install ImageMagick to regenerate icons.')
     for size in SIZES:
         subprocess.run([convert, '-background', 'none', '-density', '384',
-                        'MSVG:' + str(ROOT / 'showsync.svg'), '-resize', f'{size}x{size}',
+                        'MSVG:' + str(ROOT / 'showsync.svg'), '-resize', f'{size}x{size}', '-strip',
+                        '-define', 'png:exclude-chunks=date,time',
                         str(ROOT / f'showsync-{size}.png')], check=True)
     subprocess.run([convert, *(str(ROOT / f'showsync-{s}.png') for s in SIZES if s <= 256),
                     str(ROOT / 'showsync.ico')], check=True)
