@@ -3,18 +3,6 @@ title: "showsync live demo"
 # so gear locked to the MIDI clock should land audibly on the clicks.
 audio_root: .
 songs:
-  - name: "Hundred"          # steady 100 BPM, 40s
-    file: demo-100.wav
-    bpm: 100
-
-  - name: "Ramp Up"          # 120 for 10s, then linear ramp to 140 over 20s
-    file: demo-ramp.wav
-    bpm: 120
-    tempo:
-      - at: 10.0
-        bpm: 140
-        ramp: 20.0
-
-  - name: "One Forty"        # steady 140 BPM, 30s
-    file: demo-140.wav
-    bpm: 140
+  - name: neon_undertow
+    file: /home/devin/src/2026/retr0/assets/sounds/neon_undertow.mp3
+    bpm: 112

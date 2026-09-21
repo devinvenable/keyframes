@@ -38,3 +38,6 @@ decision_trees/
 knowledge-graph.db
 icon.png
 songs/
+# Keyframes runtime media when launched from repo root
+/images/
+/mapping.json
