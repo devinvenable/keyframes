@@ -203,4 +203,5 @@ def test_pending_replacement_protects_manual_edit_and_persists_gate(qtbot, windo
     release.set()
     qtbot.waitUntil(lambda: row.timing_review == 'review')
     assert row.bpm == 125 and row.offset == .3
+    assert not row.bpm_estimated and not Document.load(doc.path).rows[0].bpm_estimated
     assert w.suggestions.detected[id(row)] == BeatGrid(112.371234567, .237891234)
