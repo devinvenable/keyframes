@@ -137,6 +137,40 @@ def test_ramp_is_not_misrepresented_as_a_constant_grid(demos):
     assert estimate_grid(demos / 'demo-ramp.wav') is None
 
 
+def test_cropped_first_attack_fits_in_wav_and_mp3():
+    # Same 120 BPM signal cut 15 ms into a kick, generated independently of
+    # the detector by scripts/make_cropped_beat_fixtures.py. The fitted first
+    # pulse precedes the file by less than one MIDI tick in both containers.
+    fixtures = Path(__file__).parent / 'fixtures'
+    grids = [estimate_grid(fixtures / f'cropped-beat.{ext}')
+             for ext in ('wav', 'mp3')]
+    for grid in grids:
+        assert grid is not None
+        assert grid.bpm == pytest.approx(120, abs=.01)
+        assert grid.offset == 0
+    assert grids[0].bpm == pytest.approx(grids[1].bpm, abs=.01)
+
+
+def test_cropped_attack_tolerance_scales_with_clock_tick():
+    from showsync.bpmdetect import _fit
+
+    for period in (.31, .5, .9):
+        # The first observed onset is the clipped tail at t=0; the remaining
+        # onsets establish a pulse just before the cut. Keep all rhythm checks
+        # satisfied while straddling the single-tick boundary (1/24 beat).
+        for cut, accepted in [(.035, True), (.047, False)]:
+            times = (np.arange(32) - cut) * period
+            times[0] = 0
+            weights = np.ones(32)
+            weights[0] = .2
+            result = _fit(times, weights, 1 / period, lambda: None)
+            if accepted:
+                assert result is not None
+                assert result[1].offset == 0
+            else:
+                assert result is None
+
+
 def rhythmic_file(path, bpm, offset, seconds=240, *, busy=False, rate=48000):
     """Known beat times independent of the detector and playback tempo map."""
     rng = np.random.default_rng(89)

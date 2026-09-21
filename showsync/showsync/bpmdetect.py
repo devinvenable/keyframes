@@ -158,7 +158,10 @@ def _fit(times, weights, frequency, check):
     if len(supported) / (supported[-1] - supported[0] + 1) < .45:
         return None
     first = offset + supported[0] * period
-    if first < -period * .025:
+    # A file trimmed into its first attack can place the fitted pulse just
+    # before zero. Allow at most one MIDI clock tick of boundary uncertainty;
+    # the full-span rhythm and residual checks above still have to pass.
+    if first < -period / 24:
         return None
     return float(score), BeatGrid(float(60 / period), float(max(0, first)))
 
