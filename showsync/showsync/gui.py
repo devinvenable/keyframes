@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from .bpmdetect import BeatGrid, Suggestions, estimate_grid
 from .document import Document
+from .identity import application_arguments, configure_identity
 from .tempomap import TempoEvent
 
 FIELDS = ('name', 'file', 'bpm', 'offset', 'ramp', 'start', 'dur', 'restart')
@@ -290,7 +291,7 @@ class MainWindow(QMainWindow):
         self.save_declined = self.dirty = False
         self._saving = False
         self.baseline = []
-        self.setWindowTitle('ShowSync')
+        self.setWindowIcon(configure_identity())
         self.resize(1120, 700)
         self.setMinimumSize(760, 520)
         self.setAcceptDrops(True)
@@ -500,7 +501,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message)
 
     def update_title(self):
-        self.setWindowTitle(f'{self.document.display_title}{" *" if self.dirty else ""} — ShowSync')
+        self.setWindowTitle(f'{self.document.display_title}{" *" if self.dirty else ""} — showsync')
 
     def record_path(self):
         if self.remember:
@@ -935,7 +936,7 @@ class MainWindow(QMainWindow):
 
 def main_loop(document, *, start_engines, dialogs=None, remember=None, notice='',
               clock_offset_ms=0, offset_changed=None, devices=None):
-    app = QApplication.instance() or QApplication([])
+    app = QApplication.instance() or QApplication(application_arguments())
     window = MainWindow(document, start_engines=start_engines, dialogs=dialogs,
                         remember=remember, notice=notice, clock_offset_ms=clock_offset_ms,
                         offset_changed=offset_changed, devices=devices)

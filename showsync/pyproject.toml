@@ -17,3 +17,6 @@ dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.packages.find]
 include = ["showsync*"]
+
+[tool.setuptools.package-data]
+showsync = ["icons/*.png", "icons/*.svg", "icons/*.ico"]
