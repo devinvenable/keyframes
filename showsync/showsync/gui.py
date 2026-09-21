@@ -165,6 +165,8 @@ class SongModel(QAbstractTableModel):
         except ValueError as exc:
             self.window.notice(str(exc))
             return False
+        if field in ('bpm', 'offset') and row.timing_review and row.bpm is not None:
+            self.window.suggestions.confirm_timing(row)
         self.dataChanged.emit(self.index(index.row(), 0), self.index(index.row(), 6))
         self.window.changed()
         return True
@@ -346,15 +348,15 @@ class MainWindow(QMainWindow):
             self.table.setColumnWidth(col, width)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.selectionModel().currentChanged.connect(self.show_row_problem)
-        layout.addWidget(self.table, 1)
         self.row_notice = QLabel('')
         self.row_notice.setWordWrap(True)
         layout.addWidget(self.row_notice)
         review = QHBoxLayout()
         self.use_timing_button = self.button('Use detected timing', lambda: self.resolve_timing(True), review)
-        self.keep_timing_button = self.button('Confirm current timing', lambda: self.resolve_timing(False), review)
+        self.keep_timing_button = self.button('Keep current timing', lambda: self.resolve_timing(False), review)
         review.addStretch()
         layout.addLayout(review)
+        layout.addWidget(self.table, 1)
         layout.addWidget(QLabel('Drop one file on a row to replace it; drop below the rows to append songs.'))
         layout.addWidget(QLabel('Double-click a cell to edit. Changes save automatically.'))
         self.stack.addWidget(self.editor)
@@ -677,7 +679,7 @@ class MainWindow(QMainWindow):
         if self.audio is not None or index < 0:
             return
         row = self.document.rows[index]
-        if not row.timing_review or id(row) in self.suggestions.replacements:
+        if not row.timing_review:
             return
         value = self.suggestions.detected.get(id(row))
         if use_detected:
@@ -689,9 +691,7 @@ class MainWindow(QMainWindow):
         if row.bpm is None:
             self.notice('Enter a BPM before confirming timing.')
             return
-        row.timing_review = ''
-        row.offset_explicit = True
-        self.suggestions.manual(row)
+        self.suggestions.confirm_timing(row)
         self.changed()
         self.refresh()
 
@@ -725,8 +725,7 @@ class MainWindow(QMainWindow):
     def show_row_problem(self, *args):
         index = self.table.currentIndex().row()
         self.replace_button.setEnabled(self.audio is None and index >= 0)
-        self.use_timing_button.setVisible(False)
-        self.keep_timing_button.setVisible(False)
+        show_detected = show_keep = False
         if 0 <= index < len(self.document.rows):
             row = self.document.rows[index]
             message = row.problem() or (CUSTOM_TEMPO if row.custom_tempo else '')
@@ -744,14 +743,18 @@ class MainWindow(QMainWindow):
                     message += f' Detected BPM: {bpm:.9g}'
                     if isinstance(value, BeatGrid):
                         message += f'; offset: {value.offset:.9g}s'
-                    message += '. Confirm current values or use detected timing.'
+                    message += '. Use detected timing, Keep current timing, or edit BPM/offset.'
                 elif not pending:
-                    message += ' No estimate — enter/check BPM and offset, then confirm current timing.'
-                self.use_timing_button.setVisible(not pending and value is not None)
-                self.keep_timing_button.setVisible(not pending)
+                    message += ' No estimate — Keep current timing or edit BPM/offset.'
+                else:
+                    message += ' Keep current timing or edit BPM/offset to finish review now.'
+                show_detected = not pending and value is not None
+                show_keep = True
             self.row_notice.setText(f'{row.name}: {message}' if message else '')
         else:
             self.row_notice.clear()
+        self.use_timing_button.setVisible(show_detected)
+        self.keep_timing_button.setVisible(show_keep)
 
     def play(self):
         if self.audio is not None:
@@ -759,6 +762,15 @@ class MainWindow(QMainWindow):
         blocked = self.document.first_problem()
         if blocked:
             row, message = blocked
+            if row is not None:
+                index = next(i for i, item in enumerate(self.document.rows) if item is row)
+                self.table.selectRow(index)
+                self.table.scrollTo(self.model.index(index, 0))
+                self.show_row_problem()
+                if row.timing_review:
+                    message = self.row_notice.text()
+                    self.notice(f'Cannot play — {message}')
+                    return
             self.notice(f'Cannot play — {row.name + ": " if row else ""}{message}')
             return
         self.prepare_devices()
