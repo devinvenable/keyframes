@@ -1,4 +1,7 @@
-# Continuous MIDI clock — T93 verification
+# Continuous MIDI clock — T93 verification (superseded)
+
+Historical record: live hardware acceptance failed on 2026-09-21. T104
+replaces this behavior with [bar-complete Stop/Start boundaries](bar-boundary-verification.md).
 
 From `showsync/`, with the project virtualenv and `QT_QPA_PLATFORM=offscreen`:
 
@@ -58,11 +61,10 @@ no collection/import/runtime errors counted as evidence.
 
 Session logs: `/tmp/midi-93-mutations-78n_d0p6/` (temporary local artifacts).
 
-## Hardware acceptance still pending
+## Historical hardware acceptance plan (failed)
 
 Devin will verify `three-song-set.yaml` on the live rig: one Start/Stop pair
 for the set, uninterrupted KeyStep patterns through both interlude boundaries,
 and an intentional reset only when requested. These automated results do not
-establish physical MIDI jitter or the rig's audible phase tolerance. The
-[design](design-v1.md#continuous-handover-and-beatbar-position) documents the
-half-beat tradeoff, rate-limited recovery, and manual-restart escape hatch.
+establish physical MIDI jitter or the rig's audible phase tolerance. This acceptance plan failed on differing-BPM song starts; use the T104
+verification plan linked above for the current behavior.

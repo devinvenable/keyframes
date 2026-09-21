@@ -29,30 +29,23 @@ def edit(qtbot, window, row, column, value):
     QApplication.processEvents()
 
 
-def test_restart_checkbox_autosaves_custom_map_and_preserves_comments(qtbot, window_factory, tmp_path):
-    target = tmp_path / 'restart.yaml'
+@pytest.mark.parametrize('legacy', ['true', 'false'])
+def test_legacy_restart_is_inert_and_roundtrips_without_checkbox(window_factory, tmp_path, legacy):
+    target = tmp_path / 'legacy.yaml'
     text = (f'title: "Keep quotes"\nsongs:\n  - name: Pattern\n    file: {TONE}\n'
-            '    bpm: 120\n    restart: false  # intentional choice\n'
+            f'    bpm: 120\n    restart: {legacy}  # old choice\n'
             '    tempo:\n      - at: 0.1  # custom jump\n        bpm: 140\n')
     target.write_text(text)
     doc = Document.load(target)
     doc.save()
     assert target.read_text() == text
     w = window_factory(doc)
-    index = w.model.index(0, 7)
-    assert index.data(Qt.CheckStateRole) == Qt.Unchecked
-    assert w.model.flags(index) & Qt.ItemIsUserCheckable
-    w.table.setCurrentIndex(index)
-    qtbot.keyClick(w.table, Qt.Key_Space)
-    assert index.data(Qt.CheckStateRole) == Qt.Checked
-    assert load_setlist(target).songs[0].restart is True
-    assert doc.setlist().songs[0].restart is True
-    saved = target.read_text()
-    assert 'restart: true' in saved and '# intentional choice' in saved
-    assert '# custom jump' in saved and '"Keep quotes"' in saved
-    qtbot.keyClick(w.table, Qt.Key_Space)
-    assert Document.load(target).rows[0].restart is False
-    assert target.read_text() == text
+    assert w.model.columnCount() == 7
+    assert not hasattr(doc.rows[0], 'restart')
+    assert not hasattr(doc.setlist().songs[0], 'restart')
+    assert not hasattr(load_setlist(target).songs[0], 'restart')
+    assert all(not w.model.flags(w.model.index(0, c)) & Qt.ItemIsUserCheckable
+               for c in range(w.model.columnCount()))
 
 
 def drop(window, paths):

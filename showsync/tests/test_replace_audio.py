@@ -81,7 +81,7 @@ songs:
     qtbot.waitUntil(lambda: not row.timing_review)
     assert doc.rows[1] is row and [r.name for r in doc.rows] == ['Before', 'Custom name', 'After']
     assert row.file == replacement and row.duration == 1
-    assert row.tempo == (TempoEvent(.4, 140, .5),) and row.restart and row.gap == 2
+    assert row.tempo == (TempoEvent(.4, 140, .5),) and row.gap == 2
     assert calls == [replacement]
     assert row.bpm == grid.bpm and row.offset == grid.offset
     loaded = Document.load(target).rows[1]

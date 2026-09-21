@@ -43,7 +43,6 @@ class Row:
     source_index: int | None = None  # position in the songs list on disk; None = unsaved
 
     offset_explicit: bool = False  # editor intent, including an explicitly entered zero
-    restart: bool = False
     bpm_estimated: bool = False
     timing_review: str = ''
 
@@ -61,8 +60,7 @@ class Row:
         return None
 
     def song(self):
-        return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset,
-                    self.restart)
+        return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset)
 
     @property
     def custom_tempo(self):
@@ -214,8 +212,6 @@ class Document:
                         entry['file'] = self._portable(row.file, root)
                 self._set_number(entry, "bpm", row.bpm)
                 self._set_number(entry, "offset", row.offset if row.offset_explicit else row.offset or None)
-                if entry.get("restart", False) != row.restart:
-                    entry["restart"] = row.restart
                 self._sync_tempo(entry, row.tempo)
                 metadata = dict(bpm_estimated=row.bpm_estimated,
                                 offset_estimated=bool(row.offset and not row.offset_explicit),
