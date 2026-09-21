@@ -18,9 +18,8 @@ from .document import Document
 from .identity import application_arguments, configure_identity
 from .tempomap import TempoEvent
 
-FIELDS = ('name', 'file', 'bpm', 'offset', 'ramp', 'start', 'dur', 'restart')
-HEADERS = ('Song', 'File', 'BPM', 'Offset (s)', 'End BPM', 'Ramp start (s)', 'Ramp duration (s)',
-           'Restart patterns')
+FIELDS = ('name', 'file', 'bpm', 'offset', 'ramp', 'start', 'dur')
+HEADERS = ('Song', 'File', 'BPM', 'Offset (s)', 'End BPM', 'Ramp start (s)', 'Ramp duration (s)')
 EMPTY_HINT = 'Drop audio files here, or choose Add Songs to build your set.'
 CUSTOM_TEMPO = 'Custom tempo map — edit in YAML'
 
@@ -65,8 +64,6 @@ class SongModel(QAbstractTableModel):
 
     def flags(self, index):
         flags = super().flags(index)
-        if index.isValid() and FIELDS[index.column()] == 'restart':
-            return flags | Qt.ItemIsUserCheckable
         if index.isValid() and index.column() != 1:
             if not (index.column() >= 4 and self.rows[index.row()].custom_tempo):
                 flags |= Qt.ItemIsEditable
@@ -76,12 +73,6 @@ class SongModel(QAbstractTableModel):
         if not index.isValid():
             return None
         row, col = self.rows[index.row()], index.column()
-        if FIELDS[col] == 'restart':
-            if role == Qt.CheckStateRole:
-                return Qt.Checked if row.restart else Qt.Unchecked
-            if role == Qt.ToolTipRole:
-                return 'Send Stop/Start at this song to restart external patterns (requires Send MIDI Start/Stop).'
-            return None
         if role == Qt.ToolTipRole:
             if col >= 4 and row.custom_tempo:
                 return CUSTOM_TEMPO
@@ -111,11 +102,6 @@ class SongModel(QAbstractTableModel):
         return values[col]
 
     def setData(self, index, value, role=Qt.EditRole):
-        if index.isValid() and FIELDS[index.column()] == 'restart' and role == Qt.CheckStateRole:
-            self.rows[index.row()].restart = value == Qt.Checked.value
-            self.dataChanged.emit(index, index, [Qt.CheckStateRole])
-            self.window.changed()
-            return True
         if role != Qt.EditRole or not index.isValid() or not self.flags(index) & Qt.ItemIsEditable:
             return False
         row, field = self.rows[index.row()], FIELDS[index.column()]

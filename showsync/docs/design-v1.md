@@ -66,7 +66,6 @@ songs:
                                # of the tempo map anchors here; earlier audio
                                # plays as lead-in
     gap: <seconds>             # optional silence AFTER this song (default 0.0)
-    restart: <boolean>         # optional Stop/Start here to reset patterns (default false)
     tempo:                     # optional list of tempo events, ascending by `at`
       - at: <position>         # required; seconds ("95.5") or "m:ss.sss" ("1:35.5")
         bpm: <number>          # required; tempo reached
@@ -169,12 +168,12 @@ If packaging friction with PyAV shows up in practice, the fallback is to drop
 to soundfile-only and ask for m4a to be exported as flac from Logic — but the
 decision (midi:D2) requires m4a in v1, so PyAV ships.
 
-### Engine format and gapless playback
+### Engine format and song boundaries
 
 - **One `sounddevice.OutputStream` for the whole set**, fixed engine format:
   float32 stereo at **48 000 Hz** (mono sources duplicated to both channels).
   The stream is opened at show start and never closed between songs — this is
-  what makes transitions gapless: song boundaries are invisible to the device.
+  what keeps device timing continuous while bar-padding silence plays.
 - Each song is decoded and **resampled to the engine rate at decode time**
   (PyAV's `AudioResampler` — soxr-quality, already a dependency; used for
   every file whose native rate ≠ 48 kHz, regardless of container). This also
@@ -206,16 +205,15 @@ the extrapolation term keeping readers smooth between callbacks.
 ### Principle: invert the tempo map against the audio clock
 
 The tempo map gives `B(t)` (beats at song-time *t*) and its inverse `T(b)`
-(song-time of beat *b*) — both closed-form (§5). A set-level clock map
-translates these maps onto a continuous beat grid
-(see handover below). Tick *k* must fire at `T_set(k/24)` in absolute audio
-time, i.e. at a specific **audio frame**. The clock thread:
+(song-time of beat *b*) — both closed-form (§5). Tick *k* must fire at
+`start_frame / RATE + T(k/24)` in absolute audio time, i.e. at a specific
+**audio frame**. Every song begins a new sequence at tick zero. The clock thread:
 
 ```
 loop:
-    t_now   = absolute audio time (published frame counter, §3) + clock_offset_ms / 1000
+    t_now   = song-local audio time (published frame counter, §3) + clock_offset_ms / 1000
     k_next  = next undelivered tick index
-    t_tick  = T_set(k_next / 24)
+    t_tick  = T(k_next / 24)
     dt      = t_tick - t_now
     if dt > 2 ms:  sleep(dt - 2 ms)          # coarse sleep
     else:          spin on time.monotonic()  # burn the last ≤2 ms
@@ -232,7 +230,7 @@ Ramps need no special casing — `T(b)` returns non-uniform tick spacing.
 A Linux monitor/loopback probe measured MIDI ticks about 32 ms behind audio,
 including before the Qt migration. Reported output latency does not model the
 whole rig. `clock_offset_ms` (−250..+250, default 0) shifts only the clock's
-snapshot of audio time: tick k is due at `T_set(k/24) - clock_offset_ms/1000`.
+snapshot of audio time: tick k is due at `T(k/24) - clock_offset_ms/1000`.
 Positive means earlier MIDI: **increase if gear sounds late; decrease if gear
 sounds early**. Audio frames, tempo maps, transport epochs, Start and Stop
 remain unchanged. One scalar snapshot is read per scheduler iteration; its
@@ -251,46 +249,50 @@ session value. Tune by ear with `demo/click-test.yaml` (generated audio has
 500 ms silent lead-in), comparing external gear to the clicks; +32 ms is the
 motivating Linux example, not a universal default.
 
-### Continuous handover and beat/bar position
+### Bar-complete song boundaries
 
-Audio is unchanged. For incoming song *i*, let `a_i = start_frame_i / RATE +
-offset_i`, its actual first beat. In the outgoing set clock map, find the two
-integer beats bracketing `a_i` and choose the one whose **time** is nearest
-(ties go earlier). Call its time `h_i` and integer beat index `q_i`. From that
-beat onward, use `T_set(b) = h_i + T_i(b - q_i) - offset_i`. All of that song's
-tempo events, including its ramps, receive the same translation. No ramp
-integration or inverse mathematics changes.
+There is one boundary behavior. After a song's audio and its configured `gap`,
+wait until the outgoing song's current **four-beat bar** finishes (96 MIDI
+clocks at 24 PPQN, or one 16-step pattern at six clocks per step). The audio
+Layout rounds that minimum end time up to a bar boundary in the song's tempo
+map. The callback emits silence between EOF and the next start; every decoded
+file sample is played in order, without stretching, trimming, or shifting
+anything within the file. The outgoing map continues at its final BPM after
+EOF. No interval is compressed to fit a boundary, and no map is translated.
 
-The phase error `h_i - a_i` is at most half the bracketing beat's duration
-(`30 / BPM` seconds for constant tempo; at most `30 / minimum_BPM` for a
-ramping beat). Each incoming anchor uses its actual audio frame and offset,
-never a sum of previous shifts: errors stay locally bounded across the set.
-Ramps retain their shape but their clock events may lead/lag the corresponding
-audio by this local phase error. This is an explicit tradeoff for continuous
-hardware phase. Extremely short songs may quantize to the same beat; the last
-map takes over there without inserting or removing a tick.
+Bar positions are relative to the first-beat offset. An explicit gap is a
+minimum silence: round up **audio length + gap**, not just audio length.
+Additional wait is less than one outgoing bar. If that end already lands on a
+bar, no padding is added. Boundaries use the nearest 48 kHz audio frame
+(maximum half-sample rounding error); an end one frame after a bar waits for
+the following bar. The final song ends at EOF, with no final padding or gap.
 
-The target is one beat, **not a four-beat bar**: bar snapping could move the
-handover by two beats. Tick `k` stays gapless across all natural boundaries;
-beat position is `k/24`, four-beat bar phase is `(k/24) % 4`. A 16-step slave
-advances on every sixth F8, retaining its phrase through ramps and gaps.
-Incoming songs can start partway through that phrase; `restart: true` is the
-explicit choice when gear must return to step 1. At set start, manual skip,
-set restart, or an explicit per-song reset, a new clock sequence starts at 0.
-Pause/resume keeps the next unsent index but Start resets the hardware pattern
-(the existing no-SPP limitation).
+At the padded boundary, send **Stop → Start**, reset the tick index to zero,
+and start the next audio file and its own tempo map together. Tick zero lands
+at the incoming first-beat offset (zero unless configured). Thus each song's
+first clock advances a reset slave to step 1. Outgoing ticks are capped at the
+completed bar's 96-tick multiple; its following downbeat belongs to the new
+song, even when audio-frame rounding places the ideal old downbeat just
+before the boundary. Natural boundaries retain the audio epoch; clock reset
+uses `(epoch, song_index)`, so a manual skip changing both produces one reset.
 
-The outgoing map runs through gaps and natural lead-ins until the quantized
-handover, which may lie just before or after the incoming first beat. Start
-and Stop are not sent at these natural boundaries. A Position carries the
-same immutable Layout used to derive its frame and song, giving the clock
-future boundaries even when it must hand over early. Reorder rebuilds the
-clock map from this snapshot. Live reorder is refused, with a visible notice,
-within `max(0.5, 30 / slowest_set_BPM + 0.250)` seconds of the next audio
-boundary, including when paused: an early incoming clock cannot be retracted.
-The 250 ms allowance covers the largest positive rig compensation. Manual
-skip/restart epochs and T80 decoder-slot invalidation retain their behavior;
-a natural boundary does not change epoch or reset the clock index.
+The Position carries the same immutable Layout used to derive its frame and
+song. Reordering rebuilds upcoming starts and padding from those maps. Moves
+within half a second of the next boundary are refused, including while paused,
+to protect queued audio callbacks. Manual skip/restart epochs and decoder-slot
+invalidation keep their existing behavior. Pause/resume retains the next
+unsent tick but Start resets the hardware pattern (the existing no-SPP limit).
+
+The old per-song `restart` override and editor checkbox are removed. Legacy
+boolean keys load as inert metadata and round-trip with their comments; they
+never affect playback. The global **Send MIDI Start/Stop** preference remains.
+
+Rig compensation retains its existing fixed tick shift; transport and padding
+stay on the audio boundary. Positive compensation cannot emit ticks before a
+song starts, so insufficient lead-in retains startup clamping/catch-up.
+Negative compensation can leave outgoing tail ticks beyond the cut. These
+are rig-offset semantics, not boundary quantization: exact full-bar tick and
+phase assertions use zero rig compensation. No offset changes file samples.
 
 ### Late ticks and recovery
 
@@ -348,14 +350,14 @@ start on `Start` (0xFA). Rules:
 | Pause | `Stop` (0xFC), ticks cease |
 | Resume | `Start`, ticks resume from current audio position — **gear restarts its pattern**; documented v1 limitation, acceptable for loop-based hardware |
 | Skip to next song | `Stop` → seek audio to next song → `Start` at its 0:00 |
-| Natural song boundary, gap, or lead-in | No transport messages; outgoing ticks continue until the nearest-beat handover, then the incoming map takes over. Tick indices never reset |
-| Song with `restart: true` | `Stop` → `Start` at its first audio frame; clock index resets to zero, respecting its first-beat offset |
-| Set start, skip, or explicit restart with `offset` | `Start` at the first audio frame, then wait for tick zero at the offset (adjusted for rig compensation). Natural lead-ins keep the outgoing clock running |
+| Audio EOF / configured gap | Silence while outgoing ticks finish the current four-beat bar at outgoing tempo |
+| Natural song boundary | At the completed bar: `Stop` → `Start`, next song audio and tempo map begin, clock index resets to zero |
+| Any song start with `offset` | `Start` at the first audio frame, then wait for tick zero at the first-beat offset (adjusted for rig compensation) |
 | End of set | `Stop` |
 
-The **Send MIDI Start/Stop** preference governs every transport byte, including
-per-song restarts. When disabled, internal timing still resets at an explicit
-restart, but only clocks are sent; hardware must be triggered manually.
+The **Send MIDI Start/Stop** preference governs every transport byte. When
+disabled, the same bar padding and internal tick resets apply, but only clocks
+are sent; hardware must be triggered manually.
 
 `Continue` (0xFB) is deliberately unused: without SPP it lies about position
 to any gear that tracks bars.
@@ -379,10 +381,9 @@ A song's map is compiled from config into segments, each
   accumulation error.
 
 Each song retains its file-local tempo map for validation and the GUI's
-`bpm_at(song_time)` readout, including mid-ramp values. The clock composes
-these maps onto the continuous set beat grid described in §4. The GUI reports
-the audio-local BPM; during a shifted handover/ramp it can briefly differ from
-the clock's translated BPM.
+`bpm_at(song_time)` readout, including mid-ramp values. The clock uses these
+same file-local maps without translating them. Past EOF, the map holds the
+final outgoing BPM throughout bar-padding silence.
 
 Compile-time validation: monotonic events, non-overlapping ramps, bpm > 0,
 positions within file duration.
@@ -413,8 +414,7 @@ the devices and returns to editing. Shortcuts are menu accelerators, never
 primary instructions painted on the dashboard.
 
 The editor is a `QTableView` adapter over the unchanged `Document`. Columns are
-song, file, BPM, offset, end BPM, ramp start, ramp duration, and a small
-**Restart patterns** checkbox (default off). Native Qt dialogs
+song, file, BPM, offset, end BPM, ramp start, and ramp duration. Native Qt dialogs
 and file drops add audio; Move Up/Down reorder; Remove confirms deletion.
 Cells use a native delegate; the BPM cell shows Queued, animated Analyzing,
 ~estimate, or confirmed numeric values. The existing Suggestions worker is

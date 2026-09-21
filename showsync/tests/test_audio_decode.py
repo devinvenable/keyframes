@@ -67,7 +67,7 @@ def callback(engine, frames, latency=0):
     return output
 
 
-def test_gapless_boundary_different_rates_and_gap():
+def test_bar_padding_different_rates_and_gap():
     for gap in (0, .001):
         engine = make_engine(gap=gap)
         try:
@@ -78,10 +78,10 @@ def test_gapless_boundary_different_rates_and_gap():
             assert engine._slots[1].ring.available == RATE
             engine._requested = (True, 0, 0)
             # Real decoders feed one callback crossing file + gap + next song.
-            out = callback(engine, RATE + round(gap * RATE) + 100)
+            out = callback(engine, 2 * RATE + 100)
             with Decoder.open(FIXTURES / 'tone.wav') as source:
                 np.testing.assert_allclose(out[:RATE], source.read(RATE))
-            np.testing.assert_array_equal(out[RATE:RATE + round(gap * RATE)], 0)
+            np.testing.assert_array_equal(out[RATE:2 * RATE], 0)
             with Decoder.open(FIXTURES / 'tone.flac') as source:
                 np.testing.assert_allclose(out[-100:], source.read(100))
             assert engine.underruns == 0
@@ -157,12 +157,12 @@ def test_reorder_updates_layout_and_redoes_prefetch():
         assert engine.move(2, -1) == 1        # 'three' now plays second
         assert engine.order == (0, 2, 1)
         assert [s.name for s in engine.setlist.songs] == ['one', 'three', 'two']
-        assert engine._layout.starts == (0, RATE, RATE + RATE + round(.5 * RATE))
+        assert engine._layout.starts == (0, 2 * RATE, round(4.4 * RATE))
         assert engine.total_frames == engine._layout.starts[2] + RATE
         # The stale 'two' prefetch is discarded and 'three' decoded in its place.
         wait_for_slot(engine, 1, FIXTURES / 'tone.aiff')
         engine._requested = (True, 0, 0)
-        out = callback(engine, RATE + 100)
+        out = callback(engine, 2 * RATE + 100)
         with Decoder.open(FIXTURES / 'tone.aiff') as source:
             np.testing.assert_allclose(out[-100:], source.read(100))
         assert engine.underruns == 0
@@ -175,7 +175,7 @@ def test_reorder_refused_near_boundary_and_while_skip_pending():
              Song('three', FIXTURES / 'tone.aiff', 100))
     engine = AudioEngine(Setlist('test', songs))
     engine._requested = (True, 0, 0)
-    engine.frames_played = RATE - 100      # playing, 100 frames before the boundary
+    engine.frames_played = 2 * RATE - 100      # playing, 100 frames before the boundary
     assert engine.move(1, 1) is None
     engine._requested = (False, 0, 0)      # incoming clocks may already have fired
     assert engine.move(1, 1) is None
@@ -219,7 +219,7 @@ def test_restart_after_end_and_ended_reorder():
 
 @pytest.mark.parametrize('initial, gap, offset, presses', [
     (137, 0, 0, 1),             # partially consumed first song
-    (RATE + 137, 0, 0, 1),      # partially consumed second song
+    (2 * RATE + 137, 0, 0, 1),  # partially consumed second song
     (137, 0, .1, 1),            # still in the first-beat lead-in
     (RATE + 137, .25, 0, 1),    # silent inter-song gap
     (137, 0, 0, 3),             # several requests before decoding finishes
@@ -286,7 +286,7 @@ def test_restart_replays_audio_and_resets_clock(monkeypatch, initial, gap, offse
         assert ticks == pytest.approx([offset + tick / 48 for tick in range(24)])
         # The second song's stale ring must also be discarded on rewind.
         wait_for_slot(engine, 1)
-        out = callback(engine, RATE - 30_000 + round(gap * RATE) + 137)
+        out = callback(engine, engine._layout.starts[1] - 30_000 + 137)
         with original_open(songs[1].file) as source:
             np.testing.assert_array_equal(out[-137:], source.read(137))
         assert engine.position().epoch == old_epoch + 1
@@ -328,7 +328,7 @@ def test_real_single_stream():
             time.sleep(.02)
         assert engine.position().ended
         assert engine.stream is stream and stream.active
-        assert engine.frames_played == 2 * RATE
+        assert engine.frames_played == 3 * RATE
         assert engine.error is None
     finally:
         engine.close()

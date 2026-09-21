@@ -212,9 +212,8 @@ class Layout:
 
     @property
     def reorder_margin(self):
-        # Clock handover can precede audio by half a beat, plus rig advance.
-        slowest = min(min(s.bpm0, s.bpm1) for m in self.maps for s in m.segments)
-        return max(.5, 30 / slowest + .250)
+        # Leave room for queued audio callbacks; there is no early handover.
+        return .5
 
 
 class MapsView:
@@ -271,7 +270,7 @@ class AudioEngine:
                 raise SetlistError(f'song {song.name}: file contains no audio')
             durations.append(duration)
             lengths.append(length)
-        starts, total = self._positions(setlist.songs, lengths)
+        starts, total = self._positions(setlist.songs, lengths, maps)
         self._layout = Layout(setlist, tuple(range(len(lengths))), starts,
                               tuple(lengths), tuple(durations), tuple(maps), total)
         self.maps = MapsView(self)
@@ -289,11 +288,23 @@ class AudioEngine:
         self.stream = None
 
     @staticmethod
-    def _positions(songs, lengths):
+    def _positions(songs, lengths, maps):
+        """Pad each inter-song gap to the outgoing map's next four-beat bar.
+
+        Gaps are minimum silences. Maps extend at their final BPM after EOF.
+        Compare rounded frame positions so a bar already on the requested
+        audio frame adds no wait, even for non-integral samples per beat.
+        """
         starts, cursor = [], 0
-        for song, length in zip(songs, lengths):
+        for song, length, tempo in zip(songs, lengths, maps):
             starts.append(cursor)
-            cursor += length + round(song.gap * RATE)
+            end = length + round(song.gap * RATE)
+            bar = math.floor(tempo.B(end / RATE) / 4)
+            boundary = round(tempo.T(bar * 4) * RATE)
+            if boundary < end:
+                boundary = round(tempo.T((bar + 1) * 4) * RATE)
+            cursor += boundary
+        # There is no incoming song at set end; ignore the final gap as before.
         return tuple(starts), starts[-1] + lengths[-1]
 
     @property
@@ -364,9 +375,8 @@ class AudioEngine:
 
         Movable songs are those after the one currently sounding (every song
         once the set has ended). Refused while a skip/restart is settling and
-        inside the clock lookahead margin (at least half a second): incoming
-        clocks can precede the audio boundary by half a beat plus rig advance.
-        The guard also applies when paused: emitted clocks cannot be retracted.
+        inside the half-second callback margin before a boundary.
+        The guard also applies when paused: queued audio cannot be retracted.
         It keeps a callback boundary from landing inside the check-then-swap.
         """
         layout = self._layout
@@ -390,11 +400,12 @@ class AudioEngine:
         ids.insert(target, ids.pop(index))
         songs = tuple(layout.setlist.songs[i] for i in ids)
         lengths = tuple(layout.lengths[i] for i in ids)
-        starts, total = self._positions(songs, lengths)
+        maps = tuple(layout.maps[i] for i in ids)
+        starts, total = self._positions(songs, lengths, maps)
         self._layout = Layout(replace(layout.setlist, songs=songs),
                               tuple(layout.order[i] for i in ids), starts, lengths,
                               tuple(layout.durations[i] for i in ids),
-                              tuple(layout.maps[i] for i in ids), total)
+                              maps, total)
         if frame >= layout.total_frames:
             # Permuting gaps moves the last audible frame; stay at the end so
             # the ended state survives the reorder.

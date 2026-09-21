@@ -10,7 +10,8 @@ MIDI clock master).
   `keyframes/scripts/build-windows.sh`.
 - [`showsync/`](showsync/README.md) — live-performance backing-track player
   that emits MIDI clock so external hardware stays tempo-locked.
-  Requirements spec only — no implementation yet.
+  Each transition finishes the outgoing four-beat bar, then sends Stop/Start
+  so the next song begins in sync.
 
 Repo-level infrastructure (`docs/`, `scripts` inside each subproject, agent
 tooling) stays at the root; each program is self-contained in its directory.

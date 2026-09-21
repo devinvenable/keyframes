@@ -1,7 +1,5 @@
 """Absolute beat-index MIDI scheduling against an injected audio position."""
 import math
-from bisect import bisect_right
-from dataclasses import dataclass
 import threading
 import time
 
@@ -9,54 +7,6 @@ from .priority import raise_thread_priority
 from .audio import RATE
 
 CLOCK, START, STOP = 0xF8, 0xFA, 0xFC
-
-
-@dataclass(frozen=True)
-class ClockSection:
-    song: int
-    tempo: object
-    anchor: float  # absolute audio seconds of this map's beat zero
-    beat: int     # beat zero's index since the last intentional restart
-
-    def T(self, beat):
-        return self.anchor + self.tempo.T(beat - self.beat) - self.tempo.offset
-
-    def B(self, seconds):
-        return self.beat + self.tempo.B(max(0, seconds - self.anchor + self.tempo.offset))
-
-
-class ClockTimeline:
-    """Absolute audio-time schedule, ending at the next explicit pattern reset.
-
-    Quantize each incoming *actual* first beat to the closest existing beat
-    in time (ties go earlier), then translate that song's entire tempo map.
-    The error is local, never added to the next song's audio anchor. Several
-    very short songs can share a beat: the last map wins that boundary.
-    """
-    def __init__(self, layout, first):
-        tempo = layout.maps[first]
-        self.sections = [ClockSection(first, tempo, layout.starts[first] / RATE + tempo.offset, 0)]
-        for song in range(first + 1, len(layout.maps)):
-            if layout.setlist.songs[song].restart:
-                break
-            tempo = layout.maps[song]
-            desired = layout.starts[song] / RATE + tempo.offset
-            lower = math.floor(self.B(desired) + 1e-9)
-            beat = min((lower, lower + 1), key=lambda b: abs(self.T(b) - desired))
-            anchor = self.T(beat)
-            # A short incoming song can supersede a still-future handover.
-            while self.sections and self.sections[-1].beat >= beat:
-                self.sections.pop()
-            self.sections.append(ClockSection(song, tempo, anchor, beat))
-        self.sections = tuple(self.sections)
-
-    def T(self, beat):
-        index = bisect_right(self.sections, beat, key=lambda s: s.beat) - 1
-        return self.sections[max(0, index)].T(beat)
-
-    def B(self, seconds):
-        index = bisect_right(self.sections, seconds, key=lambda s: s.anchor) - 1
-        return self.sections[max(0, index)].B(seconds)
 
 
 class ClockEngine:
@@ -70,9 +20,6 @@ class ClockEngine:
         self._active = False
         self._tick = 0
         self._startup_until = -1
-        self._timeline = None
-        self._layout = None
-        self._first_song = 0
         self._last_sent_time = None
         self._last_target = None
         self._halt = threading.Event()
@@ -85,14 +32,7 @@ class ClockEngine:
         """Process current state/tick; return seconds until next work (fake-clock API)."""
         p = self.position()
         key = (p.epoch, p.song_index)
-        first_song = p.song_index
-        reset = self._key is None or p.epoch != self._key[0]
-        if self._key is not None and p.layout is not None and not reset:
-            for index in range(self._key[1] + 1, p.song_index + 1):
-                if p.layout.setlist.songs[index].restart:
-                    # A stall may cross the reset and another natural boundary.
-                    # Recover from the last requested reset, not the later song.
-                    reset, first_song = True, index
+        reset = key != self._key
         if self._active and (not p.playing or p.ended or reset):
             if self.send_transport:
                 self.send(STOP)
@@ -100,22 +40,11 @@ class ClockEngine:
         if not p.playing or p.ended:
             return .001
         if reset:
-            self._first_song = first_song
             self._tick = 0
             self._last_sent_time = self._last_target = None
-        if p.layout is not None:
-            if reset or p.layout is not self._layout:
-                self._timeline = ClockTimeline(p.layout, self._first_song)
-                self._layout = p.layout
-            tempo = self._timeline
-            audio_time = p.frame / RATE
-        else:
-            # Injected single-song/intentional-transport tests need no layout.
-            # Natural transitions require future starts for early handovers.
-            if not reset and p.song_index != self._key[1]:
-                raise ValueError('Continuous song transitions require Position.layout')
-            tempo = self.maps[p.song_index]
-            audio_time = p.song_time
+        # Position carries the same immutable layout as its audio frame.
+        tempo = p.layout.maps[p.song_index] if p.layout is not None else self.maps[p.song_index]
+        audio_time = p.song_time
         # Snapshot once: positive compensation advances MIDI, never audio.
         clock_time = audio_time + self.clock_offset_ms / 1000.0
         if not self._active:
@@ -125,6 +54,14 @@ class ClockEngine:
             # Resume retains the next unsent index; intentional restarts reset.
             self._startup_until = math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8)
         self._key = key
+        if p.layout is not None and p.song_index + 1 < len(p.layout.starts):
+            boundary = p.layout.starts[p.song_index + 1]
+            span = (boundary - p.layout.starts[p.song_index]) / RATE
+            ticks = round(tempo.B(span) / 4) * 96
+            if self._tick >= ticks:
+                # The downbeat belongs to the incoming song, even when frame
+                # rounding puts the old map's next tick just before the cut.
+                return max(0, (boundary - p.frame) / RATE)
         target = tempo.T(self._tick / 24)
         remaining = target - clock_time
         if self._tick > self._startup_until + 1 and self._last_sent_time is not None:
@@ -139,6 +76,12 @@ class ClockEngine:
             remaining = tempo.T(self._tick / 24) - clock_time
             if self._tick > self._startup_until + 1:
                 remaining = max(remaining, (tempo.T(self._tick / 24) - target) / 2)
+        if p.layout is not None:
+            # Wake at the audio boundary even if the next outgoing tick lies
+            # beyond it (rounding, compensation, or a final partial bar).
+            boundary = (p.layout.starts[p.song_index + 1]
+                        if p.song_index + 1 < len(p.layout.starts) else p.layout.total_frames)
+            remaining = min(remaining, (boundary - p.frame) / RATE)
         return max(0, remaining)
 
     def _run(self):
