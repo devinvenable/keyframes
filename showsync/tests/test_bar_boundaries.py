@@ -29,6 +29,7 @@ def layout(songs, durations):
 class SetClock:
     def __init__(self, timeline, offset=0, transport=True):
         self.layout = timeline
+        self.transport = transport
         self.time = 0.0
         self.epoch = 0
         self.playing = True
@@ -61,7 +62,7 @@ class SetClock:
             delay = self.clock.step()
             if self.time >= end:
                 return
-            self.time = min(end, self.time + min(.01, max(delay, 1e-9)))
+            self.time = min(end, self.time + min(.01, max(delay, 1e-12)))
         pytest.fail('clock failed to make progress')
 
 
@@ -74,7 +75,7 @@ def assert_set(fake, expected_starts, expected_ticks):
     for start in expected_starts[1:]:
         expected_transport.extend([(start / RATE, STOP), (start / RATE, START)])
     expected_transport.append((timeline.total_frames / RATE, STOP))
-    if fake.clock.send_transport:
+    if fake.transport:
         assert [b for _, b in transport] == [b for _, b in expected_transport]
         assert [t for t, _ in transport] == pytest.approx([t for t, _ in expected_transport], abs=1e-8)
     else:
@@ -83,7 +84,7 @@ def assert_set(fake, expected_starts, expected_ticks):
         emitted = [tick for tick in fake.ticks if tick[1] == i]
         assert [tick[2] for tick in emitted] == list(range(len(expected)))
         assert [tick[0] for tick in emitted] == pytest.approx(expected, abs=1e-8)
-        if fake.clock.send_transport:
+        if fake.transport:
             assert [tick[3] for tick in emitted] == [(k // 6) % 16 + 1 for k in range(len(expected))]
             assert emitted[0][3] == 1
         if i < len(expected_ticks) - 1:
@@ -297,7 +298,7 @@ class CallbackRig:
         end = self.now + frames / RATE
         while self.now < end - 1e-12:
             delay = self.clock.step()
-            self.now = min(end, self.now + min(.005, max(delay, 1e-9)))
+            self.now = min(end, self.now + min(.005, max(delay, 1e-12)))
         self.now = end
         self.clock.step()
         return output
@@ -308,6 +309,8 @@ class CallbackRig:
 def test_real_callback_outputs_original_audio_then_silence_and_synchronized_starts(gap, transport):
     rig = CallbackRig(gap, transport)
     timeline = rig.audio._layout
+    expected_starts, _ = constant_oracle(timeline.setlist.songs, [RATE] * 4)
+    assert timeline.starts == tuple(expected_starts)
     out = rig.block(timeline.total_frames)
     for i, start in enumerate(timeline.starts):
         np.testing.assert_array_equal(out[start:start + RATE], rig.samples)
@@ -360,3 +363,44 @@ def test_real_transport_mid_song_and_during_wait(at, action, transport):
         assert any(i == target and k == 0 for _, i, k in ticks)
         expected = [STOP, START]
     assert [b for _, b in rig.events if b != CLOCK] == (expected if transport else [])
+
+
+@pytest.mark.parametrize('action', ['skip', 'restart'])
+@pytest.mark.parametrize('transport', [False, True])
+def test_pending_seek_during_wait_stops_once_until_audio_is_ready(action, transport):
+    rig = CallbackRig(transport=transport)
+    rig.block(round(1.2 * RATE))
+    rig.events.clear()
+    before = rig.audio.position()
+    getattr(rig.audio, action)()
+    out = rig.block(480)
+    np.testing.assert_array_equal(out, 0)
+    assert rig.audio.position().frame == before.frame
+    assert rig.audio.position().epoch == before.epoch
+    assert [b for _, b in rig.events] == ([STOP] if transport else [])
+    out = rig.block(480)
+    np.testing.assert_array_equal(out, 0)
+    assert [b for _, b in rig.events] == ([STOP] if transport else [])
+    rig.refill()
+    out = rig.block(480)
+    np.testing.assert_array_equal(out, rig.samples[:480])
+    assert rig.audio.position().epoch == before.epoch + 1
+    assert [b for _, b in rig.events if b != CLOCK] == ([STOP, START] if transport else [])
+    assert rig.ticks[-1][1:] == (1 if action == 'skip' else 0, 0)
+
+
+@pytest.mark.parametrize('offset', [-250, -32, 32, 250])
+@pytest.mark.parametrize('transport', [False, True])
+def test_rig_offset_without_leadin_keeps_initial_tick_indices_at_every_song(offset, transport):
+    songs = [song(60), song(180), song(90), song(120)]
+    fake = SetClock(layout(songs, [1] * 4), offset=offset, transport=transport)
+    fake.run_until(fake.layout.total_frames / RATE)
+    for i, s in enumerate(songs):
+        emitted = [tick for tick in fake.ticks if tick[1] == i]
+        assert [tick[2] for tick in emitted] == list(range(len(emitted)))
+        start = fake.layout.starts[i] / RATE
+        assert [tick[0] for tick in emitted] == pytest.approx(
+            [start + max(0, k * 60 / s.bpm / 24 - offset / 1000) for k in range(len(emitted))], abs=1e-8)
+        if transport:
+            assert emitted[0][3] == 1
+    assert [b for _, b in fake.events if b != CLOCK] == ([START, STOP] * 4 if transport else [])
