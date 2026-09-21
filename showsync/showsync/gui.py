@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QHeaderView, QHBoxLayout, QLabel,
@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QStackedWidget, QStyledItemDelegate, QTableView, QVBoxLayout, QWidget,
 )
 
-from .bpmdetect import Suggestions, estimate_grid
+from .bpmdetect import BeatGrid, Suggestions, estimate_grid
 from .document import Document
 from .tempomap import TempoEvent
 
@@ -203,6 +203,68 @@ class SongDelegate(QStyledItemDelegate):
         model.setData(index, editor.text())
 
 
+class SongTable(QTableView):
+    """External files replace the highlighted row; empty space appends."""
+    def __init__(self, window):
+        super().__init__()
+        self.window = window
+        self.drop_row = -1
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event):
+        if self.window.audio is None and event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if self.window.audio is not None or not event.mimeData().hasUrls():
+            event.ignore()
+            return
+        self.drop_row = self.indexAt(event.position().toPoint()).row()
+        if self.drop_row >= 0:
+            name = self.window.document.rows[self.drop_row].name
+            self.window.notice(f'Drop one audio file to replace “{name}”.')
+        else:
+            self.window.notice('Drop audio files to append songs.')
+        self.viewport().update()
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event):
+        self.drop_row = -1
+        self.viewport().update()
+        self.window.notice('')
+        event.accept()
+
+    def dropEvent(self, event):
+        index = self.indexAt(event.position().toPoint()).row()
+        paths = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        self.drop_row = -1
+        self.viewport().update()
+        if self.window.audio is not None:
+            event.ignore()
+            return
+        if index >= 0:
+            if len(paths) != 1:
+                self.window.notice('Drop exactly one audio file to replace a song.')
+                event.ignore()
+                return
+            if not self.window.replace_path(index, paths[0]):
+                event.ignore()
+                return
+        else:
+            self.window.add_paths(paths)
+        event.acceptProposedAction()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.drop_row >= 0:
+            painter = QPainter(self.viewport())
+            painter.setPen(QPen(self.palette().highlight().color(), 3))
+            rect = self.visualRect(self.model().index(self.drop_row, 0))
+            rect.setLeft(1)
+            rect.setRight(self.viewport().width() - 2)
+            painter.drawRect(rect.adjusted(0, 1, 0, -1))
+
+
 class MainWindow(QMainWindow):
     def __init__(self, document, *, start_engines, dialogs=None, remember=None,
                  estimator=estimate_grid, settings=None, notice='',
@@ -262,6 +324,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(heading)
         toolbar = QHBoxLayout()
         self.add_button = self.button('Add Songs…', self.add_songs, toolbar)
+        self.replace_button = self.button('Replace file…', self.replace_song, toolbar)
         self.remove_button = self.button('Remove', self.remove_song, toolbar)
         self.up_button = self.button('Move Up', lambda: self.move_song(-1), toolbar)
         self.down_button = self.button('Move Down', lambda: self.move_song(1), toolbar)
@@ -272,7 +335,7 @@ class MainWindow(QMainWindow):
         self.empty_hint = QLabel(EMPTY_HINT)
         layout.addWidget(self.empty_hint)
         self.model = SongModel(self)
-        self.table = QTableView()
+        self.table = SongTable(self)
         self.table.setModel(self.model)
         self.table.setItemDelegate(SongDelegate(self.table))
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -287,6 +350,12 @@ class MainWindow(QMainWindow):
         self.row_notice = QLabel('')
         self.row_notice.setWordWrap(True)
         layout.addWidget(self.row_notice)
+        review = QHBoxLayout()
+        self.use_timing_button = self.button('Use detected timing', lambda: self.resolve_timing(True), review)
+        self.keep_timing_button = self.button('Confirm current timing', lambda: self.resolve_timing(False), review)
+        review.addStretch()
+        layout.addLayout(review)
+        layout.addWidget(QLabel('Drop one file on a row to replace it; drop below the rows to append songs.'))
         layout.addWidget(QLabel('Double-click a cell to edit. Changes save automatically.'))
         self.stack.addWidget(self.editor)
 
@@ -576,6 +645,56 @@ class MainWindow(QMainWindow):
         if self.audio is None and event.mimeData().hasUrls():
             event.acceptProposedAction()
 
+    def replace_song(self):
+        index = self.table.currentIndex().row()
+        if self.audio is not None or index < 0:
+            return
+        try:
+            path = self.dialogs.replacement_file(self.document.rows[index].file)
+            if path:
+                self.replace_path(index, path)
+        except Exception as exc:
+            self.notice(f'File dialog unavailable: {exc}')
+
+    def replace_path(self, index, path):
+        if self.audio is not None:
+            self.notice('Return to the editor to replace a song’s file.')
+            return False
+        row = self.document.rows[index]
+        try:
+            self.document.replace_file(row, path)
+        except ValueError as exc:
+            self.notice(f'Cannot replace {row.name}: {exc}')
+            return False
+        self.suggestions.replaced(row)
+        self.table.selectRow(index)
+        self.changed()
+        self.refresh()
+        return True
+
+    def resolve_timing(self, use_detected):
+        index = self.table.currentIndex().row()
+        if self.audio is not None or index < 0:
+            return
+        row = self.document.rows[index]
+        if not row.timing_review or id(row) in self.suggestions.replacements:
+            return
+        value = self.suggestions.detected.get(id(row))
+        if use_detected:
+            if value is None:
+                return
+            row.bpm = value.bpm if isinstance(value, BeatGrid) else value
+            if isinstance(value, BeatGrid):
+                row.offset = value.offset
+        if row.bpm is None:
+            self.notice('Enter a BPM before confirming timing.')
+            return
+        row.timing_review = ''
+        row.offset_explicit = True
+        self.suggestions.manual(row)
+        self.changed()
+        self.refresh()
+
     def dropEvent(self, event):
         if self.audio is None:
             self.add_paths([url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()])
@@ -605,6 +724,9 @@ class MainWindow(QMainWindow):
 
     def show_row_problem(self, *args):
         index = self.table.currentIndex().row()
+        self.replace_button.setEnabled(self.audio is None and index >= 0)
+        self.use_timing_button.setVisible(False)
+        self.keep_timing_button.setVisible(False)
         if 0 <= index < len(self.document.rows):
             row = self.document.rows[index]
             message = row.problem() or (CUSTOM_TEMPO if row.custom_tempo else '')
@@ -613,6 +735,20 @@ class MainWindow(QMainWindow):
                 message = 'Estimated beat grid (~) — double-click BPM or offset to correct.'
             elif state == 'no estimate' and row.bpm is None:
                 message = 'No estimate — enter BPM manually.'
+            if row.timing_review:
+                pending = id(row) in self.suggestions.replacements
+                value = self.suggestions.detected.get(id(row))
+                message = 'Replacement audio: analyzing timing…' if pending else 'Replacement audio needs timing review.'
+                if value is not None:
+                    bpm = value.bpm if isinstance(value, BeatGrid) else value
+                    message += f' Detected BPM: {bpm:.9g}'
+                    if isinstance(value, BeatGrid):
+                        message += f'; offset: {value.offset:.9g}s'
+                    message += '. Confirm current values or use detected timing.'
+                elif not pending:
+                    message += ' No estimate — enter/check BPM and offset, then confirm current timing.'
+                self.use_timing_button.setVisible(not pending and value is not None)
+                self.keep_timing_button.setVisible(not pending)
             self.row_notice.setText(f'{row.name}: {message}' if message else '')
         else:
             self.row_notice.clear()

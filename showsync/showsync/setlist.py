@@ -80,7 +80,10 @@ def parse_song(row, root, *, require_bpm=True):
     The editor's lenient Document rows and the strict playback loader share
     this, so a set saved mid-edit (bpm still unset) reopens instead of erroring.
     """
-    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "restart"}, "song")
+    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "restart", "editor"}, "song")
+    editor = timing_metadata(row)
+    if require_bpm and editor.get('timing_review'):
+        raise ValueError('Replacement audio needs timing review')
     name = string(row.get("name"), "name")
     file = (root / string(row.get("file"), "file")).resolve()
     if file.suffix.lower() not in SUFFIXES:
@@ -106,6 +109,17 @@ def parse_song(row, root, *, require_bpm=True):
             raise ValueError(f"tempo[{j}].{exc}") from exc
     return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset,
                 restart=restart)
+
+
+def timing_metadata(row):
+    editor = mapping(row.get('editor', {}),
+                     {'bpm_estimated', 'offset_estimated', 'timing_review'}, 'editor')
+    for key in ('bpm_estimated', 'offset_estimated'):
+        if key in editor and not isinstance(editor[key], bool):
+            raise ValueError(f'editor.{key} must be a boolean')
+    if editor.get('timing_review', '') not in ('', 'pending', 'review', 'inconclusive'):
+        raise ValueError('editor.timing_review is invalid')
+    return editor
 
 
 def song_context(path, index, row):

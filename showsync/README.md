@@ -87,7 +87,7 @@ From there everything happens in the window:
    shows fewer digits. Audio is never stretched or modified.
    Existing BPMs, tempo maps, and manual BPM edits always win. Existing offsets
    (including an explicit zero) and offset edits also remain authoritative.
-   Saved estimates become ordinary values and are not reanalyzed on reopening;
+   Saved estimates retain their **~** marker and are not reanalyzed on reopening;
    clear the BPM to request fresh analysis when reopening the set.
    Beatless material, changing tempos, or inconsistent grids show **No estimate**
    and need a manual BPM / tempo map.
@@ -108,6 +108,19 @@ From there everything happens in the window:
    **Send MIDI Start/Stop** preference must be enabled to reset the gear.
 5. **Rename / reorder / remove** — double-click the song name, or select a
    row and use **Move Up**, **Move Down**, and **Remove**.
+   **Replace file…** opens a file picker for the selected row. Dropping one
+   audio file onto a row also replaces it; the outlined row and hover message
+   identify the target. Drop below the rows to append instead. Replacement
+   keeps position, custom name, gap, ramp, and restart settings. A name matching
+   the old filename stem follows the new filename. Return to the editor before
+   replacing files during a show.
+   Replacement always analyzes the new audio. Unconfirmed timing updates from
+   the new fit; confirmed BPM and offset remain unchanged until you choose
+   **Use detected timing** or **Confirm current timing**. Inconclusive analysis
+   requires you to enter/check timing and confirm it. Unresolved replacements
+   block playback, including after saving and reopening. Optional `editor`
+   metadata in YAML preserves estimate provenance and the review requirement;
+   existing hand-written setlists need no new fields.
 6. **Saving is automatic** — the first edit asks where to save, defaulting
    next to the first audio file. Later edits save silently. Cancelling that
    first dialog suppresses repeat prompts until you choose **File > Save**.

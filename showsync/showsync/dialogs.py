@@ -13,6 +13,12 @@ class Dialogs:
             'Audio files (*.wav *.aif *.aiff *.flac *.mp3 *.m4a);;All files (*)')
         return [Path(name) for name in names]
 
+    def replacement_file(self, current):
+        name, _ = QFileDialog.getOpenFileName(
+            self.parent, 'Replace file', str(current.parent),
+            'Audio files (*.wav *.aif *.aiff *.flac *.mp3 *.m4a);;All files (*)')
+        return Path(name) if name else None
+
     def setlist_path(self):
         name, _ = QFileDialog.getOpenFileName(
             self.parent, 'Open Set', '', 'Setlists (*.yaml *.yml);;All files (*)')

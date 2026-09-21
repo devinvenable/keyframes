@@ -224,70 +224,107 @@ class Suggestions:
     def __init__(self, estimator=estimate_grid):
         self.estimator = estimator
         self.entries = {}  # id -> (row, state); UI-only, never persisted
-        self.estimated_offsets = set()
         self.results = Queue()
         self.halt = threading.Event()
         self.worker = None
+        self.generations = {}
+        self.replacements = set()
+        self.detected = {}
+        self.bpm_edits = set()
 
     def state(self, row):
-        return self.entries.get(id(row), (None, ''))[1]
+        return self.entries.get(id(row), (None, 'estimated' if row.bpm_estimated else ''))[1]
 
     def offset_estimated(self, row):
-        return id(row) in self.estimated_offsets and not row.offset_explicit
+        return bool(row.offset) and not row.offset_explicit
 
     def manual(self, row):
+        row.bpm_estimated = False
+        if id(row) in self.replacements:
+            self.bpm_edits.add(id(row))
+            return
         self.entries[id(row)] = (row, 'manual')
+
+    def replaced(self, row):
+        key = id(row)
+        self.generations[key] = self.generations.get(key, 0) + 1
+        self.replacements.add(key)
+        self.detected.pop(key, None)
+        self.bpm_edits.discard(key)
+        self.entries[key] = (row, 'queued')
 
     def update(self, rows):
         """Apply completed estimates; queue new empty rows; return changed rows."""
         changed = []
         while True:
             try:
-                row, value = self.results.get_nowait()
+                row, generation, value = self.results.get_nowait()
             except Empty:
                 break
+            if not any(item is row for item in rows) or generation != self.generations.get(id(row), 0):
+                continue
+            if id(row) in self.replacements:
+                self.replacements.remove(id(row))
+                self.detected[id(row)] = value
+                edited = id(row) in self.bpm_edits
+                protected = edited or (row.bpm is not None and not row.bpm_estimated) or row.offset_explicit
+                if value is not None:
+                    if not edited and (row.bpm is None or row.bpm_estimated):
+                        row.bpm = value.bpm if isinstance(value, BeatGrid) else value
+                        row.bpm_estimated = True
+                    if isinstance(value, BeatGrid) and not row.offset_explicit:
+                        row.offset = value.offset
+                row.timing_review = ('inconclusive' if value is None else 'review' if protected else '')
+                self.entries[id(row)] = (row, 'estimated' if row.bpm_estimated else 'manual')
+                changed.append(row)
+                continue
             if (any(item is row for item in rows) and row.bpm is None
                     and not row.tempo and self.state(row) == 'analyzing'):
                 row.bpm = value.bpm if isinstance(value, BeatGrid) else value
+                row.bpm_estimated = value is not None
                 if (isinstance(value, BeatGrid) and not row.offset_explicit
                         and row.offset == 0 and not row.tempo):
                     row.offset = value.offset
-                    self.estimated_offsets.add(id(row))
                 self.entries[id(row)] = (row, 'estimated' if value is not None else 'no estimate')
                 if value is not None:
                     changed.append(row)
         for row in rows:
+            if row.timing_review and id(row) not in self.entries:
+                self.replaced(row)
+            if id(row) in self.replacements:
+                continue
             if row.tempo and self.state(row) in ('queued', 'analyzing'):
                 self.manual(row)
             if row.bpm is None and not row.tempo and not row.file_error and id(row) not in self.entries:
                 self.entries[id(row)] = (row, 'queued')
         if not self.halt.is_set() and (self.worker is None or not self.worker.is_alive()):
             for row in rows:
-                if self.state(row) == 'queued' and row.bpm is None:
+                if self.state(row) == 'queued' and (row.bpm is None or id(row) in self.replacements):
                     self.entries[id(row)] = (row, 'analyzing')
-                    self.worker = threading.Thread(target=self._estimate, args=(row,),
+                    self.worker = threading.Thread(target=self._estimate,
+                                                   args=(row, self.generations.get(id(row), 0), row.file, row.duration),
                                                    name='showsync-bpm', daemon=True)
                     self.worker.start()
                     break
         return changed
 
-    def _estimate(self, row):
+    def _estimate(self, row, generation, path, duration):
         try:
-            value = self.estimator(row.file, cancelled=self.halt.is_set)
+            value = self.estimator(path, cancelled=self.halt.is_set)
             if value is not None:
                 bpm = value.bpm if isinstance(value, BeatGrid) else value
                 if not (np.isfinite(bpm) and 60 <= bpm <= 200):
                     value = None
                 elif isinstance(value, BeatGrid) and not (
                         np.isfinite(value.offset) and value.offset >= 0
-                        and (row.duration is None or value.offset < row.duration)):
+                        and (duration is None or value.offset < duration)):
                     value = None
         except Cancelled:
             return
         except Exception:
             value = None
         if not self.halt.is_set():
-            self.results.put((row, value))
+            self.results.put((row, generation, value))
 
     def close(self):
         self.halt.set()

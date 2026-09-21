@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 from .setlist import (SUFFIXES, Setlist, SetlistError, Song, mapping, number,
-                      parse_song, position, song_context, string)
+                      parse_song, position, song_context, string, timing_metadata)
 from .tempomap import TempoEvent, TempoMap
 
 
@@ -44,10 +44,14 @@ class Row:
 
     offset_explicit: bool = False  # editor intent, including an explicitly entered zero
     restart: bool = False
+    bpm_estimated: bool = False
+    timing_review: str = ''
 
     def problem(self):
         if self.file_error:
             return self.file_error
+        if self.timing_review:
+            return 'Replacement audio needs timing review'
         if self.bpm is None:
             return "BPM not set"
         try:
@@ -100,8 +104,12 @@ class Document:
             rows = []
             for i, item in enumerate(raw or []):
                 context = song_context(path, i, item)
-                row = Row(**parse_song(item, root, require_bpm=False), source_index=i,
-                          offset_explicit="offset" in item)
+                fields = parse_song(item, root, require_bpm=False)
+                metadata = timing_metadata(item)
+                row = Row(**fields, source_index=i,
+                          offset_explicit="offset" in item and not metadata.get('offset_estimated'),
+                          bpm_estimated=metadata.get('bpm_estimated', False),
+                          timing_review=metadata.get('timing_review', ''))
                 if not row.file.is_file():
                     row.file_error = "audio file not found"
                 else:
@@ -135,6 +143,20 @@ class Document:
             self.rows.append(row)
             added.append(row)
         return added, rejected
+
+    def replace_file(self, row, path, *, probe=probe_duration):
+        """Validate before changing the existing row or its source mapping."""
+        candidate = Document()
+        added, rejected = candidate.add_files([path], probe=probe)
+        if rejected:
+            raise ValueError(rejected[0][1])
+        replacement = added[0]
+        if row.name == row.file.stem:
+            row.name = replacement.name
+        row.file, row.duration, row.file_error = replacement.file, replacement.duration, None
+        # Keep old values (and their YAML comments) while the persisted gate
+        # blocks playback. The new fit replaces only unconfirmed values.
+        row.timing_review = 'pending'
 
     def first_problem(self):
         """(row, message) blocking playback, or None when the set can start."""
@@ -187,11 +209,22 @@ class Document:
                     entry = original[row.source_index]
                     if str(entry.get("name")) != row.name:
                         entry["name"] = row.name
+                    current_file = (root / str(entry['file'])).resolve()
+                    if current_file != row.file:
+                        entry['file'] = self._portable(row.file, root)
                 self._set_number(entry, "bpm", row.bpm)
                 self._set_number(entry, "offset", row.offset if row.offset_explicit else row.offset or None)
                 if entry.get("restart", False) != row.restart:
                     entry["restart"] = row.restart
                 self._sync_tempo(entry, row.tempo)
+                metadata = dict(bpm_estimated=row.bpm_estimated,
+                                offset_estimated=bool(row.offset and not row.offset_explicit),
+                                timing_review=row.timing_review)
+                if any(metadata.values()) or 'editor' in entry:
+                    saved_metadata = entry.setdefault('editor', CommentedMap())
+                    for key, value in metadata.items():
+                        if value or key in saved_metadata:
+                            saved_metadata[key] = value
                 entries.append(entry)
             data["songs"] = entries
             buffer = io.StringIO()
