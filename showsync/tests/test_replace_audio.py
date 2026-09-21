@@ -1,12 +1,13 @@
 """Replacement exercises native picker routing, viewport drops and persisted gates."""
 import threading
+import wave
 
 import pytest
 from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import QApplication, QFileDialog
 
-from showsync.bpmdetect import BeatGrid
+from showsync.bpmdetect import BeatGrid, estimate_grid
 from showsync.dialogs import Dialogs
 from showsync.document import Document, Row
 from showsync.setlist import SetlistError, load_setlist
@@ -116,6 +117,7 @@ def test_confirmed_timing_requires_review_after_reopen(qtbot, window_factory, tm
     other.table.selectRow(0)
     qtbot.waitUntil(lambda: other.keep_timing_button.isVisible())
     if resolution == 'detected':
+        qtbot.waitUntil(lambda: other.use_timing_button.isVisible())
         qtbot.mouseClick(other.use_timing_button, Qt.LeftButton)
     else:
         qtbot.mouseClick(other.keep_timing_button, Qt.LeftButton)
@@ -182,7 +184,7 @@ def test_cancel_picker_is_noop(qtbot, window_factory, tmp_path, monkeypatch):
     assert row.file == TONE and not row.timing_review and not w.dirty
 
 
-def test_pending_replacement_protects_manual_edit_and_persists_gate(qtbot, window_factory, tmp_path, replacement):
+def test_pending_replacement_manual_edit_supersedes_late_result(qtbot, window_factory, tmp_path, replacement):
     release = threading.Event()
     def estimator(*args, cancelled):
         while not release.wait(.005):
@@ -196,12 +198,102 @@ def test_pending_replacement_protects_manual_edit_and_persists_gate(qtbot, windo
     assert Document.load(doc.path).rows[0].timing_review == 'pending'
     with pytest.raises(SetlistError, match='Replacement audio needs timing review'):
         load_setlist(doc.path)
-    w.resolve_timing(False)
-    assert row.timing_review == 'pending'
     assert w.model.setData(w.model.index(0, 2), '125')
     assert w.model.setData(w.model.index(0, 3), '0.3')
     release.set()
-    qtbot.waitUntil(lambda: row.timing_review == 'review')
+    qtbot.waitUntil(lambda: not w.suggestions.worker.is_alive())
+    w.refresh()
+    assert row.timing_review == ''
     assert row.bpm == 125 and row.offset == .3
     assert not row.bpm_estimated and not Document.load(doc.path).rows[0].bpm_estimated
-    assert w.suggestions.detected[id(row)] == BeatGrid(112.371234567, .237891234)
+    assert id(row) not in w.suggestions.detected
+
+
+@pytest.fixture
+def beatless(tmp_path):
+    path = tmp_path / 'beatless.wav'
+    with wave.open(str(path), 'wb') as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(22050)
+        audio.writeframes(b'\0\0' * 22050 * 8)
+    return path
+
+
+@pytest.mark.parametrize('selected', [True, False])
+@pytest.mark.parametrize('state', ['inconclusive', 'review', 'pending'])
+@pytest.mark.parametrize('resolution', ['keep', 'bpm', 'offset', 'detected'])
+def test_review_controls_and_playback(qtbot, window_factory, tmp_path, beatless,
+                                     selected, state, resolution):
+    if resolution == 'detected' and state != 'review':
+        pytest.skip('Detected timing requires a fit')
+    release = threading.Event()
+    grid = BeatGrid(112.3, .2)
+    def estimator(path, *, cancelled):
+        if state == 'pending':
+            while not release.wait(.005):
+                if cancelled():
+                    return None
+        return estimate_grid(path, cancelled=cancelled) if state == 'inconclusive' else grid
+
+    row = Row('Song', TONE, 123, offset=.1, offset_explicit=True, duration=1)
+    other = Row('Other', TONE, 120, duration=1)
+    target = tmp_path / 'set.yaml'
+    w = window_factory(Document(target, rows=[row, other]), estimator=estimator)
+    w.resize(900, 500)
+    w.table.selectRow(0 if selected else 1)
+    assert viewport_drop(w, beatless, 0)
+    if state != 'pending':
+        qtbot.waitUntil(lambda: row.timing_review == state)
+    # Reproduce the gate with a different selected row, too.
+    if not selected:
+        w.table.selectRow(1)
+    qtbot.mouseClick(w.play_button, Qt.LeftButton)
+    assert w.audio is None
+    assert w.table.currentIndex().row() == 0
+    assert w.keep_timing_button.isVisible()
+    assert w.keep_timing_button.isEnabled()
+    assert w.use_timing_button.isVisible() == (state == 'review')
+    message = w.row_notice.text()
+    assert 'Keep current timing' in message
+    assert ('Use detected timing' in message) == w.use_timing_button.isVisible()
+    assert ('No estimate' in message) == (state == 'inconclusive')
+    assert ('analyzing' in message) == (state == 'pending')
+    assert 'edit BPM/offset' in message
+    assert message in w.statusBar().currentMessage()
+    for button in (w.keep_timing_button, w.use_timing_button):
+        if button.isVisible():
+            assert w.editor.rect().contains(button.geometry())
+            assert w.childAt(button.mapTo(w, button.rect().center())) is button
+    for col in (2, 3):
+        assert w.model.flags(w.model.index(0, col)) & Qt.ItemIsEditable
+
+    if resolution in ('keep', 'detected'):
+        button = w.keep_timing_button if resolution == 'keep' else w.use_timing_button
+        qtbot.mousePress(button, Qt.LeftButton)
+        w.refresh()  # A normal refresh must not hide the pressed button.
+        assert button.isDown()
+        qtbot.mouseRelease(button, Qt.LeftButton)
+    else:
+        index = w.model.index(0, 2 if resolution == 'bpm' else 3)
+        w.table.edit(index)
+        editor = w.table.focusWidget()
+        editor.selectAll()
+        qtbot.keyClicks(editor, '125' if resolution == 'bpm' else '0.3')
+        qtbot.keyClick(editor, Qt.Key_Return)
+        qtbot.waitUntil(lambda: not row.timing_review)
+    assert not row.timing_review
+    release.set()
+    qtbot.waitUntil(lambda: not w.suggestions.worker.is_alive())
+    w.refresh()
+    expected = {'keep': (123, .1), 'bpm': (125, .1),
+                'offset': (123, .3), 'detected': (112.3, .2)}[resolution]
+    assert (row.bpm, row.offset) == expected
+    assert not row.timing_review
+    saved = Document.load(target).rows[0]
+    assert saved.problem() is None
+    assert (saved.bpm, saved.offset) == expected
+    assert load_setlist(target).songs[0].bpm == expected[0]
+    qtbot.mouseClick(w.play_button, Qt.LeftButton)
+    assert w.audio is not None
+    assert w.stack.currentWidget() is w.playback

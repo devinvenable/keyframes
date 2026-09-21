@@ -245,6 +245,16 @@ class Suggestions:
             return
         self.entries[id(row)] = (row, 'manual')
 
+    def confirm_timing(self, row):
+        """Explicit timing intent supersedes even an unfinished replacement scan."""
+        key = id(row)
+        self.generations[key] = self.generations.get(key, 0) + 1
+        self.replacements.discard(key)
+        self.bpm_edits.discard(key)
+        row.timing_review = ''
+        row.offset_explicit = True
+        self.manual(row)
+
     def replaced(self, row):
         key = id(row)
         self.generations[key] = self.generations.get(key, 0) + 1
