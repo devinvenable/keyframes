@@ -1,6 +1,28 @@
 SHOWSYNC FOR WINDOWS
 ====================
 
+PREBUILT RELEASE
+
+Extract ShowSync_Windows.zip to a writable folder and keep the entire ShowSync
+folder together, including _internal. Python is not needed to run this build.
+In PowerShell, from the extracted ShowSync folder:
+
+  .\ShowSync.exe --list-devices
+  .\ShowSync.exe .\demo\setlist.yaml
+
+Press Play Set for the supplied 100 BPM / tempo ramp / 140 BPM click tracks.
+The demo uses relative audio paths and can be moved with its WAV files.
+The console remains visible for device/decode errors. The executable is unsigned.
+
+To move your own show between machines, use File > Export Show Bundle, or:
+
+  .\ShowSync.exe C:\Shows\setlist.yaml --export-bundle C:\Shows\my-show.zip
+
+Extract that zip anywhere and open its YAML in ShowSync. Choose audio/MIDI
+devices for the destination machine; machine preferences are not in the bundle.
+
+RUNNING FROM SOURCE
+
 Use native 64-bit Python 3.11 or newer (not WSL Python).
 From the showsync folder in PowerShell:
 
@@ -19,16 +41,53 @@ Keep setlists and backing tracks in editable folders outside the application.
 PACKAGING (same one-folder distribution approach as Keyframes)
 
 Build on Windows using native Windows Python, never PyInstaller under WSL.
-In a build venv, install requirements.txt plus PyInstaller, then run:
+The repeatable build creates a dedicated showsync\venv, installs dependencies,
+freezes the app, generates demo audio, and verifies the extracted ZIP:
 
-  python -m PyInstaller --noconfirm --clean --onedir --name ShowSync --collect-all av --collect-all sounddevice --collect-all soundfile --collect-all rtmidi main.py
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+
+Use -SkipDeps to reuse installed dependencies, or -Clean to remove prior build
+outputs. Native Python 3.11 is selected with py -3.11 when creating the venv.
+The result is dist\ShowSync_Windows.zip. dist\windows-verification contains
+device enumeration, DLL inventory, screenshots, loopback WAV recordings and
+report.json with the source commit, ZIP SHA-256 and playback assertions.
+
+From Linux, with a clean committed branch and SSH access to the Windows box:
+
+  showsync/scripts/build-windows.sh [--skip-deps] [--clean]
+
+This pushes the branch and checks out the exact commit in a dedicated remote
+clone. WSL is only the SSH/file transport; native PowerShell and Windows Python
+build and verify. Defaults: devin@192.168.1.225 and
+/mnt/c/Users/devin/src/showsync-build. Override SHOWSYNC_WINDOWS_HOST,
+SHOWSYNC_WINDOWS_REPO and SHOWSYNC_WINDOWS_POWERSHELL when needed. The ZIP and
+verification evidence are copied back to showsync/dist only after success.
+
+The underlying freeze command (from showsync/) is:
+
+  python -m PyInstaller --noconfirm --clean --onedir --console --name ShowSync --specpath build --collect-all av --collect-all sounddevice --collect-all soundfile --collect-all rtmidi --hidden-import mido.backends.rtmidi --add-data "showsync/icons:showsync/icons" --icon showsync/icons/showsync.ico main.py
 
 Keep the entire dist\ShowSync folder together; distribute it as a zip, with
 this README and an example setlist. Run ShowSync.exe from a terminal or a
 shortcut whose arguments contain the setlist path. Retaining the console
 makes device/decode errors visible. Setlists/audio are never embedded.
-Validate av/FFmpeg DLLs, soundfile/libsndfile, PortAudio, PySide6 (including the Qt Windows platform plugin) and RT-MIDI
-on a clean Windows account before publishing an executable. The Qt rewrite has not yet been frozen or verified on Windows.
+The verifier runs the extracted executable outside the source tree with Python
+and Qt search paths cleared. It checks audio/MIDI enumeration, exports and
+reopens a show bundle, invokes Play Set using Windows UI Automation, records
+100 BPM clicks through WASAPI loopback, checks Pause silences them, returns to
+the editor, and plays M4A to exercise FFmpeg decoding. This needs a logged-in,
+unlocked Windows desktop, an audible default stereo output, and a MIDI output
+(the Windows software synth is enough to check opening RT-MIDI, not timing).
+Keep other audio quiet during verification. Build-host verification packages
+are listed in windows/requirements-verify.txt; they are not bundled in the app.
+To repeat verification without rebuilding:
+
+  .\venv\Scripts\python.exe scripts\verify_windows.py dist\ShowSync_Windows.zip dist\windows-verification
+
+This is a playback/packaging smoke test, not MIDI jitter or clean-account
+certification. Check native file dialogs, hardware MIDI and your chosen audio
+interface on the performance machine. See docs/windows-build-verification.md
+for the actual Windows run and evidence.
 
 Use a dedicated build environment containing only the PySide6 Qt binding.
 PyInstaller hooks collect Qt libraries and platform plugins from PySide6.

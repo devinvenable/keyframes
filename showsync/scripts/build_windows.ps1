@@ -35,6 +35,13 @@ try {
     Invoke-Python -m PyInstaller --noconfirm --clean --onedir --console --name ShowSync --specpath build --collect-all av --collect-all sounddevice --collect-all soundfile --collect-all rtmidi --hidden-import mido.backends.rtmidi --add-data 'showsync/icons:showsync/icons' --icon showsync/icons/showsync.ico main.py
     if (-not (Test-Path (Join-Path $package 'ShowSync.exe'))) { throw 'Missing ShowSync.exe' }
     Copy-Item windows/README.txt (Join-Path $package 'README.txt')
+    $licenses = New-Item -ItemType Directory -Force (Join-Path $package 'licenses')
+    foreach ($metadata in Get-ChildItem (Join-Path $root 'venv\Lib\site-packages') -Directory -Filter '*.dist-info') {
+        $source = Join-Path $metadata.FullName 'licenses'
+        if (Test-Path $source) {
+            Copy-Item $source (Join-Path $licenses $metadata.Name) -Recurse
+        }
+    }
     $demo = New-Item -ItemType Directory -Force (Join-Path $package 'demo')
     Invoke-Python -c 'from demo.make_demo import main; from pathlib import Path; main(Path(''dist/ShowSync/demo''))'
     Copy-Item tests/fixtures/demo_ramp_reference.yaml (Join-Path $demo 'setlist.yaml')

@@ -112,7 +112,16 @@ def verify(archive, evidence, report):
                         proc.terminate()
                         proc.wait(timeout=10)
 
-        run_set(package / 'demo' / 'setlist.yaml', 'demo', demo=True)
+        exported = base / 'exported-show.zip'
+        export = subprocess.run([str(exe), str(package / 'demo' / 'setlist.yaml'),
+                                 '--export-bundle', str(exported)], cwd=base, env=env,
+                                capture_output=True, text=True, timeout=45)
+        (evidence / 'export.txt').write_text(export.stdout + export.stderr, encoding='utf-8')
+        check(export.returncode == 0 and exported.is_file(), 'Frozen bundle export failed')
+        imported = base / 'imported show'
+        with zipfile.ZipFile(exported) as bundle:
+            bundle.extractall(imported)
+        run_set(imported / 'setlist.yaml', 'demo', demo=True)
         codec = package / 'demo' / 'codec-test.yaml'
         codec.write_text('title: FFmpeg smoke\naudio_root: .\nsongs:\n' +
                          '  - name: M4A decoder\n    file: codec-test.m4a\n    bpm: 120\n' * 10)
