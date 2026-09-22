@@ -46,7 +46,9 @@ freezes the app, generates demo audio, and verifies the extracted ZIP:
 
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 
-Use -SkipDeps to reuse installed dependencies, or -Clean to remove prior build
+Pass -Revision <source-commit> if native Windows Git is not installed (the Linux
+driver supplies this automatically). Use -SkipDeps to reuse installed dependencies,
+or -Clean to remove prior build
 outputs. Native Python 3.11 is selected with py -3.11 when creating the venv.
 The result is dist\ShowSync_Windows.zip. dist\windows-verification contains
 device enumeration, DLL inventory, screenshots, loopback WAV recordings and

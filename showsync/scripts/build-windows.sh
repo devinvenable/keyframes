@@ -30,7 +30,7 @@ ssh -o BatchMode=yes "$host" "$sync"
 printf -v convert 'wslpath -w %q' "$repo/showsync/scripts/build_windows.ps1"
 script=$(ssh -o BatchMode=yes "$host" "$convert")
 printf -v build '%q -NoProfile -ExecutionPolicy Bypass -File %q' "$powershell" "$script"
-ssh -o BatchMode=yes "$host" "$build ${args[*]}"
+ssh -o BatchMode=yes "$host" "$build -Revision $revision ${args[*]}"
 mkdir -p "$root/dist"
 scp "$host:$repo/showsync/dist/ShowSync_Windows.zip" "$root/dist/ShowSync_Windows.zip"
 scp -r "$host:$repo/showsync/dist/windows-verification" "$root/dist/"

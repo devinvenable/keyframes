@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$SkipDeps, [switch]$Clean)
+param([switch]$SkipDeps, [switch]$Clean, [string]$Revision = '')
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -51,7 +51,13 @@ try {
     # Exercise the FFmpeg decoder too, beyond the libsndfile WAV demo.
     Copy-Item tests/fixtures/tone.m4a (Join-Path $demo 'codec-test.m4a')
     Invoke-Python -m pip freeze | Set-Content -Encoding UTF8 (Join-Path $package 'build-requirements.txt')
-    git rev-parse HEAD | Set-Content -Encoding ASCII (Join-Path $package 'build-commit.txt')
+    if (-not $Revision) {
+        if (Get-Command git -ErrorAction SilentlyContinue) {
+            $Revision = git rev-parse HEAD
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source revision.' }
+        } else { throw 'Pass -Revision <source-commit> when Windows Git is not installed.' }
+    }
+    $Revision | Set-Content -Encoding ASCII (Join-Path $package 'build-commit.txt')
     # Zip first, then test an extracted copy outside the checkout. Nothing is
     # delivered unless the GUI, devices and captured playback checks all pass.
     Compress-Archive -Path $package -DestinationPath $zip -Force
