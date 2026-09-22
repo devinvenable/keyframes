@@ -1,0 +1,4 @@
+# Build-host only; never bundled into ShowSync.
+pywinauto>=0.6.9,<0.7
+Pillow>=11,<13
+SoundCard>=0.4.5,<0.5
