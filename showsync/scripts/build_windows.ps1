@@ -20,7 +20,7 @@ try {
         py -3.11 -m venv venv
         if ($LASTEXITCODE -ne 0) { throw 'Install native 64-bit Windows Python 3.11+.' }
     }
-    Invoke-Python -c 'import sys, struct; assert sys.platform == "win32" and sys.version_info >= (3, 11) and struct.calcsize("P") == 8, "Native Windows x64 Python 3.11+ required"'
+    Invoke-Python -c 'import sys, struct; assert sys.platform == ''win32'' and sys.version_info >= (3, 11) and struct.calcsize(''P'') == 8, ''Native Windows x64 Python 3.11+ required'''
     if (-not $SkipDeps) {
         Invoke-Python -m pip install -r requirements.txt 'PyInstaller>=6.11,<7'
         Invoke-Python -m pip install -r windows/requirements-verify.txt
@@ -36,7 +36,7 @@ try {
     if (-not (Test-Path (Join-Path $package 'ShowSync.exe'))) { throw 'Missing ShowSync.exe' }
     Copy-Item windows/README.txt (Join-Path $package 'README.txt')
     $demo = New-Item -ItemType Directory -Force (Join-Path $package 'demo')
-    Invoke-Python -c 'from demo.make_demo import main; from pathlib import Path; main(Path("dist/ShowSync/demo"))'
+    Invoke-Python -c 'from demo.make_demo import main; from pathlib import Path; main(Path(''dist/ShowSync/demo''))'
     Copy-Item tests/fixtures/demo_ramp_reference.yaml (Join-Path $demo 'setlist.yaml')
     Copy-Item demo/click-test.yaml $demo
     # Exercise the FFmpeg decoder too, beyond the libsndfile WAV demo.

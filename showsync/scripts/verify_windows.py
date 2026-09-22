@@ -114,8 +114,8 @@ def verify(archive, evidence, report):
 
         run_set(package / 'demo' / 'setlist.yaml', 'demo', demo=True)
         codec = package / 'demo' / 'codec-test.yaml'
-        codec.write_text('title: FFmpeg smoke\naudio_root: .\nsongs:\n'
-                         '  - name: M4A decoder\n    file: codec-test.m4a\n    bpm: 120\n')
+        codec.write_text('title: FFmpeg smoke\naudio_root: .\nsongs:\n' +
+                         '  - name: M4A decoder\n    file: codec-test.m4a\n    bpm: 120\n' * 10)
         run_set(codec, 'm4a')
     report['passed'] = True
 
