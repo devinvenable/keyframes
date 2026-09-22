@@ -32,7 +32,8 @@ try {
     }
     # Do not leave a stale successful zip if any stage below fails.
     if (Test-Path $zip) { Remove-Item $zip }
-    Invoke-Python -m PyInstaller --noconfirm --clean --onedir --console --name ShowSync --specpath build --collect-all av --collect-all sounddevice --collect-all soundfile --collect-all rtmidi --hidden-import mido.backends.rtmidi --add-data 'showsync/icons:showsync/icons' --icon showsync/icons/showsync.ico main.py
+    $icons = Join-Path $root 'showsync\icons'
+    Invoke-Python -m PyInstaller --noconfirm --clean --onedir --console --name ShowSync --specpath build --collect-all av --collect-all sounddevice --collect-all soundfile --collect-all rtmidi --hidden-import mido.backends.rtmidi --add-data "${icons}:showsync/icons" --icon (Join-Path $icons 'showsync.ico') main.py
     if (-not (Test-Path (Join-Path $package 'ShowSync.exe'))) { throw 'Missing ShowSync.exe' }
     Copy-Item windows/README.txt (Join-Path $package 'README.txt')
     $licenses = New-Item -ItemType Directory -Force (Join-Path $package 'licenses')

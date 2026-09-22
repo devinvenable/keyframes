@@ -65,7 +65,8 @@ verification evidence are copied back to showsync/dist only after success.
 
 The underlying freeze command (from showsync/) is:
 
-  python -m PyInstaller --noconfirm --clean --onedir --console --name ShowSync --specpath build --collect-all av --collect-all sounddevice --collect-all soundfile --collect-all rtmidi --hidden-import mido.backends.rtmidi --add-data "showsync/icons:showsync/icons" --icon showsync/icons/showsync.ico main.py
+  $icons = Join-Path (Get-Location) 'showsync\icons'
+  python -m PyInstaller --noconfirm --clean --onedir --console --name ShowSync --specpath build --collect-all av --collect-all sounddevice --collect-all soundfile --collect-all rtmidi --hidden-import mido.backends.rtmidi --add-data "${icons}:showsync/icons" --icon "$icons\showsync.ico" main.py
 
 Keep the entire dist\ShowSync folder together; distribute it as a zip, with
 this README and an example setlist. Run ShowSync.exe from a terminal or a
