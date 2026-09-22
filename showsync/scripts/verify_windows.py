@@ -78,7 +78,7 @@ def verify(archive, evidence, report):
                     window.capture_as_image().save(evidence / f'{name}-editor.png')
                     play.invoke()
                     window.child_window(title='Playing', control_type='Text').wait('visible', timeout=30)
-                    samples = capture(f'{name}-playing', 5 if demo else 0.5)
+                    samples = capture(f'{name}-playing', 5)
                     check(report[f'{name}-playing']['peak'] > 0.001, 'Windows output capture is silent')
                     window.capture_as_image().save(evidence / f'{name}-playing.png')
                     if demo:

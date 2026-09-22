@@ -37,6 +37,7 @@ try {
     if (-not (Test-Path (Join-Path $package 'ShowSync.exe'))) { throw 'Missing ShowSync.exe' }
     Copy-Item windows/README.txt (Join-Path $package 'README.txt')
     $licenses = New-Item -ItemType Directory -Force (Join-Path $package 'licenses')
+    Copy-Item windows/licenses (Join-Path $licenses 'Qt') -Recurse
     foreach ($metadata in Get-ChildItem (Join-Path $root 'venv\Lib\site-packages') -Directory -Filter '*.dist-info') {
         $source = Join-Path $metadata.FullName 'licenses'
         if (Test-Path $source) {
