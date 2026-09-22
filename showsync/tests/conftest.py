@@ -14,9 +14,11 @@ TONE = FIXTURES / 'tone.wav'
 
 
 class Dialogs:
-    def __init__(self, save=None, open_=None, files=()):
+    def __init__(self, save=None, open_=None, files=(), bundle=None):
         self.save, self.open_, self.files = save, open_, list(files)
+        self.bundle = bundle
         self.save_dirs = []
+        self.bundle_stems = []
 
     def save_path(self, directory):
         self.save_dirs.append(Path(directory))
@@ -27,6 +29,10 @@ class Dialogs:
 
     def audio_files(self):
         return self.files
+
+    def bundle_path(self, directory, stem):
+        self.bundle_stems.append(stem)
+        return self.bundle
 
 
 @pytest.fixture

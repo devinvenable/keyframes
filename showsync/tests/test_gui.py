@@ -9,7 +9,7 @@ from showsync.clock import ClockEngine, START, STOP
 from showsync.document import Document, Row
 from showsync.gui import timestamp
 from showsync.tempomap import TempoEvent
-from conftest import TONE
+from conftest import Dialogs, TONE
 
 
 def document(tmp_path, *, ramp=False):
@@ -294,3 +294,36 @@ def test_cli_clock_offset_override_is_temporary(monkeypatch):
     assert captured[-1]['clock_offset_ms'] == 17
     captured[-1]['offset_changed'](-12)
     save.assert_called_once_with(-12)
+
+
+def test_export_bundle_menu_zips_saved_set(qtbot, window_factory, tmp_path):
+    import zipfile
+    doc = document(tmp_path)
+    doc.save()
+    w = window_factory(doc, dialogs=Dialogs(bundle=tmp_path / 'out.zip'))
+    w.export_bundle()
+    assert w.dialogs.bundle_stems == ['set']
+    assert sorted(zipfile.ZipFile(tmp_path / 'out.zip').namelist()) == ['set.yaml', 'tone.wav']
+    assert 'Exported out.zip' in w.statusBar().currentMessage()
+
+
+def test_export_bundle_saves_unsaved_set_first(qtbot, window_factory, tmp_path):
+    import zipfile
+    doc = document(tmp_path)
+    doc.path = None
+    w = window_factory(doc, dialogs=Dialogs(save=tmp_path / 'named.yaml', bundle=tmp_path / 'out.zip'))
+    w.dirty = True
+    w.export_bundle()
+    assert (tmp_path / 'named.yaml').is_file()
+    assert 'set.yaml' not in zipfile.ZipFile(tmp_path / 'out.zip').namelist()
+    assert 'named.yaml' in zipfile.ZipFile(tmp_path / 'out.zip').namelist()
+
+
+def test_export_bundle_aborts_when_save_declined(qtbot, window_factory, tmp_path):
+    doc = document(tmp_path)
+    doc.path = None
+    w = window_factory(doc, dialogs=Dialogs(bundle=tmp_path / 'out.zip'))
+    w.dirty = True
+    w.export_bundle()
+    assert w.dialogs.bundle_stems == []
+    assert not (tmp_path / 'out.zip').exists()

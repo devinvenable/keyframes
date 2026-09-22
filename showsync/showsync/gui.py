@@ -463,6 +463,7 @@ class MainWindow(QMainWindow):
         self.open_action = self.action(file_menu, '&Open…', self.open_set, 'Ctrl+O')
         self.action(file_menu, '&Save', lambda: self.save(explicit=True), 'Ctrl+S')
         self.action(file_menu, 'Save &As…', self.save_as, 'Ctrl+Shift+S')
+        self.action(file_menu, 'Export Show &Bundle…', self.export_bundle)
         self.recent_menu = file_menu.addMenu('Recent Sets')
         self.recent_menu.aboutToShow.connect(self.populate_recents)
         file_menu.addSeparator()
@@ -566,6 +567,20 @@ class MainWindow(QMainWindow):
             self.notice(f'Save failed: {exc}')
         finally:
             self._saving = False
+
+    def export_bundle(self):
+        """Zip the saved set with its audio so another machine plays it as-is."""
+        if (self.dirty or self.document.path is None) and not self.save(explicit=True):
+            return
+        try:
+            target = self.dialogs.bundle_path(self.document.path.parent, self.document.path.stem)
+            if not target:
+                return
+            from .bundle import export_bundle
+            manifest = export_bundle(self.document.path, target)
+            self.notice(f'Exported {target.name} ({len(manifest)} songs)')
+        except Exception as exc:
+            self.notice(f'Export failed: {exc}')
 
     def confirm(self, title, message):
         return QMessageBox.question(self, title, message, QMessageBox.Yes | QMessageBox.No,

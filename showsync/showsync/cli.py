@@ -6,6 +6,7 @@ import math
 
 from .appstate import last_setlist, remember_setlist, clock_offset_ms, remember_clock_offset
 from .audio import AudioEngine
+from .bundle import BundleError, export_bundle
 from .clock import ClockEngine, open_midi_port
 from .document import Document
 from .devices import Devices
@@ -23,7 +24,20 @@ def main(argv=None):
     parser.add_argument('--freeze-gc', action='store_true', help='Freeze startup objects to reduce GC timing pauses')
     parser.add_argument('--clock-offset', type=float, metavar='MS',
                         help='MIDI clock offset (-250..250 ms); positive = earlier ticks; this run only')
+    parser.add_argument('--export-bundle', metavar='ZIP',
+                        help='write a portable show bundle (setlist + audio) to ZIP and exit')
     args = parser.parse_args(argv)
+    if args.export_bundle:
+        if not args.setlist:
+            parser.error('--export-bundle needs a setlist argument')
+        logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+        try:
+            manifest = export_bundle(args.setlist, args.export_bundle)
+        except BundleError as exc:
+            logging.error('%s', exc)
+            return 1
+        print(f'Wrote {args.export_bundle} ({len(manifest)} songs)')
+        return 0
     if args.clock_offset is not None and (not math.isfinite(args.clock_offset) or
                                           not -250 <= args.clock_offset <= 250):
         parser.error('--clock-offset must be between -250 and 250 ms')
