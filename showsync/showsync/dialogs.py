@@ -24,6 +24,15 @@ class Dialogs:
             self.parent, 'Open Set', '', 'Setlists (*.yaml *.yml);;All files (*)')
         return Path(name) if name else None
 
+    def bundle_path(self, directory, stem):
+        name, _ = QFileDialog.getSaveFileName(
+            self.parent, 'Export Show Bundle', str(Path(directory) / f'{stem}-bundle.zip'),
+            'Zip archives (*.zip)')
+        if not name:
+            return None
+        path = Path(name)
+        return path if path.suffix else path.with_suffix('.zip')
+
     def save_path(self, directory):
         name, _ = QFileDialog.getSaveFileName(
             self.parent, 'Save Set', str(Path(directory) / 'setlist.yaml'),
