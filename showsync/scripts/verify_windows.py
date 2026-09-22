@@ -23,8 +23,10 @@ def check(condition, message):
 
 def verify(archive, evidence, report):
     import numpy as np
-    from pywinauto import Application
+    # SoundCard 0.4.x rejects COM's S_FALSE when another library initialized
+    # the same apartment first. Let it initialize before UI Automation.
     import soundcard as sc
+    from pywinauto import Application
     import soundfile as sf
 
     report.update(platform=platform.platform(), zip_sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
@@ -44,7 +46,7 @@ def verify(archive, evidence, report):
         for key in ('PYTHONPATH', 'PYTHONHOME', 'QT_PLUGIN_PATH', 'QT_QPA_PLATFORM_PLUGIN_PATH'):
             env.pop(key, None)
         env['APPDATA'] = str(base / 'appdata')
-        env['PATH'] = str(Path(env['SystemRoot']) / 'System32')
+        env['PATH'] = str(Path(env['SYSTEMROOT']) / 'System32')
         devices = subprocess.run([str(exe), '--list-devices'], cwd=base, env=env,
                                  capture_output=True, text=True, timeout=45)
         (evidence / 'devices.txt').write_text(devices.stdout + devices.stderr, encoding='utf-8')
@@ -75,6 +77,8 @@ def verify(archive, evidence, report):
                     window.wait('visible', timeout=40)
                     play = window.child_window(title='Play Set', control_type='Button')
                     play.wait('enabled', timeout=30)
+                    window.set_focus()
+                    time.sleep(.3)
                     window.capture_as_image().save(evidence / f'{name}-editor.png')
                     play.invoke()
                     window.child_window(title='Playing', control_type='Text').wait('visible', timeout=30)
