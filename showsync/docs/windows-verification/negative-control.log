@@ -1,0 +1,15 @@
+Opening frozen executable: demo
+ Traceback (most recent call last):
+  File "C:\Users\Devin\src\showsync-build\showsync\scripts\verify_windows.py", line 154, in <module>
+    main()
+  File "C:\Users\Devin\src\showsync-build\showsync\scripts\verify_windows.py", line 144, in main
+    verify(args.archive.resolve(), args.evidence.resolve(), report)
+  File "C:\Users\Devin\src\showsync-build\showsync\scripts\verify_windows.py", line 128, in verify
+    run_set(imported / 'setlist.yaml', 'demo', demo=True)
+  File "C:\Users\Devin\src\showsync-build\showsync\scripts\verify_windows.py", line 86, in run_set
+    check(report[f'{name}-playing']['peak'] > 0.001, 'Windows output capture is silent')
+  File "C:\Users\Devin\src\showsync-build\showsync\scripts\verify_windows.py", line 21, in check
+    raise AssertionError(message)
+AssertionError: Windows output capture is silent
+
+Negative control passed: silent playback rejected on the assertion; original ZIP unchanged.

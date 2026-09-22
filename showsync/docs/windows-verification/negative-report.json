@@ -1,0 +1,14 @@
+{
+  "passed": false,
+  "platform": "Windows-10-10.0.26200-SP0",
+  "zip_sha256": "98060ea97e23e5f6d5bb2f0086324ada8380451571ccfe529bb9b8ca277091a8",
+  "loopback_output": "Digital Output (2- High Definition Audio Device)",
+  "build_commit": "3c3f546223a8d58ed541c297fe5c753bdfeccdc3",
+  "extracted_path": "C:\\Users\\Devin\\AppData\\Local\\Temp\\ShowSync smoke cjdubdby\\ShowSync",
+  "devices": "  0 Microsoft Sound Mapper - Output, MME (0 in, 2 out)\n< 1 Digital Output (2- High Definit, MME (0 in, 2 out)\n  2 Primary Sound Driver, Windows DirectSound (0 in, 2 out)\n  3 Digital Output (2- High Definition Audio Device), Windows DirectSound (0 in, 2 out)\n  4 Digital Output (2- High Definition Audio Device), Windows WASAPI (0 in, 2 out)\n  5 Headphones (Senary Audio headphone), Windows WDM-KS (0 in, 2 out)\n  6 Microphone (Senary Audio capture), Windows WDM-KS (2 in, 0 out)\n  7 Output (HD Audio HDMI out 2), Windows WDM-KS (0 in, 2 out)\nMIDI outputs: [(0, 'Microsoft GS Wavetable Synth 0')]\n",
+  "demo-playing": {
+    "rms": 0.0,
+    "peak": 0.0
+  },
+  "error": "Traceback (most recent call last):\n  File \"C:\\Users\\Devin\\src\\showsync-build\\showsync\\scripts\\verify_windows.py\", line 144, in main\n    verify(args.archive.resolve(), args.evidence.resolve(), report)\n  File \"C:\\Users\\Devin\\src\\showsync-build\\showsync\\scripts\\verify_windows.py\", line 128, in verify\n    run_set(imported / 'setlist.yaml', 'demo', demo=True)\n  File \"C:\\Users\\Devin\\src\\showsync-build\\showsync\\scripts\\verify_windows.py\", line 86, in run_set\n    check(report[f'{name}-playing']['peak'] > 0.001, 'Windows output capture is silent')\n  File \"C:\\Users\\Devin\\src\\showsync-build\\showsync\\scripts\\verify_windows.py\", line 21, in check\n    raise AssertionError(message)\nAssertionError: Windows output capture is silent\n"
+}

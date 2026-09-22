@@ -1,0 +1,6 @@
+{
+  "expected_failure": "Windows output capture is silent",
+  "source_zip_sha256": "92ce3c2e2d0a85796ff43784b1097b35348db225e93dfd4260b09ae0483ee827",
+  "original_unchanged": true,
+  "mutation": "Replaced only demo-100.wav samples with silence, preserving its duration and format."
+}

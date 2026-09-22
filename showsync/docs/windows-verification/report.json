@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "platform": "Windows-10-10.0.26200-SP0",
+  "zip_sha256": "92ce3c2e2d0a85796ff43784b1097b35348db225e93dfd4260b09ae0483ee827",
+  "loopback_output": "Digital Output (2- High Definition Audio Device)",
+  "build_commit": "3c3f546223a8d58ed541c297fe5c753bdfeccdc3",
+  "extracted_path": "C:\\Users\\Devin\\AppData\\Local\\Temp\\ShowSync smoke 8y48d73o\\ShowSync",
+  "devices": "  0 Microsoft Sound Mapper - Output, MME (0 in, 2 out)\n< 1 Digital Output (2- High Definit, MME (0 in, 2 out)\n  2 Primary Sound Driver, Windows DirectSound (0 in, 2 out)\n  3 Digital Output (2- High Definition Audio Device), Windows DirectSound (0 in, 2 out)\n  4 Digital Output (2- High Definition Audio Device), Windows WASAPI (0 in, 2 out)\n  5 Headphones (Senary Audio headphone), Windows WDM-KS (0 in, 2 out)\n  6 Microphone (Senary Audio capture), Windows WDM-KS (2 in, 0 out)\n  7 Output (HD Audio HDMI out 2), Windows WDM-KS (0 in, 2 out)\nMIDI outputs: [(0, 'Microsoft GS Wavetable Synth 0')]\n",
+  "demo-playing": {
+    "rms": 0.05320047587156296,
+    "peak": 0.7842312455177307
+  },
+  "click_intervals_seconds": [
+    0.6,
+    0.6,
+    0.6,
+    0.6,
+    0.6,
+    0.6,
+    0.6
+  ],
+  "paused": {
+    "rms": 0.0,
+    "peak": 0.0
+  },
+  "playback_labels": [
+    "MIDI: Microsoft GS Wavetable Synth 0",
+    "showsync live demo  \u2022  1/3 songs",
+    "Hundred",
+    "100.0 BPM",
+    "Paused",
+    "00:05 elapsed    /    00:34 remaining",
+    "Next: Ramp Up  (120->140 BPM)",
+    "Upcoming songs",
+    "MIDI clock offset (ms)",
+    "Increase if gear sounds late; decrease if gear sounds early."
+  ],
+  "m4a-playing": {
+    "rms": 0.05293961241841316,
+    "peak": 0.10151535272598267
+  }
+}

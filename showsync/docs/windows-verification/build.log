@@ -1,0 +1,123 @@
+Everything up-to-date
+Previous HEAD position was eaf9e28 Pass source revision from the driver when Windows Git is absent
+HEAD is now at 3c3f546 Fix Windows verification COM setup and environment isolation
+223 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.7
+223 INFO: Python: 3.11.9
+241 INFO: Platform: Windows-10-10.0.26200-SP0
+241 INFO: Python environment: C:\Users\devin\src\showsync-build\showsync\venv
+242 INFO: wrote build\ShowSync.spec
+245 INFO: Removing temporary files and cleaning cache in C:\Users\Devin\AppData\Local\pyinstaller
+1043 WARNING: collect_data_files - skipping data collection for module 'sounddevice' as it is not a package.
+1043 WARNING: collect_dynamic_libs - skipping library collection for module 'sounddevice' as it is not a package.
+1522 WARNING: collect_data_files - skipping data collection for module 'soundfile' as it is not a package.
+1522 WARNING: collect_dynamic_libs - skipping library collection for module 'soundfile' as it is not a package.
+2490 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\devin\\src\\showsync-build\\showsync',
+ 'C:\\Users\\Devin\\AppData\\Local\\Programs\\Python\\Python311\\python311.zip',
+ 'C:\\Users\\Devin\\AppData\\Local\\Programs\\Python\\Python311\\DLLs',
+ 'C:\\Users\\Devin\\AppData\\Local\\Programs\\Python\\Python311\\Lib',
+ 'C:\\Users\\Devin\\AppData\\Local\\Programs\\Python\\Python311',
+ 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv',
+ 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages',
+ 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\win32',
+ 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\win32\\lib',
+ 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\pythonwin',
+ 'C:\\Users\\devin\\src\\showsync-build\\showsync']
+3177 INFO: Appending 'datas' from .spec
+3215 INFO: checking Analysis
+3217 INFO: Building Analysis because Analysis-00.toc is non existent
+3217 INFO: Looking for Python shared library...
+3217 INFO: Using Python shared library: C:\Users\Devin\AppData\Local\Programs\Python\Python311\python311.dll
+3217 INFO: Running Analysis Analysis-00.toc
+3217 INFO: Target bytecode optimization level: 0
+3217 INFO: Initializing module dependency graph...
+3217 INFO: Initializing module graph hook caches...
+3246 INFO: Analyzing modules for base_library.zip ...
+4595 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+5263 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+6895 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+7036 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+8983 INFO: Caching module dependency graph...
+9044 INFO: Analyzing C:\Users\devin\src\showsync-build\showsync\main.py
+9163 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9607 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+9609 INFO: SetuptoolsInfo: initializing cached setuptools info...
+10860 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11060 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11553 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+12211 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+12817 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+12929 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+13525 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+15506 INFO: Processing standard module hook 'hook-ruamel.yaml.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+16282 INFO: Processing standard module hook 'hook-av.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17091 INFO: Processing standard module hook 'hook-soundfile.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17201 INFO: Processing standard module hook 'hook-sounddevice.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17317 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17619 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17872 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+21729 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+26330 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+47522 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+51777 INFO: Analyzing hidden import 'mido.backends.rtmidi'
+51889 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+51921 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+51937 INFO: Analyzing hidden import 'av.__main__'
+51937 INFO: Analyzing hidden import 'av.container.pyio'
+51953 INFO: Analyzing hidden import 'av.datasets'
+51953 INFO: Analyzing hidden import 'av.dictionary'
+51953 INFO: Analyzing hidden import 'av.filter.link'
+51953 INFO: Analyzing hidden import 'av.opaque'
+51969 INFO: Analyzing hidden import 'av.sidedata.encparams'
+51969 INFO: Analyzing hidden import 'av.utils'
+51969 INFO: Analyzing hidden import 'rtmidi.midiconstants'
+51969 INFO: Analyzing hidden import 'rtmidi.midiutil'
+51985 INFO: Processing module hooks (post-graph stage)...
+52080 INFO: Performing binary vs. data reclassification (372 entries)
+52209 INFO: Looking for ctypes DLLs
+52274 INFO: Analyzing run-time hooks ...
+52290 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+52290 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+52290 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+52290 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+52305 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+52305 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+52338 INFO: Creating base_library.zip...
+52354 INFO: Looking for dynamic libraries
+53566 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\Devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\shiboken6', 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\numpy.libs', 'C:\\Users\\devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\av.libs']
+53566 INFO: Extra DLL search directories (PATH): ['C:\\Users\\Devin\\src\\showsync-build\\showsync\\venv\\Lib\\site-packages\\PySide6']
+56059 INFO: Warnings written to C:\Users\devin\src\showsync-build\showsync\build\ShowSync\warn-ShowSync.txt
+56153 INFO: Graph cross-reference written to C:\Users\devin\src\showsync-build\showsync\build\ShowSync\xref-ShowSync.html
+56210 INFO: checking PYZ
+56210 INFO: Building PYZ because PYZ-00.toc is non existent
+56210 INFO: Building PYZ (ZlibArchive) C:\Users\devin\src\showsync-build\showsync\build\ShowSync\PYZ-00.pyz
+56776 INFO: Building PYZ (ZlibArchive) C:\Users\devin\src\showsync-build\showsync\build\ShowSync\PYZ-00.pyz completed successfully.
+56795 INFO: checking PKG
+56795 INFO: Building PKG because PKG-00.toc is non existent
+56795 INFO: Building PKG (CArchive) ShowSync.pkg
+56829 INFO: Building PKG (CArchive) ShowSync.pkg completed successfully.
+56831 INFO: Bootloader C:\Users\devin\src\showsync-build\showsync\venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\run.exe
+56831 INFO: checking EXE
+56831 INFO: Building EXE because EXE-00.toc is non existent
+56831 INFO: Building EXE from EXE-00.toc
+56831 INFO: Copying bootloader EXE to C:\Users\devin\src\showsync-build\showsync\build\ShowSync\ShowSync.exe
+56889 INFO: Copying icon to EXE
+56940 INFO: Copying 0 resources to EXE
+56940 INFO: Embedding manifest in EXE
+56990 INFO: Appending PKG archive to EXE
+57063 INFO: Fixing EXE headers
+57536 INFO: Building EXE from EXE-00.toc completed successfully.
+57547 INFO: checking COLLECT
+57549 INFO: Building COLLECT because COLLECT-00.toc is non existent
+57549 INFO: Removing dir C:\Users\devin\src\showsync-build\showsync\dist\ShowSync
+57910 INFO: Building COLLECT COLLECT-00.toc
+59866 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+59895 INFO: Build complete! The results are available in: C:\Users\devin\src\showsync-build\showsync\dist
+wrote dist\ShowSync\demo\demo-100.wav (40s)
+wrote dist\ShowSync\demo\demo-ramp.wav (45s)
+wrote dist\ShowSync\demo\demo-140.wav (30s)
+Opening frozen executable: demo
+Opening frozen executable: m4a
+ShowSync frozen Windows verification passed
+Verified release: C:\Users\devin\src\showsync-build\showsync\dist\ShowSync_Windows.zip
+Verified Windows release: /home/devin/src/2026/midi/worktrees/showsync-windows-build-freeze-with-pyinstaller-on-107/showsync/dist/ShowSync_Windows.zip
