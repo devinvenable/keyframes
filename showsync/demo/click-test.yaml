@@ -1,7 +1,7 @@
 title: MIDI clock calibration
 audio_root: .
 songs:
-  - name: 100 BPM calibration clicks
-    file: click-test.wav
-    bpm: 100
-    offset: 0.5  # silent lead-in lets positive compensation advance tick zero
+  - name: neon_undertow_dv
+    file: /home/devin/src/2026/midi/songs/neon_undertow_dv.mp3
+    bpm: 112.0013636939212
+    offset: 0.00027587082439239907
