@@ -21,7 +21,7 @@ from showsync.video import Picture, VideoReader, VideoWorker
 from showsync.video_window import VideoWindow
 
 
-def make_video(path, *, audio=True, start=0, audio_start=0, rate=10):
+def make_video(path, *, audio=True, start=0, audio_start=0, rate=10, video_seconds=1):
     """One second of ten distinguishable frames and optional 44.1 kHz tone."""
     with av.open(str(path), 'w') as output:
         video = output.add_stream('mpeg4', rate=rate)
@@ -30,8 +30,8 @@ def make_video(path, *, audio=True, start=0, audio_start=0, rate=10):
         sound = output.add_stream('aac', rate=44100) if audio else None
         if sound:
             sound.layout = 'stereo'
-        for index in range(rate):
-            pixels = np.full((48, 64, 3), 20 + index * 200 // rate, dtype=np.uint8)
+        for index in range(rate * video_seconds):
+            pixels = np.full((48, 64, 3), 20 + (index % rate) * 200 // rate, dtype=np.uint8)
             frame = av.VideoFrame.from_ndarray(pixels, format='rgb24')
             frame.pts, frame.time_base = start * rate + index, Fraction(1, rate)
             for packet in video.encode(frame):
@@ -211,6 +211,12 @@ def test_video_setlist_document_roundtrip_and_validation(tmp_path, clip):
     document = Document(tmp_path / 'new.yaml', rows=[Row('new', clip, 120, video=clip, mute=True)])
     document.save()
     assert load_setlist(document.path).songs[0].video == clip
+    longer = make_video(tmp_path / 'longer.mp4', video_seconds=2)
+    document.replace_file(document.rows[0], longer)
+    assert document.rows[0].mute
+    assert document.rows[0].duration == 2
+    document.save()
+    assert Document.load(document.path).rows[0].duration == 2
     text = path.read_text()
     path.write_text(text.replace('mute: true', 'mute: yesplease'))
     with pytest.raises(SetlistError, match='mute must be a boolean'):

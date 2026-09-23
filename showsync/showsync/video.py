@@ -156,9 +156,12 @@ class VideoWorker:
                 try:
                     if reader is None:
                         reader = self.reader_factory(key[0], audio_origin=key[1])
-                    pictures = reader.pictures_at(request[1], cancelled=lambda: (
-                        self.halt.is_set() or self.request is None or self.request[0] != key))
-                    if self.request is not None and self.request[0] == key:
+                    def cancelled():
+                        latest = self.request
+                        return self.halt.is_set() or latest is None or latest[0] != key
+                    pictures = reader.pictures_at(request[1], cancelled=cancelled)
+                    latest = self.request
+                    if latest is not None and latest[0] == key:
                         self.result = (key, pictures)
                 except Exception as exc:
                     failed = key

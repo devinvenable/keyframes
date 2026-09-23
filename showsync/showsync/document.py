@@ -160,6 +160,10 @@ class Document:
         if rejected:
             raise ValueError(rejected[0][1])
         replacement = added[0]
+        if row.mute and replacement.file.suffix.lower() in VIDEO_SUFFIXES and probe is probe_duration:
+            from .audio import Decoder
+            with Decoder.open(replacement.file, mute=True) as decoder:
+                replacement.duration = decoder.duration
         if row.name == row.file.stem:
             row.name = replacement.name
         row.file, row.duration, row.file_error = replacement.file, replacement.duration, None
