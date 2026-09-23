@@ -4,7 +4,7 @@ import zipfile
 
 import pytest
 
-from showsync.bundle import BundleError, export_bundle
+from showsync.bundle import BundleError, export_bundle, import_bundle
 from showsync.setlist import load_setlist
 
 
@@ -209,3 +209,104 @@ songs:
     assert 'gone.mid' in caplog.text
     with zipfile.ZipFile(bundle) as archive:
         assert sorted(archive.namelist()) == ['opener.wav', 'show.yaml']
+
+def make_bundle(tmp_path, name='show'):
+    """Export a two-song set and return its zip path."""
+    first = make_audio(tmp_path / 'src', 'opener.wav', b'opener-bytes')
+    second = make_audio(tmp_path / 'src', 'closer.mp3', b'closer-bytes')
+    setlist = write_setlist(tmp_path / f'{name}.yaml', f"""\
+title: "Fall tour"
+songs:
+  - name: Opener
+    file: {first}
+    bpm: 112
+  - name: Closer
+    file: {second}
+    bpm: 90
+""")
+    zip_path = tmp_path / f'{name}.zip'
+    export_bundle(setlist, zip_path)
+    return zip_path
+
+
+def test_import_round_trips_an_exported_bundle(tmp_path):
+    """export -> import -> load reproduces the set; default dest is zip stem."""
+    zip_path = make_bundle(tmp_path)
+    setlist = import_bundle(zip_path)
+    assert setlist == tmp_path / 'show' / 'show.yaml'
+    result = load_setlist(setlist, duration_probe=lambda _: 300)
+    assert result.title == 'Fall tour'
+    assert [song.file.read_bytes() for song in result.songs] == [b'opener-bytes', b'closer-bytes']
+    assert [song.bpm for song in result.songs] == [112, 90]
+
+
+def test_import_into_explicit_destination(tmp_path):
+    zip_path = make_bundle(tmp_path)
+    setlist = import_bundle(zip_path, tmp_path / 'landing' / 'here')
+    assert setlist == tmp_path / 'landing' / 'here' / 'show.yaml'
+    assert setlist.is_file()
+
+
+def test_import_rejects_zip_slip_members(tmp_path):
+    """Absolute, drive-lettered, backslashed and ..-escaping members all refuse."""
+    for evil in ('/etc/evil.wav', 'C:\\evil.wav', 'a\\..\\evil.wav', '../evil.wav', 'ok/../../evil.wav'):
+        bad = tmp_path / 'bad.zip'
+        with zipfile.ZipFile(bad, 'w') as archive:
+            archive.writestr('set.yaml', 'songs: []\n')
+            archive.writestr(evil, b'payload')
+        dest = tmp_path / 'dest'
+        with pytest.raises(BundleError, match='unsafe path'):
+            import_bundle(bad, dest)
+        assert not dest.exists()
+    assert not (tmp_path / 'evil.wav').exists()
+
+
+def test_import_never_clobbers_occupied_destination(tmp_path):
+    zip_path = make_bundle(tmp_path)
+    first = import_bundle(zip_path, tmp_path / 'dest')
+    (first.parent / 'precious.txt').write_text('mine')
+    second = import_bundle(zip_path, tmp_path / 'dest')
+    assert second == tmp_path / 'dest-2' / 'show.yaml'
+    assert (first.parent / 'precious.txt').read_text() == 'mine'
+    third = import_bundle(zip_path, tmp_path / 'dest')
+    assert third == tmp_path / 'dest-3' / 'show.yaml'
+
+
+def test_import_uses_existing_empty_destination(tmp_path):
+    zip_path = make_bundle(tmp_path)
+    (tmp_path / 'empty').mkdir()
+    setlist = import_bundle(zip_path, tmp_path / 'empty')
+    assert setlist == tmp_path / 'empty' / 'show.yaml'
+
+
+def test_import_rejects_non_bundle_zips(tmp_path):
+    no_setlist = tmp_path / 'plain.zip'
+    with zipfile.ZipFile(no_setlist, 'w') as archive:
+        archive.writestr('song.wav', b'data')
+    with pytest.raises(BundleError, match='not a show bundle.*found 0'):
+        import_bundle(no_setlist, tmp_path / 'a')
+    two = tmp_path / 'two.zip'
+    with zipfile.ZipFile(two, 'w') as archive:
+        archive.writestr('one.yaml', 'songs: []\n')
+        archive.writestr('two.yml', 'songs: []\n')
+    with pytest.raises(BundleError, match='not a show bundle.*found 2'):
+        import_bundle(two, tmp_path / 'b')
+    assert not (tmp_path / 'a').exists() and not (tmp_path / 'b').exists()
+    with pytest.raises(BundleError, match='File is not a zip file|BadZipFile'):
+        import_bundle(write_setlist(tmp_path / 'not.zip', 'nope'), tmp_path / 'c')
+
+
+def test_cli_import(tmp_path, capsys):
+    from showsync.cli import main
+    zip_path = make_bundle(tmp_path)
+    assert main(['--import-bundle', str(zip_path)]) == 0
+    assert str(tmp_path / 'show' / 'show.yaml') in capsys.readouterr().out
+    assert (tmp_path / 'show' / 'show.yaml').is_file()
+    dest = tmp_path / 'elsewhere'
+    assert main(['--import-bundle', str(zip_path), str(dest)]) == 0
+    assert (dest / 'show.yaml').is_file()
+    assert main(['--import-bundle', str(tmp_path / 'missing.zip')]) == 1
+    with pytest.raises(SystemExit):
+        main(['--import-bundle', str(zip_path), str(dest), 'extra'])
+    with pytest.raises(SystemExit):
+        main([str(tmp_path / 'show.yaml'), '--import-bundle', str(zip_path)])

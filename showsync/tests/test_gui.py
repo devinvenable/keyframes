@@ -327,3 +327,36 @@ def test_export_bundle_aborts_when_save_declined(qtbot, window_factory, tmp_path
     w.export_bundle()
     assert w.dialogs.bundle_stems == []
     assert not (tmp_path / 'out.zip').exists()
+
+
+def test_import_bundle_menu_extracts_and_opens_setlist(qtbot, window_factory, tmp_path):
+    from showsync.bundle import export_bundle
+    doc = document(tmp_path)
+    doc.save()
+    zip_path = tmp_path / 'tour.zip'
+    export_bundle(doc.path, zip_path)
+    w = window_factory(Document(), dialogs=Dialogs(import_zip=zip_path))
+    w.import_bundle()
+    assert w.dialogs.import_defaults == [tmp_path / 'tour']
+    assert w.document.path == tmp_path / 'tour' / 'set.yaml'
+    assert w.document.title == 'Stage test'
+    assert str(tmp_path / 'tour' / 'set.yaml') in w.settings.value('recentSets', [], type=list)
+    assert 'Imported tour.zip' in w.statusBar().currentMessage()
+
+
+def test_import_bundle_error_is_a_notice_not_a_crash(qtbot, window_factory, tmp_path):
+    bad = tmp_path / 'not-a-bundle.zip'
+    bad.write_bytes(b'PK\x03\x04 garbage')
+    w = window_factory(Document(), dialogs=Dialogs(import_zip=bad))
+    before = w.document
+    w.import_bundle()
+    assert 'Import failed' in w.statusBar().currentMessage()
+    assert w.document is before
+
+
+def test_import_bundle_cancelled_dialog_changes_nothing(qtbot, window_factory, tmp_path):
+    w = window_factory(Document(), dialogs=Dialogs(import_zip=None))
+    before = w.document
+    w.import_bundle()
+    assert w.document is before
+    assert w.dialogs.import_defaults == []

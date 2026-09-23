@@ -33,6 +33,20 @@ class Dialogs:
         path = Path(name)
         return path if path.suffix else path.with_suffix('.zip')
 
+    def import_bundle_path(self):
+        name, _ = QFileDialog.getOpenFileName(
+            self.parent, 'Import Show Bundle', '', 'Zip archives (*.zip);;All files (*)')
+        return Path(name) if name else None
+
+    def import_destination(self, default):
+        # A save dialog doubles as a "name the new folder" picker; overwrite
+        # confirmation is off because import never clobbers — an occupied
+        # destination extracts into a fresh sibling instead.
+        name, _ = QFileDialog.getSaveFileName(
+            self.parent, 'Extract Bundle To Folder', str(default), '', '',
+            QFileDialog.Option.DontConfirmOverwrite)
+        return Path(name) if name else None
+
     def save_path(self, directory):
         name, _ = QFileDialog.getSaveFileName(
             self.parent, 'Save Set', str(Path(directory) / 'setlist.yaml'),
