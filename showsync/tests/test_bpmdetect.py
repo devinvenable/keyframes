@@ -264,7 +264,7 @@ def test_tempo_change_reports_dominant_section_as_partial(tmp_path):
 
 @pytest.fixture(scope='module')
 def steady_section(tmp_path_factory):
-    """Beatless intro + 106 BPM steady middle (weak offbeat hats) + tempo-drift
+    """Beatless intro + 106 BPM steady middle (loud offbeat hats) + tempo-drift
     outro. No single grid spans the file; the middle is fully recoverable."""
     rng = np.random.default_rng(7)
     rate = 48000
@@ -280,7 +280,7 @@ def steady_section(tmp_path_factory):
         start = round(beat * rate)
         audio[start:start + len(kick)] += kick * (1 if i % 4 == 0 else .7)
         start = round((beat + period / 2) * rate)
-        audio[start:start + len(hat)] += hat * .4
+        audio[start:start + len(hat)] += hat * 3
     time, bpm = 165.0, 112.0
     while time < seconds - 1:
         start = round(time * rate)
@@ -292,30 +292,72 @@ def steady_section(tmp_path_factory):
     return path, beats, period
 
 
-def test_windowed_fallback_finds_steady_section(steady_section):
+def test_windowed_fallback_finds_steady_section(steady_section, monkeypatch):
+    from showsync import bpmdetect
+
     path, beats, period = steady_section
+    features, fits, opened = [], [], []
+    real_features = bpmdetect._features
+    real_analyze = bpmdetect._analyze
+    real_open = bpmdetect.Decoder.open
+
+    def capture_features(path, check):
+        result = real_features(path, check)
+        features.append(result)
+        return result
+
+    def capture_fit(envelope, power, check):
+        result = real_analyze(envelope, power, check)
+        fits.append(result)
+        return result
+
+    def capture_open(path):
+        opened.append(path)
+        return real_open(path)
+
+    monkeypatch.setattr(bpmdetect, '_features', capture_features)
+    monkeypatch.setattr(bpmdetect, '_analyze', capture_fit)
+    monkeypatch.setattr(bpmdetect.Decoder, 'open', capture_open)
     grid = estimate_grid(path)
+    assert opened == [path]  # Kick evidence must reuse the first decode/FFT.
+    assert len(features) == 1
+    assert fits[0] is None  # The full-file fit cannot explain the drifting outro.
+    window_grids = [fit[1] for fit in fits[1:] if fit is not None]
+    assert len(window_grids) >= 3
+
+    true_phase = beats[0] % period
+    hat_phase = (true_phase + period / 2) % period
+
+    def distance(phase, target):
+        return abs((phase - target + period / 2) % period - period / 2)
+
+    # 30 s window starts are exactly 53 beats at 106 BPM. Every successful
+    # window locks to the hat; only an explicitly generated half-beat shift
+    # can rescue the kick phase, just as in the real-file regression.
+    assert all(distance(fit.offset, hat_phase) < .01 for fit in window_grids)
+    flux, _, kick_power = features[0]
+    spans = [(30., 150.)]
+    support = bpmdetect._phase_support
+    assert support(flux, period, spans, hat_phase) > 2 * support(flux, period, spans, true_phase)
+    assert support(kick_power, period, spans, true_phase) > 2 * support(kick_power, period, spans, hat_phase)
+
     assert grid is not None and grid.partial
     assert grid.bpm == pytest.approx(106, abs=.05)
-    # The offset must land on the kicks, not on the weak offbeat hats: the
-    # projected phase agrees with the true beat phase, not the half-beat one.
-    true_phase = beats[0] % period
-    distance = abs((grid.offset - true_phase + period / 2) % period - period / 2)
-    assert distance < .06
+    assert distance(grid.offset, true_phase) < .01
     assert grid.offset >= 0
 
 
 def test_phase_support_prefers_the_accented_pulse():
     from showsync.bpmdetect import _phase_support
     period = .5
-    envelope = np.zeros(6000)  # 60 s of 100 Hz flux frames
+    kick_power = np.zeros(6000)  # 60 s of 100 Hz low-band power frames
     true = .2
     strong = np.arange(true, 59.5, period)
-    envelope[np.rint(strong * 100 + 1.13).astype(int)] = 1.0
-    envelope[np.rint((strong + period / 2) * 100 + 1.13).astype(int)] = .3
+    kick_power[np.rint(strong * 100 + 1.13).astype(int)] = 1.0
+    kick_power[np.rint((strong + period / 2) * 100 + 1.13).astype(int)] = .3
     spans = [(0., 30.), (30., 60.)]
-    good = _phase_support(envelope, period, spans, true)
-    bad = _phase_support(envelope, period, spans, (true + period / 2) % period)
+    good = _phase_support(kick_power, period, spans, true)
+    bad = _phase_support(kick_power, period, spans, (true + period / 2) % period)
     assert good > bad
 
 

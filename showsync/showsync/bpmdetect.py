@@ -1,8 +1,9 @@
 """Full-file, constant-tempo beat-grid suggestions using NumPy and Decoder.
 
 Audio stays untouched. Decode in small blocks and retain only 100 Hz spectral
-flux and 1 kHz power, not the waveform. A fine periodicity search removes lag
-quantization; robust regression fits beat times over the entire rhythmic span.
+flux, 100 Hz kick-band power and 1 kHz power, not the waveform. A fine periodicity
+search removes lag quantization; robust regression fits beat times over the
+entire rhythmic span.
 Changing tempo / weak or inconsistent grids are inconclusive. Beat zero is the
 first supported pulse, not a claim about musical meter or bar numbering.
 """
@@ -29,10 +30,11 @@ class BeatGrid:
 
 
 def _features(path, check):
-    flux, power = [], []
+    flux, power, kick_power = [], [], []
     previous = np.zeros(257)
     pending = np.zeros(512 - 120, dtype=np.float32)
     window = np.hanning(512)
+    kick_bins = np.fft.rfftfreq(512, 1 / 12000) < 280
     with Decoder.open(path) as decoder:
         while True:
             check()
@@ -49,13 +51,16 @@ def _features(path, check):
             if len(pending) < 512:
                 continue
             windows = np.lib.stride_tricks.sliding_window_view(pending, 512)[::120]
-            spectra = np.log1p(np.abs(np.fft.rfft(windows * window)))
+            magnitudes = np.abs(np.fft.rfft(windows * window))
+            kick_power.append((magnitudes[:, kick_bins] ** 2).sum(axis=1))
+            spectra = np.log1p(magnitudes)
             differences = np.diff(np.vstack((previous, spectra)), axis=0)
             flux.append(np.maximum(differences, 0).sum(axis=1))
             previous = spectra[-1]
             pending = pending[len(windows) * 120:]
     return (np.concatenate(flux) if flux else np.empty(0),
-            np.concatenate(power) if power else np.empty(0))
+            np.concatenate(power) if power else np.empty(0),
+            np.concatenate(kick_power) if kick_power else np.empty(0))
 
 
 def _onsets(envelope, power, check=lambda: None):
@@ -217,23 +222,23 @@ _CLUSTER_TOLERANCE = .005  # windows agree when tempos match within 0.5%
 _MINIMUM_WINDOWS = 3
 
 
-def _phase_support(envelope, period, spans, phase):
-    """Total flux found near grid pulses of `phase` across the agreeing spans."""
+def _phase_support(kick_power, period, spans, phase):
+    """Low-band spectral power near grid pulses across the agreeing spans."""
     total = 0.0
     for start, stop in spans:
         beats = np.arange(np.ceil((start - phase) / period),
                           np.floor((stop - phase) / period) + 1)
         if not len(beats):
             continue
-        # Flux frame timestamps run 11.3 ms behind audio time; a small
+        # Spectral frame timestamps run 11.3 ms behind audio time; a small
         # neighborhood max absorbs attack scatter without blurring phases.
         centers = np.rint((phase + beats * period) * 100 + 1.13).astype(int)
-        indices = np.clip(centers[:, None] + np.arange(-3, 4), 0, len(envelope) - 1)
-        total += envelope[indices].max(axis=1).sum()
+        indices = np.clip(centers[:, None] + np.arange(-3, 4), 0, len(kick_power) - 1)
+        total += kick_power[indices].max(axis=1).sum()
     return total
 
 
-def _steady_section(envelope, power, check):
+def _steady_section(envelope, power, kick_power, check):
     """Partial estimate from overlapping windows of already-computed features.
 
     Used when no single grid spans the whole file. Windows whose tempos agree
@@ -267,18 +272,19 @@ def _steady_section(envelope, power, check):
     bpm = float(np.median(bpms[members]))
     period = 60 / bpm
     spans = [(fits[i][1], fits[i][2]) for i in members]
-    # Windows can lock half a beat apart (weak offbeats). Project each
-    # window's beat zero back to the song start and keep the phase that the
-    # flux peaks of ALL agreeing windows support best; strongest window first,
+    # Windows can all lock to the offbeat. Project each window's beat zero
+    # and its half-beat alternative back to the song start. Keep the phase that
+    # kick power of ALL agreeing windows supports best; strongest window first,
     # so a genuine tie stays with the most confident anchor.
     chosen = None
     for index in sorted(members, key=lambda i: -fits[i][0]):
         check()
         _, start, _, grid = fits[index]
-        phase = (start + grid.offset) % period
-        supported = _phase_support(envelope, period, spans, phase)
-        if chosen is None or supported > chosen[0]:
-            chosen = supported, phase
+        for shift in (0, period / 2):
+            phase = (start + grid.offset + shift) % period
+            supported = _phase_support(kick_power, period, spans, phase)
+            if chosen is None or supported > chosen[0]:
+                chosen = supported, phase
     return BeatGrid(bpm, float(chosen[1]), partial=True)
 
 
@@ -293,12 +299,12 @@ def estimate_grid(path, *, cancelled=lambda: False):
         if cancelled():
             raise Cancelled
 
-    envelope, power = _features(path, check)
+    envelope, power, kick_power = _features(path, check)
     check()
     result = _analyze(envelope, power, check)
     if result is not None:
         return result[1]
-    return _steady_section(envelope, power, check)
+    return _steady_section(envelope, power, kick_power, check)
 
 
 def estimate_bpm(path, *, cancelled=lambda: False):

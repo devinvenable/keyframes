@@ -77,7 +77,7 @@ def test_embedded_audio_uses_existing_decoder_ring_and_analysis(clip):
         samples = decoder.read(RATE)
         assert samples.shape == (RATE, 2)
         assert np.max(np.abs(samples)) > .08
-    _, power = _features(clip, lambda: None)
+    _, power, _ = _features(clip, lambda: None)
     assert np.max(power) > .001
     engine = AudioEngine(Setlist('movie', (Song('clip', clip, 120),)))
     try:
