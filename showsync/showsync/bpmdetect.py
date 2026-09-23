@@ -23,6 +23,9 @@ class Cancelled(Exception):
 class BeatGrid:
     bpm: float
     offset: float
+    # True when only a steady section supports the grid (windowed fallback);
+    # tempo is trustworthy there but intro/outro may not follow it.
+    partial: bool = False
 
 
 def _features(path, check):
@@ -166,14 +169,8 @@ def _fit(times, weights, frequency, check):
     return float(score), BeatGrid(float(60 / period), float(max(0, first)))
 
 
-def estimate_grid(path, *, cancelled=lambda: False):
-    """Return a precise BeatGrid or None; check cancellation between small jobs."""
-    def check():
-        if cancelled():
-            raise Cancelled
-
-    envelope, power = _features(path, check)
-    check()
+def _analyze(envelope, power, check):
+    """Fit one constant grid to a feature span; return (score, BeatGrid) or None."""
     if len(envelope) < 600 or not len(power) or np.max(power) < 1e-10:
         return None
     onsets = _onsets(envelope, power, check)
@@ -196,7 +193,7 @@ def estimate_grid(path, *, cancelled=lambda: False):
     if strongest < .12:
         return None
     tied = [(score, grid) for score, grid in fits if score >= strongest * .93]
-    _, grid = max(tied, key=lambda item: (90 <= item[1].bpm <= 180, item[1].bpm))
+    score, grid = max(tied, key=lambda item: (90 <= item[1].bpm <= 180, item[1].bpm))
     # Strong alternating beats can mean a slow pulse with weak offbeat hats.
     # Favor half-time only when its pulses carry >75% of the double-time energy;
     # an evenly accented click track keeps its actual pulse rate.
@@ -204,12 +201,104 @@ def estimate_grid(path, *, cancelled=lambda: False):
         phase = (times - candidate.offset) * candidate.bpm / 60
         return weights[np.abs(phase - np.rint(phase)) < .05].sum()
 
-    for _, candidate in fits:
+    for fit_score, candidate in fits:
         if (abs(candidate.bpm * 2 - grid.bpm) < .02
                 and support(candidate) > .75 * support(grid)):
-            grid = candidate
+            score, grid = fit_score, candidate
     check()
-    return grid
+    return score, grid
+
+
+# Fallback windows: long enough for a solid fit, overlapped so a steady
+# section shorter than the file still covers several independent starts.
+_WINDOW = 60.0
+_HOP = 30.0
+_CLUSTER_TOLERANCE = .005  # windows agree when tempos match within 0.5%
+_MINIMUM_WINDOWS = 3
+
+
+def _phase_support(envelope, period, spans, phase):
+    """Total flux found near grid pulses of `phase` across the agreeing spans."""
+    total = 0.0
+    for start, stop in spans:
+        beats = np.arange(np.ceil((start - phase) / period),
+                          np.floor((stop - phase) / period) + 1)
+        if not len(beats):
+            continue
+        # Flux frame timestamps run 11.3 ms behind audio time; a small
+        # neighborhood max absorbs attack scatter without blurring phases.
+        centers = np.rint((phase + beats * period) * 100 + 1.13).astype(int)
+        indices = np.clip(centers[:, None] + np.arange(-3, 4), 0, len(envelope) - 1)
+        total += envelope[indices].max(axis=1).sum()
+    return total
+
+
+def _steady_section(envelope, power, check):
+    """Partial estimate from overlapping windows of already-computed features.
+
+    Used when no single grid spans the whole file. Windows whose tempos agree
+    within a tight tolerance form the steady section; its tempo is reported
+    with partial=True and an offset projected back to the start of the song.
+    """
+    duration = len(power) / 1000
+    fits = []
+    start = 0.0
+    while duration - start >= _WINDOW * .75:
+        check()
+        stop = min(start + _WINDOW, duration)
+        result = _analyze(envelope[int(start * 100):int(stop * 100)],
+                          power[int(start * 1000):int(stop * 1000)], check)
+        if result is not None:
+            fits.append((result[0], start, stop, result[1]))
+        start += _HOP
+    if len(fits) < _MINIMUM_WINDOWS:
+        return None
+    bpms = np.array([grid.bpm for _, _, _, grid in fits])
+    scores = np.array([score for score, _, _, _ in fits])
+    best = None
+    for center in bpms:
+        members = np.flatnonzero(np.abs(bpms - center) <= center * _CLUSTER_TOLERANCE)
+        key = (len(members), scores[members].sum())
+        if best is None or key > best[0]:
+            best = key, members
+    members = best[1]
+    if len(members) < _MINIMUM_WINDOWS:
+        return None
+    bpm = float(np.median(bpms[members]))
+    period = 60 / bpm
+    spans = [(fits[i][1], fits[i][2]) for i in members]
+    # Windows can lock half a beat apart (weak offbeats). Project each
+    # window's beat zero back to the song start and keep the phase that the
+    # flux peaks of ALL agreeing windows support best; strongest window first,
+    # so a genuine tie stays with the most confident anchor.
+    chosen = None
+    for index in sorted(members, key=lambda i: -fits[i][0]):
+        check()
+        _, start, _, grid = fits[index]
+        phase = (start + grid.offset) % period
+        supported = _phase_support(envelope, period, spans, phase)
+        if chosen is None or supported > chosen[0]:
+            chosen = supported, phase
+    return BeatGrid(bpm, float(chosen[1]), partial=True)
+
+
+def estimate_grid(path, *, cancelled=lambda: False):
+    """Return a precise BeatGrid or None; check cancellation between small jobs.
+
+    When no single constant grid spans the file, fall back to overlapping
+    ~60 s windows over the same features and report the tempo of the
+    strongest steady section as a partial estimate (BeatGrid.partial).
+    """
+    def check():
+        if cancelled():
+            raise Cancelled
+
+    envelope, power = _features(path, check)
+    check()
+    result = _analyze(envelope, power, check)
+    if result is not None:
+        return result[1]
+    return _steady_section(envelope, power, check)
 
 
 def estimate_bpm(path, *, cancelled=lambda: False):
@@ -281,14 +370,18 @@ class Suggestions:
                 self.detected[id(row)] = value
                 edited = id(row) in self.bpm_edits
                 protected = edited or (row.bpm is not None and not row.bpm_estimated) or row.offset_explicit
+                applied = False
                 if value is not None:
                     if not edited and (row.bpm is None or row.bpm_estimated):
                         row.bpm = value.bpm if isinstance(value, BeatGrid) else value
                         row.bpm_estimated = True
+                        applied = True
                     if isinstance(value, BeatGrid) and not row.offset_explicit:
                         row.offset = value.offset
                 row.timing_review = ('inconclusive' if value is None else 'review' if protected else '')
-                self.entries[id(row)] = (row, 'estimated' if row.bpm_estimated else 'manual')
+                partial = applied and getattr(value, 'partial', False)
+                self.entries[id(row)] = (row, ('partial' if partial else 'estimated')
+                                         if row.bpm_estimated else 'manual')
                 changed.append(row)
                 continue
             if (any(item is row for item in rows) and row.bpm is None
@@ -298,7 +391,8 @@ class Suggestions:
                 if (isinstance(value, BeatGrid) and not row.offset_explicit
                         and row.offset == 0 and not row.tempo):
                     row.offset = value.offset
-                self.entries[id(row)] = (row, 'estimated' if value is not None else 'no estimate')
+                self.entries[id(row)] = (row, 'no estimate' if value is None else
+                                         'partial' if getattr(value, 'partial', False) else 'estimated')
                 if value is not None:
                     changed.append(row)
         for row in rows:

@@ -36,6 +36,8 @@ def timestamp(seconds):
 
 def bpm_cell(row, state):
     if row.bpm is not None:
+        if state == 'partial':
+            return f'~{row.bpm:g}?'
         return ('~' if state == 'estimated' else '') + f'{row.bpm:g}'
     if state == 'analyzing':
         return 'Analyzing ' + '◴◷◶◵'[int(time.monotonic() * 6) % 4]
@@ -82,6 +84,8 @@ class SongModel(QAbstractTableModel):
                 return 'Estimated first beat — double-click to confirm or correct'
             if col == 2:
                 return {'estimated': 'Estimated beat grid — double-click BPM or offset to correct',
+                        'partial': 'Estimated from a steady section only — intro/outro may '
+                                   'differ; double-click BPM or offset to correct',
                         'no estimate': 'No estimate — enter BPM manually'}.get(
                             self.window.suggestions.state(row), row.problem())
             return row.problem()
@@ -758,6 +762,9 @@ class MainWindow(QMainWindow):
             state = self.suggestions.state(row)
             if state == 'estimated' and not row.problem():
                 message = 'Estimated beat grid (~) — double-click BPM or offset to correct.'
+            elif state == 'partial' and not row.problem():
+                message = ('Partial estimate (~?) from a steady section only — '
+                           'intro/outro may differ; double-click BPM or offset to correct.')
             elif state == 'no estimate' and row.bpm is None:
                 message = 'No estimate — enter BPM manually.'
             if row.timing_review:
@@ -769,6 +776,8 @@ class MainWindow(QMainWindow):
                     message += f' Detected BPM: {bpm:.9g}'
                     if isinstance(value, BeatGrid):
                         message += f'; offset: {value.offset:.9g}s'
+                        if value.partial:
+                            message += ' (steady section only)'
                     message += '. Use detected timing, Keep current timing, or edit BPM/offset.'
                 elif not pending:
                     message += ' No estimate — Keep current timing or edit BPM/offset.'

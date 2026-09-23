@@ -285,6 +285,26 @@ def test_bpm_label_shows_ramp_range():
     assert bpm_label(Song('B', TONE, 120, tempo=(TempoEvent(10, 140, 20),))) == '120->140'
     assert bpm_label(Song('C', TONE, 120, tempo=(TempoEvent(10, 126, 0), TempoEvent(50, 120, 0)))) == '120'
     assert bpm_cell(Row('A', TONE, 123), 'manual') == '123'
+    assert bpm_cell(Row('B', TONE, 106), 'estimated') == '~106'
+    assert bpm_cell(Row('C', TONE, 106), 'partial') == '~106?'
+
+
+def test_partial_estimate_marker_notice_and_manual_override(qtbot, window_factory, tmp_path):
+    doc = Document(tmp_path / 'set.yaml')
+    doc.add_files([TONE])
+    w = window_factory(doc, estimator=lambda path, **kw: BeatGrid(106.0, .3, partial=True))
+    qtbot.waitUntil(lambda: w.model.index(0, 2).data() == '~106?')
+    row = doc.rows[0]
+    assert row.bpm == 106.0 and row.bpm_estimated and row.offset == .3
+    tooltip = w.model.data(w.model.index(0, 2), Qt.ToolTipRole)
+    assert 'steady section' in tooltip
+    w.table.selectRow(0)
+    w.refresh()
+    assert 'steady section' in w.row_notice.text()
+    # A manual value overrides a partial estimate exactly like a full one.
+    assert w.model.setData(w.model.index(0, 2), '110')
+    assert w.model.index(0, 2).data() == '110'
+    assert not row.bpm_estimated
 
 
 @pytest.mark.parametrize('source', ['load', 'drop'])

@@ -247,7 +247,9 @@ def test_grid_suggestion_respects_offset_intent(explicit, offset, expected):
         worker.close()
 
 
-def test_tempo_change_outside_old_analysis_window_is_inconclusive(tmp_path):
+def test_tempo_change_reports_dominant_section_as_partial(tmp_path):
+    # The full-file constant grid must still refuse; the windowed fallback
+    # reports the dominant steady section's tempo, marked partial.
     first, second = tmp_path / 'first.wav', tmp_path / 'second.wav'
     rhythmic_file(first, 112.37, 0, seconds=180)
     rhythmic_file(second, 119.23, 0, seconds=60)
@@ -255,4 +257,96 @@ def test_tempo_change_outside_old_analysis_window_is_inconclusive(tmp_path):
     b, _ = sf.read(second)
     path = tmp_path / 'change.wav'
     sf.write(path, np.concatenate((a, b)), rate)
-    assert estimate_grid(path) is None
+    grid = estimate_grid(path)
+    assert grid is not None and grid.partial
+    assert grid.bpm == pytest.approx(112.37, abs=.05)
+
+
+@pytest.fixture(scope='module')
+def steady_section(tmp_path_factory):
+    """Beatless intro + 106 BPM steady middle (weak offbeat hats) + tempo-drift
+    outro. No single grid spans the file; the middle is fully recoverable."""
+    rng = np.random.default_rng(7)
+    rate = 48000
+    seconds = 205
+    audio = np.zeros(seconds * rate, dtype=np.float32)
+    audio[:15 * rate] = rng.normal(0, .03, 15 * rate)
+    t = np.arange(round(.04 * rate)) / rate
+    kick = .7 * np.sin(2 * np.pi * 90 * t) * np.exp(-t * 100)
+    hat = (rng.normal(0, .08, len(t)) * np.exp(-t * 200)).astype(np.float32)
+    period = 60 / 106
+    beats = np.arange(15.0, 165.0, period)
+    for i, beat in enumerate(beats):
+        start = round(beat * rate)
+        audio[start:start + len(kick)] += kick * (1 if i % 4 == 0 else .7)
+        start = round((beat + period / 2) * rate)
+        audio[start:start + len(hat)] += hat * .4
+    time, bpm = 165.0, 112.0
+    while time < seconds - 1:
+        start = round(time * rate)
+        audio[start:start + len(kick)] += kick
+        time += 60 / bpm
+        bpm += .35
+    path = tmp_path_factory.mktemp('steady') / 'steady.wav'
+    sf.write(path, audio, rate)
+    return path, beats, period
+
+
+def test_windowed_fallback_finds_steady_section(steady_section):
+    path, beats, period = steady_section
+    grid = estimate_grid(path)
+    assert grid is not None and grid.partial
+    assert grid.bpm == pytest.approx(106, abs=.05)
+    # The offset must land on the kicks, not on the weak offbeat hats: the
+    # projected phase agrees with the true beat phase, not the half-beat one.
+    true_phase = beats[0] % period
+    distance = abs((grid.offset - true_phase + period / 2) % period - period / 2)
+    assert distance < .06
+    assert grid.offset >= 0
+
+
+def test_phase_support_prefers_the_accented_pulse():
+    from showsync.bpmdetect import _phase_support
+    period = .5
+    envelope = np.zeros(6000)  # 60 s of 100 Hz flux frames
+    true = .2
+    strong = np.arange(true, 59.5, period)
+    envelope[np.rint(strong * 100 + 1.13).astype(int)] = 1.0
+    envelope[np.rint((strong + period / 2) * 100 + 1.13).astype(int)] = .3
+    spans = [(0., 30.), (30., 60.)]
+    good = _phase_support(envelope, period, spans, true)
+    bad = _phase_support(envelope, period, spans, (true + period / 2) % period)
+    assert good > bad
+
+
+def test_cancellation_mid_windowed_pass(steady_section, monkeypatch):
+    from showsync import bpmdetect
+    path, _, _ = steady_section
+    finished = []
+    real = bpmdetect._analyze
+    def wrapped(envelope, power, check):
+        result = real(envelope, power, check)
+        finished.append(result)
+        return result
+    monkeypatch.setattr(bpmdetect, '_analyze', wrapped)
+    # The flag flips the moment the full-file pass returns, so the raise can
+    # only happen inside the windowed fallback.
+    with pytest.raises(Cancelled):
+        estimate_grid(path, cancelled=lambda: bool(finished))
+    assert finished == [None]
+
+
+def test_partial_grid_state_and_manual_override():
+    row = Row('Song', Path('song'), None)
+    worker = Suggestions(lambda *a, **kw: BeatGrid(106.0, .3, partial=True))
+    try:
+        worker.update([row])
+        worker.worker.join(2)
+        assert worker.update([row]) == [row]
+        assert row.bpm == 106.0 and row.bpm_estimated and row.offset == .3
+        assert worker.state(row) == 'partial'
+        worker.manual(row)
+        row.bpm = 110.0
+        assert worker.state(row) == 'manual' and not row.bpm_estimated
+    finally:
+        worker.close()
