@@ -6,7 +6,7 @@ import math
 
 from .appstate import last_setlist, remember_setlist, clock_offset_ms, remember_clock_offset
 from .audio import AudioEngine
-from .bundle import BundleError, export_bundle
+from .bundle import BundleError, export_bundle, import_bundle
 from .clock import ClockEngine, open_midi_port
 from .document import Document
 from .devices import Devices
@@ -27,7 +27,23 @@ def main(argv=None):
                         help='MIDI clock offset (-250..250 ms); positive = earlier ticks; this run only')
     parser.add_argument('--export-bundle', metavar='ZIP',
                         help='write a portable show bundle (setlist + audio) to ZIP and exit')
+    parser.add_argument('--import-bundle', nargs='+', metavar=('ZIP', 'DEST'),
+                        help='unpack a show bundle ZIP into DEST '
+                             '(default: a folder named after the zip, beside it) and exit')
     args = parser.parse_args(argv)
+    if args.import_bundle:
+        if len(args.import_bundle) > 2:
+            parser.error('--import-bundle takes ZIP and at most one DEST')
+        if args.setlist or args.export_bundle:
+            parser.error('--import-bundle cannot be combined with a setlist or --export-bundle')
+        logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+        try:
+            setlist = import_bundle(*args.import_bundle)
+        except BundleError as exc:
+            logging.error('%s', exc)
+            return 1
+        print(f'Extracted to {setlist.parent} — open {setlist}')
+        return 0
     if args.export_bundle:
         if not args.setlist:
             parser.error('--export-bundle needs a setlist argument')

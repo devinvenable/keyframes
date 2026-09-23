@@ -464,6 +464,7 @@ class MainWindow(QMainWindow):
         self.action(file_menu, '&Save', lambda: self.save(explicit=True), 'Ctrl+S')
         self.action(file_menu, 'Save &As…', self.save_as, 'Ctrl+Shift+S')
         self.action(file_menu, 'Export Show &Bundle…', self.export_bundle)
+        self.action(file_menu, '&Import Show Bundle…', self.import_bundle)
         self.recent_menu = file_menu.addMenu('Recent Sets')
         self.recent_menu.aboutToShow.connect(self.populate_recents)
         file_menu.addSeparator()
@@ -581,6 +582,26 @@ class MainWindow(QMainWindow):
             self.notice(f'Exported {target.name} ({len(manifest)} songs)')
         except Exception as exc:
             self.notice(f'Export failed: {exc}')
+
+    def import_bundle(self):
+        """Unpack a bundle zip into a fresh folder and open its setlist."""
+        if not self.can_replace_document():
+            return
+        try:
+            source = self.dialogs.import_bundle_path()
+            if not source:
+                return
+            dest = self.dialogs.import_destination(source.parent / source.stem)
+            if not dest:
+                return
+            from .bundle import import_bundle
+            setlist = import_bundle(source, dest)
+        except Exception as exc:
+            self.notice(f'Import failed: {exc}')
+            return
+        self.open_set(setlist)
+        if self.document.path == setlist:
+            self.notice(f'Imported {source.name} into {setlist.parent}')
 
     def confirm(self, title, message):
         return QMessageBox.question(self, title, message, QMessageBox.Yes | QMessageBox.No,
