@@ -6,6 +6,7 @@ logs/
 *.zip
 *.mkv
 *.mp3
+songs/*.mp4
 .agent-tasks.db
 canon/
 worktrees/
