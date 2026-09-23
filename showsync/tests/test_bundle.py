@@ -172,3 +172,40 @@ def test_cli_export(tmp_path, capsys):
     assert '1 songs' in capsys.readouterr().out
     assert zipfile.ZipFile(out).namelist() == ['set.yaml', 'song.wav']
     assert main([str(tmp_path / 'missing.yaml'), '--export-bundle', str(out)]) == 1
+
+
+def test_referenced_midi_files_travel_in_the_bundle(tmp_path):
+    audio = make_audio(tmp_path / 'audio', 'opener.wav', b'audio-bytes')
+    midi = tmp_path / 'audio' / 'opener.mid'
+    midi.write_bytes(b'MThd-fake')
+    setlist = write_setlist(tmp_path / 'show.yaml', f"""\
+songs:
+  - name: Opener
+    file: {audio}
+    bpm: 112
+    midi: {midi}
+""")
+    bundle = tmp_path / 'show.zip'
+    export_bundle(setlist, bundle)
+    home = extract(bundle, tmp_path / 'other-machine')
+    reloaded = load_setlist(home / 'show.yaml', duration_probe=lambda _: 60)
+    assert reloaded.songs[0].midi == (home / 'opener.mid').resolve()
+    assert reloaded.songs[0].midi.read_bytes() == b'MThd-fake'
+
+
+def test_missing_midi_file_warns_but_never_gates_export(tmp_path, caplog):
+    audio = make_audio(tmp_path / 'audio', 'opener.wav', b'audio-bytes')
+    setlist = write_setlist(tmp_path / 'show.yaml', f"""\
+songs:
+  - name: Opener
+    file: {audio}
+    bpm: 112
+    midi: {tmp_path / 'audio' / 'gone.mid'}
+""")
+    bundle = tmp_path / 'show.zip'
+    with caplog.at_level('WARNING'):
+        manifest = export_bundle(setlist, bundle)
+    assert manifest == ['opener.wav']
+    assert 'gone.mid' in caplog.text
+    with zipfile.ZipFile(bundle) as archive:
+        assert sorted(archive.namelist()) == ['opener.wav', 'show.yaml']

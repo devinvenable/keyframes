@@ -8,11 +8,14 @@ offset) lives in state.json and deliberately stays home. Import needs no code:
 unzip anywhere, open the YAML, and the relative paths resolve.
 """
 import io
+import logging
 import os
 from pathlib import Path
 import zipfile
 
 from .setlist import mapping, string
+
+LOG = logging.getLogger(__name__)
 
 
 class BundleError(ValueError):
@@ -65,6 +68,22 @@ def export_bundle(setlist_path, zip_path):
                 archived[source] = name
             row["file"] = name
             manifest.append(name)
+            # A song's MIDI file is show content like its audio (decision
+            # update to I22), but it never gates playback, so it never gates
+            # export either: pack it when present, warn and travel the
+            # reference untouched when not.
+            if row.get("midi") is not None:
+                midi = (root / string(row.get("midi"), "midi")).resolve()
+                if midi.is_file():
+                    name = archived.get(midi)
+                    if name is None:
+                        name = _free_name(midi.name, taken)
+                        taken.add(name.casefold())
+                        archived[midi] = name
+                    row["midi"] = name
+                else:
+                    LOG.warning('%s: midi file does not exist: %s — bundled without it',
+                                context, midi)
         context = str(setlist_path)
         data["audio_root"] = "."
         buffer = io.StringIO()

@@ -38,6 +38,7 @@ class Row:
     gap: float = 0.0
     tempo: tuple = ()
     offset: float = 0.0
+    midi: Path | None = None
     duration: float | None = None
     file_error: str | None = None
     source_index: int | None = None  # position in the songs list on disk; None = unsaved
@@ -60,7 +61,7 @@ class Row:
         return None
 
     def song(self):
-        return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset)
+        return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset, self.midi)
 
     @property
     def custom_tempo(self):

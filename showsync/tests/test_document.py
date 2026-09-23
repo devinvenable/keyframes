@@ -214,3 +214,28 @@ def test_simple_ramp_saves_as_tempo_event_and_clears(tmp_path):
     text = path.read_text(encoding='utf-8')
     assert text.count('tempo:') == 1                      # only Opener's map left
     assert '# bridge jump' in text
+
+
+MIDI_SET = """\
+title: "Midi set"
+songs:
+  - name: "Opener"
+    file: tone.wav
+    bpm: 120
+    midi: parts/opener.mid   # GM backing for the synth rack
+"""
+
+
+def test_midi_key_survives_editor_round_trip_byte_stable(tmp_path):
+    path = tmp_path / 'set.yaml'
+    (tmp_path / 'tone.wav').write_bytes(TONE.read_bytes())
+    path.write_text(MIDI_SET, encoding='utf-8')
+    document = Document.load(path, probe=probe)
+    assert document.rows[0].midi == tmp_path / 'parts' / 'opener.mid'
+    document.save()
+    assert path.read_text(encoding='utf-8') == MIDI_SET
+    document.rows[0].bpm = 121
+    document.save()
+    reloaded = load_setlist(path, duration_probe=probe)
+    assert reloaded.songs[0].midi == tmp_path / 'parts' / 'opener.mid'
+    assert '# GM backing' in path.read_text(encoding='utf-8')

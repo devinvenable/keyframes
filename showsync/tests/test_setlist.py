@@ -139,3 +139,20 @@ def test_bad_offsets_rejected(tmp_path, offset, probe):
                                 tempo=[dict(at=5, bpm=140)]))
     with pytest.raises(SetlistError, match='offset'):
         load_setlist(path, duration_probe=probe)
+
+
+def test_optional_midi_key_resolves_and_never_gates_loading(tmp_path):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, midi='parts/song.mid'))
+    result = load_setlist(path)  # the .mid does not exist; audio checks still pass
+    assert result.songs[0].midi == tmp_path / 'parts' / 'song.mid'
+    assert load_setlist(write(tmp_path, dict(name='Song', file='song.wav', bpm=120))).songs[0].midi is None
+
+
+@pytest.mark.parametrize('midi, message', [
+    ('song.wav', 'midi must be a .mid or .midi file'),
+    (7, 'midi must be a nonempty string'),
+    ('', 'midi must be a nonempty string'),
+])
+def test_invalid_midi_reference_rejected(tmp_path, midi, message):
+    with pytest.raises(SetlistError, match=message):
+        load_setlist(write(tmp_path, dict(name='Song', file='song.wav', bpm=120, midi=midi)))

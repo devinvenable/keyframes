@@ -17,6 +17,7 @@ class SetlistError(ValueError):
 
 
 SUFFIXES = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".m4a"}
+MIDI_SUFFIXES = {".mid", ".midi"}
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class Song:
     gap: float = 0.0
     tempo: tuple[TempoEvent, ...] = ()
     offset: float = 0.0  # beat 0 anchors here (seconds); earlier audio is lead-in
+    midi: Path | None = None  # optional GM MIDI file played out the clock port
 
     def tempo_map(self, duration=None):
         return TempoMap(self.bpm, self.tempo, duration, self.offset)
@@ -79,7 +81,7 @@ def parse_song(row, root, *, require_bpm=True):
     The editor's lenient Document rows and the strict playback loader share
     this, so a set saved mid-edit (bpm still unset) reopens instead of erroring.
     """
-    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "restart", "editor"}, "song")
+    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "midi", "restart", "editor"}, "song")
     editor = timing_metadata(row)
     if require_bpm and editor.get('timing_review'):
         raise ValueError('Replacement audio needs timing review')
@@ -95,6 +97,13 @@ def parse_song(row, root, *, require_bpm=True):
     restart = row.get("restart", False)
     if not isinstance(restart, bool):
         raise ValueError("restart must be a boolean")
+    # A missing/unreadable .mid never gates the show: existence is checked at
+    # engine start (warn and play without it), so only the reference is strict.
+    midi = row.get("midi")
+    if midi is not None:
+        midi = (root / string(midi, "midi")).resolve()
+        if midi.suffix.lower() not in MIDI_SUFFIXES:
+            raise ValueError("midi must be a .mid or .midi file")
     raw_events = row.get("tempo", [])
     if not isinstance(raw_events, list):
         raise ValueError("tempo must be a list")
@@ -107,7 +116,8 @@ def parse_song(row, root, *, require_bpm=True):
                                      number(raw.get("ramp", 0), "ramp")))
         except ValueError as exc:
             raise ValueError(f"tempo[{j}].{exc}") from exc
-    return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset)
+    return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset,
+                midi=midi)
 
 
 def timing_metadata(row):

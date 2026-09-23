@@ -11,6 +11,7 @@ from .clock import ClockEngine, open_midi_port
 from .document import Document
 from .devices import Devices
 from .gui import main_loop
+from .midifile import MidiEventsView, load_setlist_events
 from .setlist import SetlistError
 
 
@@ -75,8 +76,11 @@ def main(argv=None):
                 audio.prepare()
                 gc.freeze()
                 frozen = True
-            clock = ClockEngine(audio.maps, audio.position, lambda byte: midi.send_message([byte]) if midi is not None else None,
-                                clock_offset_ms=offset, send_transport=devices.send_transport)
+            events = MidiEventsView(audio, load_setlist_events(setlist)) if setlist is not None else None
+            clock = ClockEngine(audio.maps, audio.position,
+                                lambda message: midi.send_message([message] if isinstance(message, int) else message) if midi is not None else None,
+                                clock_offset_ms=offset, send_transport=devices.send_transport,
+                                events=events)
             clock.start()
             audio.start()
         except Exception:
