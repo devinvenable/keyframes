@@ -20,7 +20,7 @@ from .tempomap import TempoEvent
 
 FIELDS = ('name', 'file', 'bpm', 'offset', 'ramp', 'start', 'dur')
 HEADERS = ('Song', 'File', 'BPM', 'Offset (s)', 'End BPM', 'Ramp start (s)', 'Ramp duration (s)')
-EMPTY_HINT = 'Drop audio files here, or choose Add Songs to build your set.'
+EMPTY_HINT = 'Drop audio or video files here, or choose Add Songs to build your set.'
 CUSTOM_TEMPO = 'Custom tempo map — edit in YAML'
 
 
@@ -273,6 +273,8 @@ class MainWindow(QMainWindow):
         self.estimator = estimator
         self.suggestions = Suggestions(estimator)
         self.settings = settings if settings is not None else QSettings('ShowSync', 'ShowSync')
+        from .video_window import VideoWindow
+        self.video_window = VideoWindow(self.settings, self)
         self.audio = self.clock = self.close_engines = None
         self.save_declined = self.dirty = False
         self._saving = False
@@ -480,6 +482,7 @@ class MainWindow(QMainWindow):
         view = self.menuBar().addMenu('&View')
         self.fullscreen_action = self.action(view, '&Fullscreen', self.toggle_fullscreen, 'F11')
         self.fullscreen_action.setCheckable(True)
+        self.action(view, 'Video window', self.video_window.reveal)
         help_menu = self.menuBar().addMenu('&Help')
         self.action(help_menu, '&About', lambda: QMessageBox.about(
             self, 'About ShowSync', 'ShowSync\nBacking tracks and audio-master MIDI clock.\nQt / PySide6 desktop edition.'))
@@ -788,10 +791,12 @@ class MainWindow(QMainWindow):
         self.baseline = list(self.document.rows)
         self.populate_queue()
         self.stack.setCurrentWidget(self.playback)
+        self.video_window.start(self.audio)
         self.notice(self.devices.notice if self.devices else '')
         self.refresh()
 
     def shutdown_engines(self):
+        self.video_window.stop()
         close = self.close_engines
         self.close_engines = None
         try:

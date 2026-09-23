@@ -55,7 +55,6 @@ Must run on Linux and Mac (Devin — Logic lives on the Mac) and Windows (David)
 Explicitly deferred:
 
 - Time-stretching / tempo scaling of the audio.
-- A synced video playback channel.
 - Mixing showsync video with Keyframes output.
 
 ## Quick start — build a set in the app (no YAML needed)
@@ -77,7 +76,7 @@ Playback starts only when you choose **Play**. Incomplete songs stay editable
 with their problems marked; unreadable setlists show a notice in the window.
 From there everything happens in the window:
 
-1. **Add Songs** — click the button or drop wav/aiff/flac/mp3/m4a files onto
+1. **Add Songs** — click the button or drop wav/aiff/flac/mp3/m4a or mp4/m4v/mpg/mpeg/mov files onto
    the editor. Unsupported or undecodable files produce a notice.
 2. **Tempo and first beat are detected automatically** — songs without a BPM
    or tempo map are analyzed in the background, showing Queued / Analyzing.
@@ -223,6 +222,50 @@ A short runnable five-codec demo is `tests/fixtures/smoke.yaml`. Optional
 `--freeze-gc` on the main CLI and jitter harness freezes startup objects to
 reduce garbage-collector pauses; measure on the target machine before relying
 on it. It does not provide real-time scheduling guarantees.
+
+### Video playback
+
+Add an MP4, M4V, MPG, MPEG, or MOV as a song to play its embedded audio as the
+backing track. BPM/first-beat detection uses that audio just like an MP3.
+Video appears automatically in a separate window: drag it to a projector or
+second monitor, then double-click or press F11 to toggle fullscreen (Esc exits).
+Its geometry and screen are remembered on this machine. **View → Video window**
+reopens it if closed during playback. Closing it does not stop the song.
+
+Optional per-song YAML fields support silent visuals alongside audio, or mute
+an embedded soundtrack:
+
+```yaml
+songs:
+  - name: Movie with soundtrack
+    file: opener.mp4
+    bpm: 120
+  - name: Backing track with separate visuals
+    file: song.mp3
+    video: visuals.mp4
+    bpm: 110
+  - name: Silent projection
+    file: ambient.mov
+    mute: true
+    bpm: 100
+```
+
+`video:` paths resolve against `audio_root`, like `file:`. A separate video's
+soundtrack is always ignored, and it overrides any video inside `file:`.
+Video-only containers and `mute: true` sources run silence for the video's
+duration through the audio engine; enter a BPM for beatless/silent material.
+Without `mute`, a container's audio duration determines the song length.
+Shorter visuals blank at their end; longer visuals end with the song. No looping,
+compositing, subtitles, track selection, or tempo-based time stretching is applied.
+
+Presentation timestamps follow the audible audio frame position, including
+pause, skip, and restart. Video decoding runs separately with bounded lookahead;
+late frames are discarded and video errors are logged without stopping audio
+or MIDI clock. Gaps, audio-only songs, and end-of-set hide and blank the window.
+
+**File → Export Show Bundle…** includes referenced videos along with audio and
+MIDI files. Bundles containing at least 1 GiB of media log a size warning and
+continue exporting. Geometry/device settings remain local to this machine.
 
 ### Tune MIDI clock timing for your rig
 

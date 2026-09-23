@@ -16,7 +16,8 @@ class SetlistError(ValueError):
     pass
 
 
-SUFFIXES = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".m4a"}
+VIDEO_SUFFIXES = {".mp4", ".m4v", ".mpg", ".mpeg", ".mov"}
+SUFFIXES = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".m4a"} | VIDEO_SUFFIXES
 MIDI_SUFFIXES = {".mid", ".midi"}
 
 
@@ -29,6 +30,12 @@ class Song:
     tempo: tuple[TempoEvent, ...] = ()
     offset: float = 0.0  # beat 0 anchors here (seconds); earlier audio is lead-in
     midi: Path | None = None  # optional GM MIDI file played out the clock port
+    video: Path | None = None  # separate silent visuals, overriding embedded video
+    mute: bool = False
+
+    @property
+    def video_source(self):
+        return self.video or (self.file if self.file.suffix.lower() in VIDEO_SUFFIXES else None)
 
     def tempo_map(self, duration=None):
         return TempoMap(self.bpm, self.tempo, duration, self.offset)
@@ -81,14 +88,24 @@ def parse_song(row, root, *, require_bpm=True):
     The editor's lenient Document rows and the strict playback loader share
     this, so a set saved mid-edit (bpm still unset) reopens instead of erroring.
     """
-    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "midi", "restart", "editor"}, "song")
+    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "midi", "video", "mute", "restart", "editor"}, "song")
     editor = timing_metadata(row)
     if require_bpm and editor.get('timing_review'):
         raise ValueError('Replacement audio needs timing review')
     name = string(row.get("name"), "name")
     file = (root / string(row.get("file"), "file")).resolve()
     if file.suffix.lower() not in SUFFIXES:
-        raise ValueError("file must be WAV, AIFF, FLAC, MP3, or M4A")
+        raise ValueError("file must be WAV, AIFF, FLAC, MP3, M4A, MP4, M4V, MPG, MPEG, or MOV")
+    video = row.get("video")
+    if video is not None:
+        video = (root / string(video, "video")).resolve()
+        if video.suffix.lower() not in VIDEO_SUFFIXES:
+            raise ValueError("video must be MP4, M4V, MPG, MPEG, or MOV")
+    mute = row.get("mute", False)
+    if not isinstance(mute, bool):
+        raise ValueError("mute must be a boolean")
+    if mute and file.suffix.lower() not in VIDEO_SUFFIXES:
+        raise ValueError("mute requires a video file")
     bpm = row.get("bpm")
     bpm = number(bpm, "bpm", positive=True) if (require_bpm or bpm is not None) else None
     gap = number(row.get("gap", 0), "gap")
@@ -117,7 +134,7 @@ def parse_song(row, root, *, require_bpm=True):
         except ValueError as exc:
             raise ValueError(f"tempo[{j}].{exc}") from exc
     return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset,
-                midi=midi)
+                midi=midi, video=video, mute=mute)
 
 
 def timing_metadata(row):
@@ -161,6 +178,8 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
             fields = parse_song(row, root)
             if check_files and not fields["file"].is_file():
                 raise ValueError(f"file does not exist: {fields['file']}")
+            if check_files and fields["video"] and not fields["video"].is_file():
+                raise ValueError(f"video does not exist: {fields['video']}")
             song = Song(**fields)
             song.tempo_map(duration_probe(song.file) if duration_probe else None)
             songs.append(song)

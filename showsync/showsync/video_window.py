@@ -1,0 +1,136 @@
+"""Independent projector window; QImage/QPainter requires no OpenGL backend."""
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QAction, QImage, QPainter
+from PySide6.QtWidgets import QApplication, QWidget
+
+from .video import VideoWorker
+
+
+class VideoWindow(QWidget):
+    def __init__(self, settings, parent=None):
+        super().__init__(parent, Qt.Window)
+        self.settings = settings
+        self.setWindowTitle('ShowSync Video — double-click or F11 for fullscreen')
+        self.resize(960, 540)
+        self.image = QImage()
+        self.picture = None
+        self.audio = self.worker = None
+        self.key = self.dismissed = None
+        self.fullscreen = QAction('Fullscreen', self)
+        self.fullscreen.setShortcut('F11')
+        self.fullscreen.triggered.connect(self.toggle_fullscreen)
+        self.addAction(self.fullscreen)
+        self.setContextMenuPolicy(Qt.ActionsContextMenu)
+        self.timer = QTimer(self)
+        self.timer.setInterval(16)
+        self.timer.timeout.connect(self.refresh)
+        screen = settings.value('video/screen', '')
+        for candidate in QApplication.screens():
+            if candidate.name() == screen:
+                self.setScreen(candidate)
+                break
+        geometry = settings.value('video/geometry')
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        if not any(s.availableGeometry().intersects(self.frameGeometry())
+                   for s in QApplication.screens()):
+            self.move(self.screen().availableGeometry().topLeft())
+
+    def start(self, audio):
+        self.audio = audio
+        self.worker = VideoWorker()
+        self.dismissed = None
+        self.timer.start()
+        self.refresh()
+
+    def stop(self):
+        self.timer.stop()
+        self.audio = None
+        if self.worker:
+            self.worker.close()
+            self.worker = None
+        self.key = self.dismissed = None
+        self.blank_and_hide()
+
+    def remember(self):
+        self.settings.setValue('video/geometry', self.saveGeometry())
+        self.settings.setValue('video/screen', self.screen().name())
+
+    def blank_and_hide(self):
+        self.picture = None
+        self.image = QImage()
+        if self.isVisible():
+            self.remember()
+            self.hide()
+        self.update()
+
+    def reveal(self):
+        self.dismissed = None
+        self.refresh()
+        if self.isVisible():
+            self.raise_()
+
+    def refresh(self):
+        if self.audio is None:
+            return
+        position = self.audio.position()
+        layout = position.layout
+        songs = layout.setlist.songs if layout is not None else self.audio.setlist.songs
+        song = songs[position.song_index]
+        path = song.video_source
+        key = ((path, song.video is None and not song.mute,
+                position.epoch, position.song_index)
+               if path and not position.ended and not position.gap else None)
+        self.worker.submit(key, position.song_time)
+        if key != self.key:
+            self.key = key
+            self.picture = None
+            self.image = QImage()
+            self.update()
+        if key is None or key == self.dismissed:
+            self.blank_and_hide()
+            return
+        if not self.isVisible():
+            self.show()
+        result = self.worker.result
+        pictures = result[1] if result and result[0] == key else ()
+        # A slow decoder can publish an already obsolete frame; never display it.
+        picture = next((p for p in reversed(pictures)
+                        if p.pts <= position.song_time + 1e-9 < p.until), None)
+        if picture is not self.picture:
+            self.picture = picture
+            if picture is None:
+                self.image = QImage()
+            else:
+                rgb = picture.rgb
+                self.image = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0],
+                                    QImage.Format_RGB888).copy()
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), Qt.black)
+        if not self.image.isNull():
+            size = self.image.size().scaled(self.size(), Qt.KeepAspectRatio)
+            target = self.rect()
+            target.setSize(size)
+            target.moveCenter(self.rect().center())
+            painter.drawImage(target, self.image)
+
+    def toggle_fullscreen(self):
+        self.showNormal() if self.isFullScreen() else self.showFullScreen()
+
+    def mouseDoubleClickEvent(self, event):
+        self.toggle_fullscreen()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape and self.isFullScreen():
+            self.showNormal()
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        # Closing the projector must never stop the backing track.
+        self.dismissed = self.key
+        self.blank_and_hide()
+        event.accept()

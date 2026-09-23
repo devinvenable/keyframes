@@ -10,7 +10,7 @@ import io
 import os
 from pathlib import Path
 
-from .setlist import (SUFFIXES, Setlist, SetlistError, Song, mapping, number,
+from .setlist import (SUFFIXES, VIDEO_SUFFIXES, Setlist, SetlistError, Song, mapping, number,
                       parse_song, position, song_context, string, timing_metadata)
 from .tempomap import TempoEvent, TempoMap
 
@@ -46,6 +46,8 @@ class Row:
     offset_explicit: bool = False  # editor intent, including an explicitly entered zero
     bpm_estimated: bool = False
     timing_review: str = ''
+    video: Path | None = None
+    mute: bool = False
 
     def problem(self):
         if self.file_error:
@@ -61,7 +63,8 @@ class Row:
         return None
 
     def song(self):
-        return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset, self.midi)
+        return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset,
+                    self.midi, self.video, self.mute)
 
     @property
     def custom_tempo(self):
@@ -113,9 +116,16 @@ class Document:
                     row.file_error = "audio file not found"
                 else:
                     try:
-                        row.duration = probe(row.file)
+                        if row.mute and probe is probe_duration:
+                            from .audio import Decoder
+                            with Decoder.for_song(row.song()) as decoder:
+                                row.duration = decoder.duration
+                        else:
+                            row.duration = probe(row.file)
                     except Exception as exc:
                         row.file_error = f"cannot decode: {exc}"
+                if row.video and not row.video.is_file():
+                    row.file_error = f"video file not found: {row.video}"
                 rows.append(row)
             return cls(path, title, rows, source=data)
         except (OSError, ValueError, YAMLError) as exc:
@@ -153,6 +163,8 @@ class Document:
         if row.name == row.file.stem:
             row.name = replacement.name
         row.file, row.duration, row.file_error = replacement.file, replacement.duration, None
+        if row.file.suffix.lower() not in VIDEO_SUFFIXES:
+            row.mute = False
         # Keep old values (and their YAML comments) while the persisted gate
         # blocks playback. The new fit replaces only unconfirmed values.
         row.timing_review = 'pending'
@@ -212,6 +224,13 @@ class Document:
                     if current_file != row.file:
                         entry['file'] = self._portable(row.file, root)
                 self._set_number(entry, "bpm", row.bpm)
+                if row.video is None:
+                    entry.pop('video', None)
+                elif ('video' not in entry or
+                      (root / str(entry['video'])).resolve() != row.video):
+                    entry['video'] = self._portable(row.video, root)
+                if row.mute or 'mute' in entry:
+                    entry['mute'] = row.mute
                 self._set_number(entry, "offset", row.offset if row.offset_explicit else row.offset or None)
                 self._sync_tempo(entry, row.tempo)
                 metadata = dict(bpm_estimated=row.bpm_estimated,

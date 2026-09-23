@@ -16,7 +16,8 @@ import time
 
 import numpy as np
 
-from .setlist import SetlistError
+from .setlist import SetlistError, VIDEO_SUFFIXES
+from .media import stream_duration
 
 RATE = 48_000
 LOG = logging.getLogger(__name__)
@@ -27,8 +28,20 @@ class Decoder:
     samplerate = RATE
 
     @classmethod
-    def open(cls, path):
-        return AVDecoder(path) if Path(path).suffix.lower() == '.m4a' else SoundFileDecoder(path)
+    def open(cls, path, *, mute=False):
+        suffix = Path(path).suffix.lower()
+        if suffix in VIDEO_SUFFIXES:
+            import av
+            with av.open(str(path)) as source:
+                if not source.streams.video:
+                    raise ValueError('container has no video stream')
+                if mute or not source.streams.audio:
+                    return SilenceDecoder(stream_duration(source, source.streams.video[0]))
+        return AVDecoder(path) if suffix in VIDEO_SUFFIXES | {'.m4a'} else SoundFileDecoder(path)
+
+    @classmethod
+    def for_song(cls, song):
+        return cls.open(song.file, mute=True) if song.mute else cls.open(song.file)
 
     def _setup(self):
         import av
@@ -66,6 +79,24 @@ class Decoder:
 
     def __exit__(self, *args):
         self.close()
+
+
+class SilenceDecoder(Decoder):
+    """Bounded silence fed through the same ring/callback as decoded audio."""
+    native_samplerate = RATE
+
+    def __init__(self, duration):
+        self.duration = duration
+        self.frames = round(duration * RATE)
+        self._read = 0
+
+    def read(self, n):
+        n = min(n, self.frames - self._read)
+        self._read += n
+        return np.zeros((n, 2), dtype=np.float32)
+
+    def close(self):
+        pass
 
 
 class SoundFileDecoder(Decoder):
@@ -108,9 +139,7 @@ class AVDecoder(Decoder):
             self.native_samplerate = self._stream.codec_context.sample_rate
             if len(self._stream.codec_context.layout.channels) not in (1, 2):
                 raise ValueError('only mono/stereo files are supported')
-            if self._stream.duration is None:
-                raise ValueError('audio stream has no duration')
-            self.duration = float(self._stream.duration * self._stream.time_base)
+            self.duration = stream_duration(self._source, self._stream)
             self._setup()
         except Exception:
             self.close()
@@ -233,10 +262,11 @@ class MapsView:
 
 
 class _Slot:
-    def __init__(self, path):
+    def __init__(self, song):
         self.ring = RingBuffer()
-        self.decoder = Decoder.open(path)
-        self.path = path
+        self.decoder = Decoder.for_song(song)
+        self.path = song.file
+        self.mute = song.mute
         self.eof = False
 
     def fill(self):
@@ -261,7 +291,7 @@ class AudioEngine:
         durations, lengths, maps = [], [], []
         for song in setlist.songs:
             try:
-                with Decoder.open(song.file) as decoder:
+                with Decoder.for_song(song) as decoder:
                     duration, length = decoder.duration, decoder.frames
                 maps.append(song.tempo_map(duration))
             except Exception as exc:
@@ -450,6 +480,7 @@ class AudioEngine:
                 # drop any slot whose decoder no longer matches its index.
                 stale = [index for index, slot in slots.items()
                          if index >= len(layout.starts) or slot.path != layout.setlist.songs[index].file
+                         or slot.mute != layout.setlist.songs[index].mute
                          or (rewind and index >= target)]
                 for index in stale:
                     slots.pop(index).close()
@@ -464,7 +495,7 @@ class AudioEngine:
                     wanted.add(current + 1)
                 for index in wanted:
                     if index not in slots:
-                        slot = _Slot(layout.setlist.songs[index].file)
+                        slot = _Slot(layout.setlist.songs[index])
                         if index == current and serial == self._skip_applied:
                             slot.ring.consumed = max(0, self.frames_played - layout.starts[index])
                         # Fill before publishing; callback never observes an opening decoder.

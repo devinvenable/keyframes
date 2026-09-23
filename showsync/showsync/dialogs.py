@@ -10,13 +10,13 @@ class Dialogs:
     def audio_files(self):
         names, _ = QFileDialog.getOpenFileNames(
             self.parent, 'Add Songs', '',
-            'Audio files (*.wav *.aif *.aiff *.flac *.mp3 *.m4a);;All files (*)')
+            'Media files (*.wav *.aif *.aiff *.flac *.mp3 *.m4a *.mp4 *.m4v *.mpg *.mpeg *.mov);;All files (*)')
         return [Path(name) for name in names]
 
     def replacement_file(self, current):
         name, _ = QFileDialog.getOpenFileName(
             self.parent, 'Replace file', str(current.parent),
-            'Audio files (*.wav *.aif *.aiff *.flac *.mp3 *.m4a);;All files (*)')
+            'Media files (*.wav *.aif *.aiff *.flac *.mp3 *.m4a *.mp4 *.m4v *.mpg *.mpeg *.mov);;All files (*)')
         return Path(name) if name else None
 
     def setlist_path(self):

@@ -16,6 +16,7 @@ import zipfile
 from .setlist import mapping, string
 
 LOG = logging.getLogger(__name__)
+SIZE_WARNING_BYTES = 1024 ** 3
 
 
 class BundleError(ValueError):
@@ -68,6 +69,16 @@ def export_bundle(setlist_path, zip_path):
                 archived[source] = name
             row["file"] = name
             manifest.append(name)
+            if row.get('video') is not None:
+                video = (root / string(row['video'], 'video')).resolve()
+                if not video.is_file():
+                    raise ValueError(f'video file does not exist: {video}')
+                name = archived.get(video)
+                if name is None:
+                    name = _free_name(video.name, taken)
+                    taken.add(name.casefold())
+                    archived[video] = name
+                row['video'] = name
             # A song's MIDI file is show content like its audio (decision
             # update to I22), but it never gates playback, so it never gates
             # export either: pack it when present, warn and travel the
@@ -85,6 +96,10 @@ def export_bundle(setlist_path, zip_path):
                     LOG.warning('%s: midi file does not exist: %s — bundled without it',
                                 context, midi)
         context = str(setlist_path)
+        size = sum(source.stat().st_size for source in archived)
+        if size >= SIZE_WARNING_BYTES:
+            LOG.warning('%s: bundle media exceeds 1 GB (%.2f GiB); export will continue',
+                        context, size / 1024 ** 3)
         data["audio_root"] = "."
         buffer = io.StringIO()
         editor.dump(data, buffer)
