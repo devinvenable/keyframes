@@ -153,7 +153,10 @@ def check_video(harness, setlist):
     proc, app, window = harness.open_editor(setlist, 'video')
     try:
         harness.play(window, 'video')
-        video = app.window(title_re='ShowSync Video.*', control_type='Window')
+        # Qt surfaces the owned projector window nested under its owner in
+        # UIA, not as a top-level window; search the whole element tree.
+        video = app.window(title_re='ShowSync Video.*', control_type='Window',
+                           top_level_only=False)
         video.wait('visible', timeout=30)
         # Let playback and the decoder settle before judging audio or frames.
         time.sleep(2)
