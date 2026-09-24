@@ -16,6 +16,9 @@ Checks, each leaving evidence files:
               silent WAV without the midi key must stay silent.
   bpm      -- a copy of the video song's setlist row without bpm gets a partial
               (~N?) estimate in the editor's BPM column.
+  trim     -- a song whose file is silent for 10s then a steady tone, with
+              trim: 10, is audible immediately and reports ~10s less remaining
+              than an untrimmed control run of the same file.
 
 --negative midi runs the MIDI loopback assertion against the control setlist
 (no midi key) and must fail on 'MIDI capture is silent'; used once per release
@@ -70,6 +73,18 @@ def write_silence_fixture(directory):
     import soundfile as sf
     path = directory / 'silence.wav'
     sf.write(path, np.zeros((48000 * 14, 2), dtype='float32'), 48000)
+    return path
+
+
+def write_trim_fixture(directory):
+    """30s WAV: silence for 10s, then a steady 440 Hz tone."""
+    import numpy as np
+    import soundfile as sf
+    path = directory / 'late-tone.wav'
+    samples = np.zeros((48000 * 30, 2), dtype='float32')
+    t = np.arange(48000 * 20) / 48000
+    samples[48000 * 10:] = (0.4 * np.sin(2 * np.pi * 440 * t)).astype('float32')[:, None]
+    sf.write(path, samples, 48000)
     return path
 
 
@@ -175,7 +190,7 @@ def check_video(harness, setlist):
         harness.close(proc, window, graceful=False)
 
 
-def midi_capture(harness, setlist, name):
+def play_capture(harness, setlist, name, *, require_midi=False):
     proc, app, window = harness.open_editor(setlist, name)
     try:
         harness.play(window, name)
@@ -183,13 +198,43 @@ def midi_capture(harness, setlist, name):
         harness.capture(f'{name}-playing', 5)
         texts = [item.window_text() for item in window.descendants(control_type='Text')]
         harness.report[f'{name}_playback_labels'] = texts
-        check(any(t.startswith('MIDI: ') and 'No output' not in t for t in texts),
-              'No MIDI output was opened during playback')
+        if require_midi:
+            check(any(t.startswith('MIDI: ') and 'No output' not in t for t in texts),
+                  'No MIDI output was opened during playback')
         harness.stop(window, name)
         harness.close(proc, window)
     finally:
         harness.close(proc, window, graceful=False)
     return harness.report[f'{name}-playing']
+
+
+def remaining_seconds(harness, name):
+    labels = harness.report[f'{name}_playback_labels']
+    matches = [re.search(r'(\d+):(\d+) remaining', t) for t in labels]
+    times = [int(m.group(1)) * 60 + int(m.group(2)) for m in matches if m]
+    check(times, f'No remaining-time label during {name}; saw {labels}')
+    return times[0]
+
+
+def check_trim(harness, fixtures):
+    tone = write_trim_fixture(fixtures)
+    trimmed = fixtures / 'trimmed.yaml'
+    trimmed.write_text('title: Trim smoke\naudio_root: .\nsongs:\n'
+                       f'  - name: Late tone trimmed\n    file: {tone.name}\n'
+                       '    bpm: 120\n    trim: 10\n', encoding='utf-8')
+    untrimmed = fixtures / 'untrimmed.yaml'
+    untrimmed.write_text('title: Trim control\naudio_root: .\nsongs:\n'
+                         f'  - name: Late tone untrimmed\n    file: {tone.name}\n'
+                         '    bpm: 120\n', encoding='utf-8')
+    loud = play_capture(harness, trimmed, 'trim')
+    check(loud['peak'] > 0.01,
+          'Trimmed song was not audible at once; trim did not move the start')
+    quiet = play_capture(harness, untrimmed, 'trim-control')
+    check(quiet['peak'] < loud['peak'] * .05,
+          'Untrimmed control was already audible; tone fixture proves nothing')
+    shift = remaining_seconds(harness, 'trim-control') - remaining_seconds(harness, 'trim')
+    harness.report['trim_remaining_shift_seconds'] = shift
+    check(7 <= shift <= 13, f'Remaining time shifted by {shift}s, expected ~10s trim')
 
 
 def check_midi(harness, fixtures, negative=False):
@@ -206,16 +251,16 @@ def check_midi(harness, fixtures, negative=False):
     if negative:
         # The .mid is absent: the same assertion must fail, proving the
         # loopback capture discriminates GS Wavetable output from nothing.
-        levels = midi_capture(harness, control, 'negative-midi')
+        levels = play_capture(harness, control, 'negative-midi', require_midi=True)
         try:
             check(levels['peak'] > 0.005, 'MIDI capture is silent')
         except AssertionError as exc:
             harness.report['negative_expected_failure'] = str(exc)
             return
         raise AssertionError('Negative control unexpectedly produced audio')
-    levels = midi_capture(harness, with_midi, 'midi')
+    levels = play_capture(harness, with_midi, 'midi', require_midi=True)
     check(levels['peak'] > 0.005, 'MIDI capture is silent')
-    quiet = midi_capture(harness, control, 'midi-control')
+    quiet = play_capture(harness, control, 'midi-control', require_midi=True)
     check(quiet['peak'] < levels['peak'] * .05,
           'Control without a midi key was not silent; audio evidence is ambiguous')
 
@@ -271,6 +316,7 @@ def verify(archive, bundle, evidence, report, negative):
         setlist = check_import(harness, bundle, base / 'imported show')
         check_video(harness, setlist)
         check_midi(harness, fixtures)
+        check_trim(harness, fixtures)
         check((setlist.parent / 'clock_divider_missing_on_the_one.mp4').is_file(),
               'Imported bundle is missing the video song')
         check_bpm(harness, setlist, 'clock_divider_missing_on_the_one.mp4')
