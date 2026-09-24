@@ -265,7 +265,6 @@ def test_video_window_follows_pause_seek_gap_and_remembers_geometry(qtbot, tmp_p
     assert window.picture.pts == pytest.approx(.2)
     position[0] = replace(position[0], song_time=.05, epoch=1)
     qtbot.waitUntil(lambda: window.picture is not None and window.picture.pts == 0)
-    window.toggle_fullscreen()
     assert window.isFullScreen()
     qtbot.keyClick(window, Qt.Key_Escape)
     assert not window.isFullScreen()
@@ -286,6 +285,75 @@ def test_video_window_follows_pause_seek_gap_and_remembers_geometry(qtbot, tmp_p
     restored = VideoWindow(settings)
     qtbot.addWidget(restored)
     assert restored.size().width() == 640
+
+
+def test_projector_defaults_to_fullscreen_and_keeps_windowed_escape(qtbot, tmp_path, clip):
+    settings = QSettings(str(tmp_path / 'fullscreen.ini'), QSettings.IniFormat)
+    audio = SimpleNamespace(position=lambda: Position(0, .25, True),
+                            setlist=Setlist('show', (Song('clip', clip, 120),)))
+    window = VideoWindow(settings)
+    qtbot.addWidget(window, before_close_func=lambda _: window.stop())
+    assert not window.isVisible()
+    window.start(audio)
+    qtbot.waitUntil(lambda: window.isVisible())
+    assert window.isFullScreen()
+    assert window.windowFlags() & Qt.FramelessWindowHint
+    assert window.windowFlags() & Qt.WindowStaysOnTopHint
+    screen = window.screen()
+    qtbot.keyClick(window, Qt.Key_Escape)
+    assert window.isVisible() and not window.isFullScreen()
+    assert not window.windowFlags() & Qt.FramelessWindowHint
+    assert not window.windowFlags() & Qt.WindowStaysOnTopHint
+    window.resize(640, 360)
+    # Use the action behind F11 (shortcut focus is platform-dependent offscreen).
+    window.fullscreen.trigger()
+    assert window.isFullScreen() and window.screen() == screen
+    window.stop()
+    assert not window.isVisible()
+    window.start(audio)
+    qtbot.waitUntil(lambda: window.isVisible())
+    assert window.isFullScreen()
+    window.stop()
+    restored = VideoWindow(settings)
+    qtbot.addWidget(restored, before_close_func=lambda _: restored.stop())
+    assert restored.size().width() == 640
+    assert restored.screen() == screen
+    restored.start(audio)
+    qtbot.waitUntil(lambda: restored.isVisible())
+    assert restored.isFullScreen()
+    restored.fullscreen.trigger()
+    assert not restored.isFullScreen() and restored.size().width() == 640
+
+
+def test_projector_hides_at_video_end_while_audio_continues(qtbot, tmp_path, clip):
+    tone = Path(__file__).parent / 'fixtures' / 'tone.wav'
+    songs = (Song('separate video', tone, 120, video=clip), Song('audio only', tone, 120))
+    position = [Position(0, .25, True)]
+    audio = SimpleNamespace(position=lambda: position[0], setlist=Setlist('show', songs))
+    window = VideoWindow(QSettings(str(tmp_path / 'end.ini'), QSettings.IniFormat))
+    qtbot.addWidget(window, before_close_func=lambda _: window.stop())
+    window.start(audio)
+    qtbot.waitUntil(lambda: window.isVisible())
+    position[0] = replace(position[0], song_time=1.5)
+    window.refresh()
+    assert not window.isVisible() and window.image.isNull()
+    assert audio.position().playing and not audio.position().ended
+    window.reveal()
+    assert not window.isVisible()
+    position[0] = replace(position[0], song_time=.25, epoch=1)
+    qtbot.waitUntil(lambda: window.isVisible())
+    assert window.isFullScreen()
+    window.close()
+    window.refresh()
+    assert not window.isVisible()
+    window.reveal()
+    assert window.isVisible()
+    position[0] = replace(position[0], song_index=1, epoch=2)
+    window.refresh()
+    assert not window.isVisible()
+    position[0] = replace(position[0], song_index=0, epoch=3)
+    qtbot.waitUntil(lambda: window.isVisible())
+    assert window.isFullScreen()
 
 
 def test_main_window_starts_and_stops_video(window_factory, clip, qtbot):

@@ -227,10 +227,17 @@ on it. It does not provide real-time scheduling guarantees.
 
 Add an MP4, M4V, MPG, MPEG, or MOV as a song to play its embedded audio as the
 backing track. BPM/first-beat detection uses that audio just like an MP3.
-Video appears automatically in a separate window: drag it to a projector or
-second monitor, then double-click or press F11 to toggle fullscreen (Esc exits).
-Its geometry and screen are remembered on this machine. **View → Video window**
-reopens it if closed during playback. Closing it does not stop the song.
+Video appears automatically fullscreen, borderless and always on top on the
+previously used monitor (or the primary monitor). The projector hides on stop,
+between songs, for audio-only songs, and whenever there is no current video frame,
+including when a shorter video ends before its backing track. Other apps underneath
+continue independently; pausing holds the current video frame.
+
+Press F11, double-click, or press Esc to leave fullscreen and get a normal bordered
+window. Drag that window to another monitor, then press F11 or double-click to
+project there. Its windowed geometry and screen are remembered on this machine;
+each launch defaults to fullscreen. **View → Video window** reopens it if closed
+during playback. Closing it does not stop the song.
 
 Optional per-song YAML fields support silent visuals alongside audio, or mute
 an embedded soundtrack:

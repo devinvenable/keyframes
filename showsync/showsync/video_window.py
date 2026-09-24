@@ -16,6 +16,7 @@ class VideoWindow(QWidget):
         self.picture = None
         self.audio = self.worker = None
         self.key = self.dismissed = None
+        self.projector_fullscreen = True
         self.fullscreen = QAction('Fullscreen', self)
         self.fullscreen.setShortcut('F11')
         self.fullscreen.triggered.connect(self.toggle_fullscreen)
@@ -24,17 +25,17 @@ class VideoWindow(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(16)
         self.timer.timeout.connect(self.refresh)
-        screen = settings.value('video/screen', '')
-        for candidate in QApplication.screens():
-            if candidate.name() == screen:
-                self.setScreen(candidate)
-                break
         geometry = settings.value('video/geometry')
         if geometry is not None:
             self.restoreGeometry(geometry)
-        if not any(s.availableGeometry().intersects(self.frameGeometry())
-                   for s in QApplication.screens()):
-            self.move(self.screen().availableGeometry().topLeft())
+        self.setWindowState(Qt.WindowNoState)
+        screen_name = settings.value('video/screen', '')
+        screen = next((s for s in QApplication.screens() if s.name() == screen_name),
+                      QApplication.primaryScreen())
+        self.setScreen(screen)
+        if not screen.availableGeometry().intersects(self.frameGeometry()):
+            self.move(screen.availableGeometry().topLeft())
+        self.windowed_geometry = self.saveGeometry()
 
     def start(self, audio):
         self.audio = audio
@@ -53,8 +54,23 @@ class VideoWindow(QWidget):
         self.blank_and_hide()
 
     def remember(self):
-        self.settings.setValue('video/geometry', self.saveGeometry())
+        if not self.projector_fullscreen:
+            self.windowed_geometry = self.saveGeometry()
+        self.settings.setValue('video/geometry', self.windowed_geometry)
         self.settings.setValue('video/screen', self.screen().name())
+
+    def show_projector(self):
+        screen = self.screen()
+        self.setWindowFlag(Qt.FramelessWindowHint, self.projector_fullscreen)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, self.projector_fullscreen)
+        self.setScreen(screen)
+        if self.projector_fullscreen:
+            self.move(screen.geometry().topLeft())
+            self.showFullScreen()
+        else:
+            self.showNormal()
+            self.restoreGeometry(self.windowed_geometry)
+        self.raise_()
 
     def blank_and_hide(self):
         self.picture = None
@@ -93,22 +109,24 @@ class VideoWindow(QWidget):
         if key is None or key == self.dismissed:
             self.blank_and_hide()
             return
-        if not self.isVisible():
-            self.show()
         result = self.worker.result
         pictures = result[1] if result and result[0] == key else ()
         # A slow decoder can publish an already obsolete frame; never display it.
         picture = next((p for p in reversed(pictures)
                         if p.pts <= seconds + 1e-9 < p.until), None)
+        # Never cover another app with an empty projector, including after a
+        # short video ends while its separate backing track keeps playing.
+        if picture is None:
+            self.blank_and_hide()
+            return
         if picture is not self.picture:
             self.picture = picture
-            if picture is None:
-                self.image = QImage()
-            else:
-                rgb = picture.rgb
-                self.image = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0],
-                                    QImage.Format_RGB888).copy()
+            rgb = picture.rgb
+            self.image = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0],
+                                QImage.Format_RGB888).copy()
             self.update()
+        if not self.isVisible():
+            self.show_projector()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -121,14 +139,17 @@ class VideoWindow(QWidget):
             painter.drawImage(target, self.image)
 
     def toggle_fullscreen(self):
-        self.showNormal() if self.isFullScreen() else self.showFullScreen()
+        self.remember()
+        self.projector_fullscreen = not self.projector_fullscreen
+        if self.isVisible():
+            self.show_projector()
 
     def mouseDoubleClickEvent(self, event):
         self.toggle_fullscreen()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape and self.isFullScreen():
-            self.showNormal()
+            self.toggle_fullscreen()
         else:
             super().keyPressEvent(event)
 
