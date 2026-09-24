@@ -21,8 +21,13 @@ import tempfile
 import wave
 import zipfile
 
-# Compress-Archive writes backslash-separated entry names.
-TARGET = 'ShowSync\\demo\\demo-100.wav'
+# Compress-Archive stores backslash separators, and Python versions differ
+# on whether they are normalized when read; compare names normalized.
+TARGET = 'ShowSync/demo/demo-100.wav'
+
+
+def is_target(info):
+    return info.filename.replace('\\', '/') == TARGET
 EXPECTED = 'Windows output capture is silent'
 
 
@@ -50,13 +55,15 @@ def main():
         base = Path(temp)
         extracted = base / 'demo-100.wav'
         with zipfile.ZipFile(archive) as source:
-            extracted.write_bytes(source.read(TARGET))
-            entries = [i for i in source.infolist() if i.filename != TARGET]
+            target = next((i for i in source.infolist() if is_target(i)), None)
+            assert target is not None, f'{TARGET} not found in {archive}'
+            extracted.write_bytes(source.read(target))
             mutated = base / 'ShowSync_Windows_silent.zip'
             with zipfile.ZipFile(mutated, 'w', zipfile.ZIP_DEFLATED) as out:
-                for info in entries:
-                    out.writestr(info, source.read(info))
-                out.writestr(TARGET, silence_like(extracted))
+                for info in source.infolist():
+                    if not is_target(info):
+                        out.writestr(info, source.read(info))
+                out.writestr(target.filename, silence_like(extracted))
         result = subprocess.run([sys.executable, str(verifier), str(mutated),
                                  str(evidence)], capture_output=True, text=True)
     report = json.loads((evidence / 'report.json').read_text(encoding='utf-8'))
