@@ -239,3 +239,48 @@ def test_midi_key_survives_editor_round_trip_byte_stable(tmp_path):
     reloaded = load_setlist(path, duration_probe=probe)
     assert reloaded.songs[0].midi == tmp_path / 'parts' / 'opener.mid'
     assert '# GM backing' in path.read_text(encoding='utf-8')
+
+
+TRIMMED = """\
+title: "Trim set"
+songs:
+  - name: "Divider"      # hand-aligned
+    file: tone.wav
+    bpm: 106
+    trim: 8.656          # music entry downbeat
+"""
+
+
+def test_trim_key_round_trips_byte_stable(tmp_path):
+    path = tmp_path / 'set.yaml'
+    (tmp_path / 'tone.wav').write_bytes(TONE.read_bytes())
+    path.write_text(TRIMMED, encoding='utf-8')
+    document = Document.load(path, probe=probe)
+    assert document.rows[0].trim == 8.656
+    document.save()
+    assert path.read_text(encoding='utf-8') == TRIMMED
+    document.rows[0].trim = 2.5
+    document.save()
+    text = path.read_text(encoding='utf-8')
+    assert 'trim: 2.5' in text and '# hand-aligned' in text
+    assert load_setlist(path, duration_probe=probe).songs[0].trim == 2.5
+    document.rows[0].trim = 0.0
+    document.save()
+    assert 'trim' not in path.read_text(encoding='utf-8')
+
+
+def test_trim_saves_for_new_rows_and_gates_playback_when_too_long(tmp_path):
+    document = Document(tmp_path / 'set.yaml')
+    document.add_files([TONE])  # real 1 s probe
+    row = document.rows[0]
+    row.bpm = 120
+    row.trim = 0.25
+    assert row.problem() is None
+    document.save()
+    assert load_setlist(document.path).songs[0].trim == 0.25
+    row.trim = 1.0
+    assert row.problem() == 'Trim must be under the file length (1s)'
+    row.trim = 0.25
+    from showsync.tempomap import TempoEvent
+    row.tempo = (TempoEvent(0.1, 140, 0),)
+    assert 'before trim' in row.problem()

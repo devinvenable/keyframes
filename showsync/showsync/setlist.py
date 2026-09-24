@@ -32,13 +32,22 @@ class Song:
     midi: Path | None = None  # optional GM MIDI file played out the clock port
     video: Path | None = None  # separate silent visuals, overriding embedded video
     mute: bool = False
+    trim: float = 0.0  # playback starts here (seconds); the file is untouched
 
     @property
     def video_source(self):
         return self.video or (self.file if self.file.suffix.lower() in VIDEO_SUFFIXES else None)
 
     def tempo_map(self, duration=None):
-        return TempoMap(self.bpm, self.tempo, duration, self.offset)
+        """Map over the playable timeline: trim is t=0, `duration` excludes it."""
+        if not self.trim:
+            return TempoMap(self.bpm, self.tempo, duration, self.offset)
+        for i, event in enumerate(self.tempo):
+            if event.at < self.trim:
+                raise ValueError(f"tempo[{i}].at must not be before trim ({self.trim:g}s)")
+        events = tuple(TempoEvent(event.at - self.trim, event.bpm, event.ramp)
+                       for event in self.tempo)
+        return TempoMap(self.bpm, events, duration, max(0.0, self.offset - self.trim))
 
 
 @dataclass(frozen=True)
@@ -88,7 +97,7 @@ def parse_song(row, root, *, require_bpm=True):
     The editor's lenient Document rows and the strict playback loader share
     this, so a set saved mid-edit (bpm still unset) reopens instead of erroring.
     """
-    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "midi", "video", "mute", "restart", "editor"}, "song")
+    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "trim", "midi", "video", "mute", "restart", "editor"}, "song")
     editor = timing_metadata(row)
     if require_bpm and editor.get('timing_review'):
         raise ValueError('Replacement audio needs timing review')
@@ -110,6 +119,7 @@ def parse_song(row, root, *, require_bpm=True):
     bpm = number(bpm, "bpm", positive=True) if (require_bpm or bpm is not None) else None
     gap = number(row.get("gap", 0), "gap")
     offset = number(row.get("offset", 0), "offset")
+    trim = number(row.get("trim", 0), "trim")
     # Legacy T93 metadata is inert; preserve old YAML without offering a mode.
     restart = row.get("restart", False)
     if not isinstance(restart, bool):
@@ -134,7 +144,7 @@ def parse_song(row, root, *, require_bpm=True):
         except ValueError as exc:
             raise ValueError(f"tempo[{j}].{exc}") from exc
     return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset,
-                midi=midi, video=video, mute=mute)
+                midi=midi, video=video, mute=mute, trim=trim)
 
 
 def timing_metadata(row):
@@ -181,7 +191,10 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
             if check_files and fields["video"] and not fields["video"].is_file():
                 raise ValueError(f"video does not exist: {fields['video']}")
             song = Song(**fields)
-            song.tempo_map(duration_probe(song.file) if duration_probe else None)
+            duration = duration_probe(song.file) if duration_probe else None
+            if duration is not None and song.trim >= duration:
+                raise ValueError(f"trim must be under the file duration ({duration:g}s)")
+            song.tempo_map(duration - song.trim if duration is not None else None)
             songs.append(song)
         return Setlist(title, tuple(songs))
     except (OSError, ValueError, yaml.YAMLError) as exc:

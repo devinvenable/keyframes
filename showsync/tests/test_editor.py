@@ -40,7 +40,7 @@ def test_legacy_restart_is_inert_and_roundtrips_without_checkbox(window_factory,
     doc.save()
     assert target.read_text() == text
     w = window_factory(doc)
-    assert w.model.columnCount() == 7
+    assert w.model.columnCount() == 8
     assert not hasattr(doc.rows[0], 'restart')
     assert not hasattr(doc.setlist().songs[0], 'restart')
     assert not hasattr(load_setlist(target).songs[0], 'restart')
@@ -192,10 +192,10 @@ def test_ramp_controls_recreate_the_demo_ramp_up_song(qtbot, window_factory, tmp
     row = Row('Ramp Up', TONE, 120, duration=40)
     doc = Document(tmp_path / 'set.yaml', rows=[row])
     w = window_factory(doc)
-    assert not w.model.setData(w.model.index(0, 4), '0')
-    edit(qtbot, w, 0, 4, '140')
-    edit(qtbot, w, 0, 5, '10')
-    edit(qtbot, w, 0, 6, '20')
+    assert not w.model.setData(w.model.index(0, 5), '0')
+    edit(qtbot, w, 0, 5, '140')
+    edit(qtbot, w, 0, 6, '10')
+    edit(qtbot, w, 0, 7, '20')
     saved = load_setlist(doc.path, duration_probe=lambda _: 40)
     demo = load_setlist(FIXTURES / 'demo_ramp_reference.yaml', check_files=False)
     hand_written = demo.songs[1]
@@ -211,36 +211,36 @@ def test_ramp_controls_recreate_the_demo_ramp_up_song(qtbot, window_factory, tmp
 def test_ramp_defaults_track_offset_and_run_to_end(qtbot, window_factory, tmp_path):
     row = Row('Ramp', TONE, 120, duration=60, offset=5)
     w = window_factory(Document(tmp_path / 'set.yaml', rows=[row]))
-    edit(qtbot, w, 0, 4, '140')
+    edit(qtbot, w, 0, 5, '140')
     assert row.tempo == (TempoEvent(5, 140, 55),)
     assert row.problem() is None
-    edit(qtbot, w, 0, 5, '10')
+    edit(qtbot, w, 0, 6, '10')
     assert row.tempo == (TempoEvent(10, 140, 50),)
-    edit(qtbot, w, 0, 6, '20')
+    edit(qtbot, w, 0, 7, '20')
     assert row.tempo == (TempoEvent(10, 140, 20),)
-    edit(qtbot, w, 0, 6, '')
+    edit(qtbot, w, 0, 7, '')
     assert row.tempo == (TempoEvent(10, 140, 50),)
-    edit(qtbot, w, 0, 5, '2')
+    edit(qtbot, w, 0, 6, '2')
     assert row.tempo == (TempoEvent(2, 140, 58),)
     qtbot.mouseClick(w.play_button, Qt.LeftButton)
     assert 'first-beat offset' in w.statusBar().currentMessage()
-    edit(qtbot, w, 0, 4, '')
+    edit(qtbot, w, 0, 5, '')
     assert row.tempo == ()
 
 
 def test_start_and_duration_require_end_bpm_and_custom_map_is_readonly(window_factory):
     row = Row('Ramp', TONE, 120, duration=60)
     w = window_factory(Document(rows=[row]))
-    assert not w.model.setData(w.model.index(0, 5), '5')
-    assert not w.model.setData(w.model.index(0, 6), '5')
+    assert not w.model.setData(w.model.index(0, 7), '5')
+    assert not w.model.setData(w.model.index(0, 7), '5')
     assert 'Set an end BPM first' in w.statusBar().currentMessage()
     row.tempo = (TempoEvent(10, 126, 0), TempoEvent(30, 120, 0))
     original = row.tempo
-    for col in (4, 5, 6):
+    for col in (5, 6, 7):
         assert not w.model.flags(w.model.index(0, col)) & Qt.ItemIsEditable
         assert not w.model.setData(w.model.index(0, col), '140')
     assert row.tempo == original
-    assert w.model.index(0, 4).data() == 'Custom'
+    assert w.model.index(0, 5).data() == 'Custom'
 
 
 def test_open_new_recents_and_save_as_keep_audio_paths(window_factory, tmp_path):
@@ -367,7 +367,7 @@ def test_pending_grid_cannot_overwrite_bpm_or_tempo_map(qtbot, window_factory, t
         return BeatGrid(112.371234567, .237891234)
     w = window_factory(doc, estimator=estimator)
     edit(qtbot, w, 0, 2, '123')
-    edit(qtbot, w, 1, 4, '140')
+    edit(qtbot, w, 1, 5, '140')
     original = doc.rows[1].tempo
     release.set()
     w.suggestions.worker.join(2)
@@ -376,3 +376,17 @@ def test_pending_grid_cannot_overwrite_bpm_or_tempo_map(qtbot, window_factory, t
     assert doc.rows[1].bpm is None and doc.rows[1].offset == 0
     assert doc.rows[1].tempo == original
     assert w.suggestions.state(doc.rows[1]) == 'manual'
+
+
+def test_trim_column_edits_validate_against_file_length(qtbot, window_factory, tmp_path):
+    row = Row('Tone', TONE, 120, duration=1)
+    doc = Document(tmp_path / 'set.yaml', rows=[row])
+    w = window_factory(doc)
+    edit(qtbot, w, 0, 4, '0.25')
+    assert row.trim == .25
+    assert w.model.index(0, 4).data() == '0.25'
+    assert not w.model.setData(w.model.index(0, 4), '1')
+    assert 'Trim must be under the file length' in w.statusBar().currentMessage()
+    assert row.trim == .25
+    edit(qtbot, w, 0, 4, '')
+    assert row.trim == 0

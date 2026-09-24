@@ -13,13 +13,13 @@ from PySide6.QtWidgets import (
     QStackedWidget, QStyledItemDelegate, QTableView, QVBoxLayout, QWidget,
 )
 
-from .bpmdetect import BeatGrid, Suggestions, estimate_grid
+from .bpmdetect import BeatGrid, Suggestions, estimate_grid, suggest_trim
 from .document import Document
 from .identity import application_arguments, configure_identity
 from .tempomap import TempoEvent
 
-FIELDS = ('name', 'file', 'bpm', 'offset', 'ramp', 'start', 'dur')
-HEADERS = ('Song', 'File', 'BPM', 'Offset (s)', 'End BPM', 'Ramp start (s)', 'Ramp duration (s)')
+FIELDS = ('name', 'file', 'bpm', 'offset', 'trim', 'ramp', 'start', 'dur')
+HEADERS = ('Song', 'File', 'BPM', 'Offset (s)', 'Trim (s)', 'End BPM', 'Ramp start (s)', 'Ramp duration (s)')
 EMPTY_HINT = 'Drop audio or video files here, or choose Add Songs to build your set.'
 CUSTOM_TEMPO = 'Custom tempo map — edit in YAML'
 
@@ -67,7 +67,7 @@ class SongModel(QAbstractTableModel):
     def flags(self, index):
         flags = super().flags(index)
         if index.isValid() and index.column() != 1:
-            if not (index.column() >= 4 and self.rows[index.row()].custom_tempo):
+            if not (index.column() >= 5 and self.rows[index.row()].custom_tempo):
                 flags |= Qt.ItemIsEditable
         return flags
 
@@ -76,12 +76,14 @@ class SongModel(QAbstractTableModel):
             return None
         row, col = self.rows[index.row()], index.column()
         if role == Qt.ToolTipRole:
-            if col >= 4 and row.custom_tempo:
+            if col >= 5 and row.custom_tempo:
                 return CUSTOM_TEMPO
             if col == 1:
                 return str(row.file)
             if col == 3 and self.window.suggestions.offset_estimated(row):
                 return 'Estimated first beat — double-click to confirm or correct'
+            if col == 4:
+                return 'Playback starts here; the file is untouched'
             if col == 2:
                 return {'estimated': 'Estimated beat grid — double-click BPM or offset to correct',
                         'partial': 'Estimated from a steady section only — intro/outro may '
@@ -93,7 +95,8 @@ class SongModel(QAbstractTableModel):
             return None
         ramp = row.ramp
         values = (row.name, str(row.file), '' if row.bpm is None else f'{row.bpm:g}',
-                  f'{row.offset:g}', '' if ramp is None else f'{ramp.bpm:g}',
+                  f'{row.offset:g}', f'{row.trim:g}',
+                  '' if ramp is None else f'{ramp.bpm:g}',
                   '' if ramp is None else f'{ramp.at:g}',
                   '' if ramp is None else f'{ramp.ramp:g}')
         if role == Qt.DisplayRole:
@@ -101,7 +104,7 @@ class SongModel(QAbstractTableModel):
                 return bpm_cell(row, self.window.suggestions.state(row))
             if col == 3 and self.window.suggestions.offset_estimated(row):
                 return '~' + values[col]
-            if col == 4 and row.custom_tempo:
+            if col == 5 and row.custom_tempo:
                 return 'Custom'
         return values[col]
 
@@ -125,6 +128,11 @@ class SongModel(QAbstractTableModel):
                     raise ValueError(f'Offset must be under the file length ({row.duration:g}s)')
                 row.offset_explicit = True
                 row.offset = offset
+            elif field == 'trim':
+                trim = self.number(value or '0', 'Trim')
+                if row.duration is not None and trim >= row.duration:
+                    raise ValueError(f'Trim must be under the file length ({row.duration:g}s)')
+                row.trim = trim
             elif field == 'ramp':
                 if not value:
                     row.tempo = ()
@@ -158,7 +166,7 @@ class SongModel(QAbstractTableModel):
             return False
         if field in ('bpm', 'offset') and row.timing_review and row.bpm is not None:
             self.window.suggestions.confirm_timing(row)
-        self.dataChanged.emit(self.index(index.row(), 0), self.index(index.row(), 6))
+        self.dataChanged.emit(self.index(index.row(), 0), self.index(index.row(), len(FIELDS) - 1))
         self.window.changed()
         return True
 
@@ -260,8 +268,8 @@ class SongTable(QTableView):
 
 class MainWindow(QMainWindow):
     def __init__(self, document, *, start_engines, dialogs=None, remember=None,
-                 estimator=estimate_grid, settings=None, notice='',
-                 clock_offset_ms=0, offset_changed=None, devices=None):
+                 estimator=estimate_grid, trim_suggester=suggest_trim, settings=None,
+                 notice='', clock_offset_ms=0, offset_changed=None, devices=None):
         super().__init__()
         if dialogs is None:
             from .dialogs import Dialogs
@@ -275,6 +283,7 @@ class MainWindow(QMainWindow):
         self.midi_status.setTextFormat(Qt.PlainText)
         self.statusBar().addPermanentWidget(self.midi_status)
         self.estimator = estimator
+        self.trim_suggester = trim_suggester
         self.suggestions = Suggestions(estimator)
         self.settings = settings if settings is not None else QSettings('ShowSync', 'ShowSync')
         from .video_window import VideoWindow
@@ -320,6 +329,7 @@ class MainWindow(QMainWindow):
         toolbar = QHBoxLayout()
         self.add_button = self.button('Add Songs…', self.add_songs, toolbar)
         self.replace_button = self.button('Replace file…', self.replace_song, toolbar)
+        self.align_button = self.button('Align to the one…', self.align_to_one, toolbar)
         self.remove_button = self.button('Remove', self.remove_song, toolbar)
         self.up_button = self.button('Move Up', lambda: self.move_song(-1), toolbar)
         self.down_button = self.button('Move Down', lambda: self.move_song(1), toolbar)
@@ -337,7 +347,7 @@ class MainWindow(QMainWindow):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        for col, width in enumerate((210, 220, 120, 90, 90, 120, 140, 125)):
+        for col, width in enumerate((210, 220, 120, 90, 90, 90, 120, 140)):
             self.table.setColumnWidth(col, width)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.selectionModel().currentChanged.connect(self.show_row_problem)
@@ -725,6 +735,90 @@ class MainWindow(QMainWindow):
         self.changed()
         self.refresh()
 
+    def align_to_one(self):
+        """Suggest a trim that starts playback on a 4-bar-phrase downbeat.
+
+        Never writes silently: a song entering on a pickup fools the entry
+        heuristic, so the suggestion goes through preview/confirm first.
+        """
+        index = self.table.currentIndex().row()
+        if self.audio is not None or index < 0:
+            return
+        row = self.document.rows[index]
+        if row.file_error:
+            self.notice(f'Cannot align {row.name}: {row.file_error}')
+            return
+        if row.bpm is None:
+            self.notice('Set or estimate a BPM first — the beat grid anchors the suggestion.')
+            return
+        if row.tempo:
+            self.notice('Align to the one needs a constant tempo (no ramps).')
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            suggestion = self.trim_suggester(row.file, BeatGrid(row.bpm, row.offset))
+        except Exception as exc:
+            self.notice(f'Could not analyze {row.name}: {exc}')
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        if suggestion is None:
+            self.notice(f'No clear music entry found in {row.name} — set the trim manually.')
+            return
+        trim = round(suggestion.trim, 3)
+        if not trim:
+            self.notice(f'{row.name} already starts on the one — no trim needed.')
+            return
+        if row.duration is not None and trim >= row.duration:
+            self.notice(f'Suggested trim ({trim:g}s) exceeds the file — set the trim manually.')
+            return
+        message = (f'Music enters at {suggestion.entry:.2f}s; the nearest beat is '
+                   f'{suggestion.entry_beat:.3f}s.\n\nTrim {trim:g}s so playback starts on '
+                   f'the one and 4-bar phrases count cleanly from the entry?\n'
+                   f'The file is untouched — playback simply starts {trim:g}s in.')
+        if row.trim:
+            message += f'\n\nThis replaces the current trim ({row.trim:g}s).'
+        try:
+            accepted = self.dialogs.align_trim(row.name, message,
+                                               lambda: self.preview_trim(row, trim))
+        finally:
+            self.stop_preview()
+        if not accepted:
+            self.notice(f'{row.name}: trim not applied.')
+            return
+        row.trim = trim
+        self.model.refresh()
+        self.changed()
+        self.notice(f'{row.name}: playback now starts at {trim:g}s.')
+
+    def preview_trim(self, row, trim, seconds=None):
+        """Audition two bars from the proposed start on the default output."""
+        import numpy as np
+        import sounddevice as sd
+        from dataclasses import replace
+        from .audio import Decoder, RATE
+        try:
+            song = replace(row.song(), trim=trim)
+            want = round((seconds or 8 * 60 / song.bpm) * RATE)
+            blocks = []
+            with Decoder.for_song(song) as decoder:
+                while want > 0 and len(block := decoder.read(min(65536, want))):
+                    blocks.append(block)
+                    want -= len(block)
+            if not blocks:
+                raise ValueError('nothing to play at that position')
+            sd.stop()
+            sd.play(np.concatenate(blocks), RATE)
+        except Exception as exc:
+            self.notice(f'Preview failed: {exc}')
+
+    def stop_preview(self):
+        try:
+            import sounddevice as sd
+            sd.stop()
+        except Exception:
+            pass
+
     def dropEvent(self, event):
         if self.audio is None:
             self.add_paths([url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()])
@@ -755,6 +849,7 @@ class MainWindow(QMainWindow):
     def show_row_problem(self, *args):
         index = self.table.currentIndex().row()
         self.replace_button.setEnabled(self.audio is None and index >= 0)
+        self.align_button.setEnabled(self.audio is None and index >= 0)
         show_detected = show_keep = False
         if 0 <= index < len(self.document.rows):
             row = self.document.rows[index]
@@ -920,7 +1015,7 @@ class MainWindow(QMainWindow):
         self.bpm_label.setText(f'{tempo.bpm_at(p.song_time):.1f} BPM' +
                                (f'  → {target:g}' if target is not None else ''))
         state = ('End of set' if p.ended else 'Paused' if not p.playing else
-                 'Gap' if p.gap else 'Lead-in' if p.song_time < song.offset else 'Playing')
+                 'Gap' if p.gap else 'Lead-in' if p.song_time < tempo.offset else 'Playing')
         self.state_label.setText(state)
         style = 'background: #fff1d6; color: #594018' if state == 'Paused' else ''
         if self.playback.styleSheet() != style:

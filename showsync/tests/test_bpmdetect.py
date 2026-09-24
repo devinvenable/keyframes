@@ -392,3 +392,70 @@ def test_partial_grid_state_and_manual_override():
         assert worker.state(row) == 'manual' and not row.bpm_estimated
     finally:
         worker.close()
+
+
+def entry_file(path, bpm, grid_offset, entry_beats, seconds=60, rate=48000):
+    """Silence until the entry beat, then kicks and pads on the known grid."""
+    audio = np.zeros(round(seconds * rate), dtype=np.float32)
+    period = 60 / bpm
+    entry = grid_offset + entry_beats * period
+    t = np.arange(round(.04 * rate)) / rate
+    kick = .7 * np.sin(2 * np.pi * 90 * t) * np.exp(-t * 100)
+    for beat in np.arange(entry, seconds - .1, period):
+        start = round(beat * rate)
+        audio[start:start + len(kick)] += kick
+    # Sustained pad keeps the activity busy between kicks after the entry.
+    pad = np.arange(round(entry * rate), len(audio))
+    audio[pad] += .2 * np.sin(2 * np.pi * 220 * pad / rate).astype(np.float32)
+    sf.write(path, audio, rate)
+    return entry
+
+
+@pytest.mark.parametrize('entry_beats', [
+    13,   # intro shorter than a 4-bar phrase: cut it entirely
+    37,   # longer intro: keep whole phrases (37 mod 16 = 5 beats trimmed)
+])
+def test_suggest_trim_aligns_entry_to_the_phrase(tmp_path, entry_beats):
+    from showsync.bpmdetect import suggest_trim
+    bpm, grid_offset = 120, .21
+    period = 60 / bpm
+    entry = entry_file(tmp_path / 'entry.wav', bpm, grid_offset, entry_beats)
+    suggestion = suggest_trim(tmp_path / 'entry.wav', BeatGrid(bpm, grid_offset))
+    assert suggestion is not None
+    assert suggestion.entry == pytest.approx(entry, abs=period / 4)
+    assert suggestion.entry_beat == pytest.approx(entry, abs=1e-9)
+    assert suggestion.trim == pytest.approx(
+        grid_offset + (entry_beats % 16) * period, abs=1e-9)
+    # Whole phrases survive: the entry still lands on a phrase 'one'.
+    assert (suggestion.entry_beat - suggestion.trim) % (16 * period) == pytest.approx(0, abs=1e-9)
+
+
+def test_suggest_trim_reports_no_entry_for_silence(tmp_path):
+    from showsync.bpmdetect import suggest_trim
+    sf.write(tmp_path / 'silent.wav', np.zeros(48000 * 10, dtype=np.float32), 48000)
+    assert suggest_trim(tmp_path / 'silent.wav', BeatGrid(120, 0)) is None
+
+
+def test_suggest_trim_cancels_between_jobs(tmp_path):
+    from showsync.bpmdetect import suggest_trim
+    entry_file(tmp_path / 'entry.wav', 120, 0, 8, seconds=10)
+    with pytest.raises(Cancelled):
+        suggest_trim(tmp_path / 'entry.wav', BeatGrid(120, 0), cancelled=lambda: True)
+
+
+def test_real_file_alignment_matches_validated_trim():
+    # Devin's by-ear validation: clock_divider_missing.mp4 trimmed 8.656 s
+    # starts on the music-entry downbeat. Media is not committed; the check
+    # runs wherever the local songs/ directory is reachable.
+    from showsync.bpmdetect import suggest_trim
+    for parent in Path(__file__).resolve().parents:
+        real = parent / 'songs' / 'clock_divider_missing.mp4'
+        if real.is_file():
+            break
+    else:
+        pytest.skip('local media not available')
+    grid = estimate_grid(real)
+    assert grid is not None
+    assert grid.bpm == pytest.approx(106, abs=.1)
+    suggestion = suggest_trim(real, BeatGrid(grid.bpm, grid.offset))
+    assert suggestion.trim == pytest.approx(8.656, abs=.02)

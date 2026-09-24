@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .setlist import (SUFFIXES, VIDEO_SUFFIXES, Setlist, SetlistError, Song, mapping, number,
                       parse_song, position, song_context, string, timing_metadata)
-from .tempomap import TempoEvent, TempoMap
+from .tempomap import TempoEvent
 
 
 def probe_duration(path):
@@ -48,6 +48,7 @@ class Row:
     timing_review: str = ''
     video: Path | None = None
     mute: bool = False
+    trim: float = 0.0
 
     def problem(self):
         if self.file_error:
@@ -56,15 +57,18 @@ class Row:
             return 'Replacement audio needs timing review'
         if self.bpm is None:
             return "BPM not set"
+        if self.trim and self.duration is not None and self.trim >= self.duration:
+            return f'Trim must be under the file length ({self.duration:g}s)'
         try:
-            TempoMap(self.bpm, self.tempo, self.duration, self.offset)
+            duration = None if self.duration is None else self.duration - self.trim
+            self.song().tempo_map(duration)
         except ValueError as exc:
             return str(exc)
         return None
 
     def song(self):
         return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset,
-                    self.midi, self.video, self.mute)
+                    self.midi, self.video, self.mute, self.trim)
 
     @property
     def custom_tempo(self):
@@ -117,8 +121,10 @@ class Document:
                 else:
                     try:
                         if row.mute and probe is probe_duration:
+                            # Full-file duration: the editor's file-time fields
+                            # (offset, tempo, trim itself) validate against it.
                             from .audio import Decoder
-                            with Decoder.for_song(row.song()) as decoder:
+                            with Decoder.open(row.file, mute=True) as decoder:
                                 row.duration = decoder.duration
                         else:
                             row.duration = probe(row.file)
@@ -236,6 +242,7 @@ class Document:
                 if row.mute or 'mute' in entry:
                     entry['mute'] = row.mute
                 self._set_number(entry, "offset", row.offset if row.offset_explicit else row.offset or None)
+                self._set_number(entry, "trim", row.trim or None)
                 self._sync_tempo(entry, row.tempo)
                 metadata = dict(bpm_estimated=row.bpm_estimated,
                                 offset_estimated=bool(row.offset and not row.offset_explicit),

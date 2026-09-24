@@ -307,6 +307,79 @@ def estimate_grid(path, *, cancelled=lambda: False):
     return _steady_section(envelope, power, kick_power, check)
 
 
+@dataclass(frozen=True)
+class TrimSuggestion:
+    trim: float        # seconds to trim so phrases count from the music entry
+    entry: float       # detected music entry (file seconds)
+    entry_beat: float  # entry snapped to the beat grid (file seconds)
+
+
+def _music_entry(smooth, check):
+    """First sustained onset activity in the smoothed 1 kHz power envelope.
+
+    Sparse intro material (count-ins, clicks, atmosphere) crosses any level
+    briefly; music holds it. The entry is the first crossing where most of
+    the following second stays active.
+    """
+    if len(smooth) < 1500:
+        return None
+    check()
+    loud = np.percentile(smooth, 95)
+    if loud < 1e-8:
+        return None
+    active = smooth > loud * .15
+    busy = np.convolve(active, np.full(1000, .001), mode='valid')
+    candidates = np.flatnonzero(active[:len(busy)] & (busy > .7))
+    if not len(candidates):
+        return None
+    return candidates[0] / 1000
+
+
+def _pulse_level(smooth, seconds):
+    """Neighborhood-max envelope at a grid pulse, absorbing attack scatter."""
+    center = round(seconds * 1000)
+    window = smooth[max(0, center - 50):center + 51]
+    return window.max() if len(window) else 0.0
+
+
+def suggest_trim(path, grid, *, beats_per_phrase=16, cancelled=lambda: False):
+    """Suggested non-destructive trim aligning the music entry to 'the one'.
+
+    The sustained-activity crossing often sits on a swell or pickup leading
+    into the downbeat, so after snapping it to the beat grid the suggestion
+    walks forward to the first pulse that actually sounds — near the energy
+    of the pulses that follow it. That beat is trimmed modulo one 4-bar
+    phrase: an intro shorter than a phrase is cut entirely, a longer one
+    keeps whole phrases so playback still counts cleanly from t=0. A song
+    entering on an off-grid pickup can still fool the heuristic — callers
+    must preview/confirm before writing.
+    """
+    def check():
+        if cancelled():
+            raise Cancelled
+
+    _, power, _ = _features(path, check)
+    check()
+    smooth = np.convolve(power, np.full(100, .01), mode='same') if len(power) else power
+    entry = _music_entry(smooth, check)
+    if entry is None:
+        return None
+    period = 60 / grid.bpm
+    first = max(0, round((entry - grid.offset) / period))
+    beat = first
+    for candidate in range(first, first + 8):
+        check()
+        times = grid.offset + (candidate + np.arange(1, beats_per_phrase + 1)) * period
+        following = [_pulse_level(smooth, t) for t in times if t * 1000 < len(smooth)]
+        if len(following) < 4:
+            break
+        if _pulse_level(smooth, grid.offset + candidate * period) >= .25 * np.median(following):
+            beat = candidate
+            break
+    beat = grid.offset + beat * period
+    return TrimSuggestion(float(beat % (beats_per_phrase * period)), float(entry), float(beat))
+
+
 def estimate_bpm(path, *, cancelled=lambda: False):
     """Compatibility helper for callers needing only the refined BPM."""
     grid = estimate_grid(path, cancelled=cancelled)

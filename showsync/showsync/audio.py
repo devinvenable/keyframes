@@ -41,7 +41,8 @@ class Decoder:
 
     @classmethod
     def for_song(cls, song):
-        return cls.open(song.file, mute=True) if song.mute else cls.open(song.file)
+        decoder = cls.open(song.file, mute=True) if song.mute else cls.open(song.file)
+        return TrimmedDecoder(decoder, song.trim) if song.trim else decoder
 
     def _setup(self):
         import av
@@ -79,6 +80,33 @@ class Decoder:
 
     def __exit__(self, *args):
         self.close()
+
+
+class TrimmedDecoder(Decoder):
+    """A song's non-destructive trim: playback starts `trim` seconds in.
+
+    Metadata shrinks immediately, so duration probes stay free; the skipped
+    frames are decoded and discarded on the first read (no seeking, so the
+    sequential MP3 path stays intact).
+    """
+    def __init__(self, decoder, trim):
+        self._decoder = decoder
+        self.native_samplerate = decoder.native_samplerate
+        self._skip = min(decoder.frames, round(trim * RATE))
+        self.frames = decoder.frames - self._skip
+        self.duration = self.frames / RATE
+
+    def read(self, n):
+        while self._skip:
+            block = self._decoder.read(min(4096, self._skip))
+            if not len(block):
+                self._skip = 0
+                break
+            self._skip -= len(block)
+        return self._decoder.read(n)
+
+    def close(self):
+        self._decoder.close()
 
 
 class SilenceDecoder(Decoder):
