@@ -14,12 +14,19 @@ Press Play Set for the supplied 100 BPM / tempo ramp / 140 BPM click tracks.
 The demo uses relative audio paths and can be moved with its WAV files.
 The console remains visible for device/decode errors. The executable is unsigned.
 
-To move your own show between machines, use File > Export Show Bundle, or:
+To move your own show between machines, use File > Export Show Bundle /
+File > Import Show Bundle, or:
 
   .\ShowSync.exe C:\Shows\setlist.yaml --export-bundle C:\Shows\my-show.zip
+  .\ShowSync.exe --import-bundle C:\Shows\my-show.zip C:\Shows\my-show
 
-Extract that zip anywhere and open its YAML in ShowSync. Choose audio/MIDI
-devices for the destination machine; machine preferences are not in the bundle.
+Import unpacks the bundle (default: a folder named after the zip, beside it)
+and prints the setlist to open. Choose audio/MIDI devices for the destination
+machine; machine preferences are not in the bundle. Songs whose file is MP4,
+M4V, MPG, MPEG, or MOV open the separate ShowSync Video projector window
+during playback (double-click or F11 for fullscreen). A song may also carry
+midi: (a GM .mid scheduled on the beat grid) and trim: (playback and the
+MIDI clock start that many seconds into the file, non-destructively).
 
 RUNNING FROM SOURCE
 
@@ -86,6 +93,14 @@ are listed in windows/requirements-verify.txt; they are not bundled in the app.
 To repeat verification without rebuilding:
 
   .\venv\Scripts\python.exe scripts\verify_windows.py dist\ShowSync_Windows.zip dist\windows-verification
+
+Two further scripts exercise the delivered ZIP beyond the standard smoke:
+scripts\verify_windows_features.py drives bundle import, video playback with
+the projector window, per-song GM MIDI (heard through the GS Wavetable synth
+over loopback), per-song trim, and the partial BPM estimate against a real
+show-bundle zip; scripts\negative_control_windows.py proves the standard
+verifier fails on a silenced copy of the release. See
+docs/windows-build-verification.md for the recorded runs.
 
 This is a playback/packaging smoke test, not MIDI jitter or clean-account
 certification. Check native file dialogs, hardware MIDI and your chosen audio
