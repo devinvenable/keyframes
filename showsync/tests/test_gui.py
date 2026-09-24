@@ -360,3 +360,79 @@ def test_import_bundle_cancelled_dialog_changes_nothing(qtbot, window_factory, t
     w.import_bundle()
     assert w.document is before
     assert w.dialogs.import_defaults == []
+
+
+def test_align_to_one_confirms_before_writing_trim(window_factory, tmp_path):
+    from showsync.bpmdetect import TrimSuggestion
+    doc = Document(tmp_path / 'set.yaml', rows=[Row('Divider', TONE, 106, duration=1, offset=.163)])
+    suggested = [TrimSuggestion(.653, .73, .653)]
+    dialogs = Dialogs(align=False)
+    w = window_factory(doc, dialogs=dialogs,
+                       trim_suggester=lambda path, grid: suggested[0])
+    doc.save()
+    before = doc.path.read_text()
+    w.table.selectRow(0)
+    w.align_to_one()
+    # Declined: nothing written, but the dialog was offered with a preview.
+    assert doc.rows[0].trim == 0
+    assert doc.path.read_text() == before
+    assert len(dialogs.align_calls) == 1
+    name, message, preview = dialogs.align_calls[0]
+    assert name == 'Divider' and '0.653' in message and callable(preview)
+    assert 'not applied' in w.statusBar().currentMessage()
+    dialogs.align = True
+    w.align_to_one()
+    assert doc.rows[0].trim == .653
+    assert 'trim: 0.653' in doc.path.read_text()
+    assert 'starts at 0.653s' in w.statusBar().currentMessage()
+
+
+def test_align_to_one_guards_grid_and_zero_trim(window_factory, tmp_path):
+    from showsync.bpmdetect import TrimSuggestion
+    doc = Document(tmp_path / 'set.yaml', rows=[
+        Row('NoBpm', TONE, None, duration=1),
+        Row('Aligned', TONE, 120, duration=1),
+        Row('Ramped', TONE, 120, duration=1, tempo=(TempoEvent(0, 140, .5),))])
+    dialogs = Dialogs(align=True)
+    w = window_factory(doc, dialogs=dialogs,
+                       trim_suggester=lambda path, grid: TrimSuggestion(0, .1, 0))
+    w.table.selectRow(0)
+    w.align_to_one()
+    assert 'Set or estimate a BPM' in w.statusBar().currentMessage()
+    w.table.selectRow(2)
+    w.align_to_one()
+    assert 'constant tempo' in w.statusBar().currentMessage()
+    w.table.selectRow(1)
+    w.align_to_one()
+    assert 'already starts on the one' in w.statusBar().currentMessage()
+    assert not dialogs.align_calls and all(row.trim == 0 for row in doc.rows)
+
+
+def test_video_window_follows_trim(qtbot, tmp_path):
+    from PySide6.QtCore import QSettings
+    from showsync.audio import Position
+    from showsync.setlist import Setlist, Song
+    from showsync.video_window import VideoWindow
+
+    class FakeWorker:
+        def __init__(self):
+            self.submitted = []
+            self.result = None
+        def submit(self, key, seconds=0):
+            self.submitted.append((key, seconds))
+        def close(self):
+            pass
+
+    song = Song('clip', tmp_path / 'clip.mp4', 120, trim=8.656)
+    audio = SimpleNamespace(
+        position=lambda: Position(0, 1.5, True),
+        setlist=Setlist('trimmed', (song,)))
+    window = VideoWindow(QSettings(str(tmp_path / 's.ini'), QSettings.IniFormat))
+    qtbot.addWidget(window)
+    window.audio = audio
+    window.worker = FakeWorker()
+    window.refresh()
+    (key, seconds), = window.worker.submitted
+    assert key[0] == song.file
+    assert seconds == pytest.approx(1.5 + 8.656)
+    window.timer.stop()

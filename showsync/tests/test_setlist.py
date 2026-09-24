@@ -156,3 +156,55 @@ def test_optional_midi_key_resolves_and_never_gates_loading(tmp_path):
 def test_invalid_midi_reference_rejected(tmp_path, midi, message):
     with pytest.raises(SetlistError, match=message):
         load_setlist(write(tmp_path, dict(name='Song', file='song.wav', bpm=120, midi=midi)))
+
+
+def test_trim_field_loads_and_defaults(tmp_path):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, trim=8.656))
+    assert load_setlist(path, duration_probe=lambda _: 60).songs[0].trim == 8.656
+    assert load_setlist(write(tmp_path, dict(name='Song', file='song.wav', bpm=120))).songs[0].trim == 0
+
+
+@pytest.mark.parametrize('trim, probe, message', [
+    (-1, None, 'trim must be finite and nonnegative'),
+    ('x', None, 'trim must be a number'),
+    (10, lambda _: 10, 'trim must be under the file duration'),
+    (12, lambda _: 10, 'trim must be under the file duration'),
+])
+def test_bad_trims_rejected(tmp_path, trim, probe, message):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, trim=trim))
+    with pytest.raises(SetlistError, match=message):
+        load_setlist(path, duration_probe=probe)
+
+
+def test_tempo_event_before_trim_rejected(tmp_path):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, trim=5,
+                                tempo=[dict(at=3, bpm=140)]))
+    with pytest.raises(SetlistError, match=r'tempo\[0\].at must not be before trim'):
+        load_setlist(path, duration_probe=lambda _: 60)
+
+
+def test_trim_is_beat_zero_of_the_tempo_map(tmp_path):
+    # Trim past the beat anchor: playback starts on the one, so beat 0 is t=0.
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, offset=0.163, trim=8.656))
+    song = load_setlist(path, duration_probe=lambda _: 60).songs[0]
+    tempo = song.tempo_map(60 - song.trim)
+    assert tempo.offset == 0
+    assert tempo.T(0) == 0
+    assert tempo.T(4) == pytest.approx(2.0)
+    # Trim inside the lead-in: beat 0 keeps its remaining lead-in.
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, offset=2.5, trim=1))
+    tempo = load_setlist(path, duration_probe=lambda _: 60).songs[0].tempo_map(59)
+    assert tempo.offset == 1.5
+    assert tempo.B(1.5) == 0
+
+
+def test_trim_shifts_tempo_events_with_the_timeline(tmp_path):
+    trimmed = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, trim=2,
+                                   tempo=[dict(at=10, bpm=140, ramp=20)]))
+    plain = write(tmp_path, dict(name='Song', file='song.wav', bpm=120,
+                                 tempo=[dict(at=8, bpm=140, ramp=20)]))
+    ours = load_setlist(trimmed, duration_probe=lambda _: 60).songs[0].tempo_map(58)
+    theirs = load_setlist(plain, duration_probe=lambda _: 58).songs[0].tempo_map(58)
+    for t in (0, 5, 8, 15, 28, 40):
+        assert ours.B(t) == pytest.approx(theirs.B(t), abs=1e-12)
+        assert ours.bpm_at(t) == theirs.bpm_at(t)

@@ -332,3 +332,45 @@ def test_real_single_stream():
         assert engine.error is None
     finally:
         engine.close()
+
+
+def test_trimmed_decoder_skips_exactly_and_shrinks_metadata():
+    song = Song('tone', FIXTURES / 'tone.wav', 120, trim=.25)
+    skip = round(.25 * RATE)
+    with Decoder.open(FIXTURES / 'tone.wav') as reference:
+        reference.read(skip)
+        expected = reference.read(1000)
+    with Decoder.for_song(song) as trimmed:
+        assert trimmed.frames == RATE - skip
+        assert trimmed.duration == pytest.approx(.75)
+        np.testing.assert_array_equal(trimmed.read(1000), expected)
+        total = 1000
+        while len(block := trimmed.read(4096)):
+            total += len(block)
+        assert total == RATE - skip
+
+
+def test_engine_honors_trim_for_audio_and_clock():
+    from showsync.clock import ClockEngine
+    song = Song('tone', FIXTURES / 'tone.wav', 120, offset=.25, trim=.25)
+    engine = AudioEngine(Setlist('trimmed', (song,)), now=lambda: 0)
+    try:
+        assert engine.durations == (pytest.approx(.75),)
+        assert engine.total_frames == RATE - round(.25 * RATE)
+        # Trim is t=0 for the map: the .25 s offset is consumed by the trim,
+        # so beat 0 lands on the first played sample and MIDI starts at once.
+        assert engine.maps[0].offset == 0
+        engine.prepare()
+        engine._requested = (True, 0, 0)
+        sent = []
+        clock = ClockEngine(engine.maps, engine.position, sent.append, now=lambda: 0)
+        with Decoder.for_song(song) as reference:
+            expected = reference.read(4800)
+        output = callback(engine, 4800)
+        clock.step()
+        np.testing.assert_array_equal(output, expected)
+        assert engine.frames_played == 4800
+        assert engine.underruns == 0
+        assert 0xFA in sent and 0xF8 in sent  # Start and the t=0 tick
+    finally:
+        engine.close()

@@ -7,6 +7,24 @@ class Dialogs:
     def __init__(self, parent):
         self.parent = parent
 
+    def align_trim(self, name, message, preview):
+        """Confirm a suggested trim; Preview plays from the proposed start."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+        dialog = QDialog(self.parent)
+        dialog.setWindowTitle(f'Align to the one — {name}')
+        layout = QVBoxLayout(dialog)
+        label = QLabel(message)
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        buttons = QDialogButtonBox()
+        buttons.addButton('Preview', QDialogButtonBox.ActionRole).clicked.connect(preview)
+        buttons.addButton('Apply trim', QDialogButtonBox.AcceptRole)
+        buttons.addButton(QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        return dialog.exec() == QDialog.Accepted
+
     def audio_files(self):
         names, _ = QFileDialog.getOpenFileNames(
             self.parent, 'Add Songs', '',

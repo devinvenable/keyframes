@@ -78,10 +78,13 @@ class VideoWindow(QWidget):
         songs = layout.setlist.songs if layout is not None else self.audio.setlist.songs
         song = songs[position.song_index]
         path = song.video_source
+        # Trim is playback-only: the container keeps its own clock, so the
+        # engine's song time maps to `trim` seconds into the file.
+        seconds = position.song_time + song.trim
         key = ((path, song.video is None and not song.mute,
                 position.epoch, position.song_index)
                if path and not position.ended and not position.gap else None)
-        self.worker.submit(key, position.song_time)
+        self.worker.submit(key, seconds)
         if key != self.key:
             self.key = key
             self.picture = None
@@ -96,7 +99,7 @@ class VideoWindow(QWidget):
         pictures = result[1] if result and result[0] == key else ()
         # A slow decoder can publish an already obsolete frame; never display it.
         picture = next((p for p in reversed(pictures)
-                        if p.pts <= position.song_time + 1e-9 < p.until), None)
+                        if p.pts <= seconds + 1e-9 < p.until), None)
         if picture is not self.picture:
             self.picture = picture
             if picture is None:

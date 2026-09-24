@@ -15,17 +15,23 @@ TONE = FIXTURES / 'tone.wav'
 
 class Dialogs:
     def __init__(self, save=None, open_=None, files=(), bundle=None,
-                 import_zip=None, import_dest=None):
+                 import_zip=None, import_dest=None, align=False):
         self.save, self.open_, self.files = save, open_, list(files)
         self.bundle = bundle
         self.import_zip, self.import_dest = import_zip, import_dest
+        self.align = align
         self.save_dirs = []
         self.bundle_stems = []
         self.import_defaults = []
+        self.align_calls = []
 
     def save_path(self, directory):
         self.save_dirs.append(Path(directory))
         return self.save
+
+    def align_trim(self, name, message, preview):
+        self.align_calls.append((name, message, preview))
+        return self.align
 
     def setlist_path(self):
         return self.open_
