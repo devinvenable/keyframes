@@ -41,7 +41,14 @@ IMAGES_DIR = str(APP_DIR / 'images')
 MAPPING_PATH = str(APP_DIR / 'mapping.json')
 
 IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.bmp')
-VIDEO_EXTS = ('.mp4', '.avi', '.mov', '.mkv', '.webm')
+# .gif is a video here: cv2's ffmpeg backend decodes GIFs frame-by-frame, so
+# animated GIFs ride the whole VideoPlayer/thumbnail/interleave pipeline for
+# free (transparency is flattened by cv2 — acceptable). A single-frame GIF
+# takes the same path and simply displays its one frame. Unlike real videos,
+# which freeze on their last frame while a note is held, LOOP_EXTS media
+# rewinds and keeps playing for as long as the note is down.
+VIDEO_EXTS = ('.mp4', '.avi', '.mov', '.mkv', '.webm', '.gif')
+LOOP_EXTS = ('.gif',)
 
 # Computer keyboard -> MIDI note mapping (piano layout)
 # Lower octave: Z-M = C3-B3, Upper octave: Q-P = C4-E5
@@ -146,7 +153,7 @@ def show_instructions(screen, width, height):
         ("", font, (180, 180, 180)),
         ("To get started:", font, (200, 200, 200)),
         ("  1. Drop images or videos into the images/ folder", font, (180, 180, 180)),
-        ("     Supported: .png .jpg .jpeg .bmp .mp4 .avi .mov .mkv .webm", font, (140, 140, 140)),
+        ("     Supported: .png .jpg .jpeg .bmp .gif .mp4 .avi .mov .mkv .webm", font, (140, 140, 140)),
         ("  2. Restart this program", font, (180, 180, 180)),
         ("", font, (180, 180, 180)),
         ("Press ESC to quit.", font, (140, 140, 140)),
@@ -395,8 +402,10 @@ def make_media_entry(name):
     reuse an already-loaded object for the same file (preserving the grid's
     id()-based dedup) instead of decoding it a second time."""
     filepath = os.path.join(IMAGES_DIR, name)
-    if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
-        return {'type': 'video', 'path': filepath, 'name': name}
+    ext = os.path.splitext(name)[1].lower()
+    if ext in VIDEO_EXTS:
+        return {'type': 'video', 'path': filepath, 'name': name,
+                'loop': ext in LOOP_EXTS}
     img = pygame.image.load(filepath).convert_alpha()
     return {'type': 'image', 'surface': img, 'name': name}
 
@@ -509,22 +518,29 @@ def play_midi_file(filepath, msg_queue, stop_event, loop=False):
 class VideoPlayer:
     """Manages video playback for a single video file."""
 
-    def __init__(self, path, target_size):
+    def __init__(self, path, target_size, loop=False):
         self.path = path
         self.target_size = target_size
+        self.loop = loop
         self.cap = cv2.VideoCapture(path)
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
         self.last_surface = None
         self.finished = False
 
     def get_frame(self):
-        """Read next frame and return as a pygame surface. Loops if video ends."""
+        """Read next frame and return as a pygame surface.
+
+        At end-of-stream a looping player (animated GIFs) rewinds and keeps
+        playing; a non-looping one freezes on its last frame."""
         if self.finished:
             return self.last_surface
 
         ret, frame = self.cap.read()
+        if not ret and self.loop:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ret, frame = self.cap.read()
         if not ret:
-            # Video ended — freeze on last frame
+            # Video ended (or the loop rewind failed) — freeze on last frame
             self.finished = True
             return self.last_surface
 
@@ -694,7 +710,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
 
             if media and media['type'] == 'video':
                 current_state['zoom_scale'] = 1.0
-                current_state['video_player'] = VideoPlayer(media['path'], target_size)
+                current_state['video_player'] = VideoPlayer(
+                    media['path'], target_size, loop=media.get('loop', False))
                 current_state['surface'] = None
                 current_state['surface_media'] = None
                 current_state['note_active'] = note
@@ -1614,7 +1631,8 @@ def main():
                 media = grid_cells[hold_idx]['media']
                 grid_preview = {'index': hold_idx,
                                 'player': VideoPlayer(
-                                    media['path'], (GRID_THUMB_W, GRID_THUMB_H))}
+                                    media['path'], (GRID_THUMB_W, GRID_THUMB_H),
+                                    loop=media.get('loop', False))}
         elif grid_preview:
             grid_preview['player'].release()
             grid_preview = None
