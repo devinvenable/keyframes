@@ -412,7 +412,9 @@ main() {
             echo ""
             echo "Recording saved: $out"
             [[ -n $dur ]] && echo "Duration: ${dur%.*}s"
-        else
+        elif [[ -n $ffmpeg_pid ]]; then
+            # Only when a capture actually started — a lock refusal or a
+            # failed ffmpeg launch already printed its own error.
             echo "WARNING: no recording was written to $out" >&2
         fi
     }

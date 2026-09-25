@@ -38,7 +38,9 @@ cleanup() {
     for lock in "$TMPDIR"/*/.perform.lock; do
         [[ -e $lock ]] || continue
         pid=$(head -n1 "$lock" 2>/dev/null) || pid=""
-        if [[ $pid =~ ^[0-9]+$ ]]; then
+        # Only kill actual ffmpeg processes: test 4a seeds a lock with this
+        # script's own pid, so a blind kill here would shoot ourselves.
+        if [[ $pid =~ ^[0-9]+$ && $(cat "/proc/$pid/comm" 2>/dev/null) == ffmpeg ]]; then
             kill -KILL "$pid" 2>/dev/null || true
         fi
     done
@@ -295,6 +297,12 @@ wait "$RUN_PID" 2>/dev/null || true
 grep -q "Finalizing recording" "$OUT_INT/run.log" ||
     fail "double-INT run never printed the finalizing notice"
 file_gone "$OUT_INT/.perform.lock" || fail "double-INT run left the lock behind"
+# The direct discriminator: a second SIGINT reaching ffmpeg makes it log
+# "Immediate exit requested" and abort without the mkv trailer. (ffprobe
+# alone is too lenient — it can still read a trailer-less mkv.)
+if grep -q "Immediate exit requested" "$OUT_INT"/perform_*.mkv.log; then
+    fail "ffmpeg received a second SIGINT (Immediate exit requested in its log)"
+fi
 assert_valid_mkv "$OUT_INT" "double-SIGINT"
 RUN_PID=""
 
