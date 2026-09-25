@@ -98,7 +98,9 @@ def _drain(player, limit=10000):
 
 
 def test_looping_player_never_finishes_and_keeps_decoding(gif_path):
-    player = main.VideoPlayer(gif_path, (64, 48), loop=True)
+    # Step clock: a frame is due on every call despite fps pacing.
+    player = main.VideoPlayer(gif_path, (64, 48), loop=True,
+                              clock=main.make_step_clock(1.0))
     try:
         # The GIF has 5 frames; read far past the end.
         frames = [player.get_frame() for _ in range(23)]
@@ -111,7 +113,8 @@ def test_looping_player_never_finishes_and_keeps_decoding(gif_path):
 
 
 def test_non_looping_player_still_freezes_on_last_frame(gif_path):
-    player = main.VideoPlayer(gif_path, (64, 48), loop=False)
+    player = main.VideoPlayer(gif_path, (64, 48), loop=False,
+                              clock=main.make_step_clock(1.0))
     try:
         assert _drain(player) < 10000
         assert player.finished is True
