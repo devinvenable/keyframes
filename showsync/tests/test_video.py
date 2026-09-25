@@ -266,7 +266,8 @@ def test_video_window_follows_pause_seek_gap_and_remembers_geometry(qtbot, tmp_p
     assert window.picture.pts == pytest.approx(.2)
     position[0] = replace(position[0], song_time=.05, epoch=1)
     qtbot.waitUntil(lambda: window.picture is not None and window.picture.pts == 0)
-    assert window.isFullScreen()
+    # A real WM applies fullscreen asynchronously after the map: wait, not assert.
+    qtbot.waitUntil(window.isFullScreen)
     qtbot.keyClick(window, Qt.Key_Escape)
     assert not window.isFullScreen()
     window.resize(640, 360)
@@ -297,7 +298,7 @@ def test_projector_defaults_to_fullscreen_and_keeps_windowed_escape(qtbot, tmp_p
     assert not window.isVisible()
     window.start(audio)
     qtbot.waitUntil(lambda: window.isVisible())
-    assert window.isFullScreen()
+    qtbot.waitUntil(window.isFullScreen)
     assert window.windowFlags() & Qt.FramelessWindowHint
     assert window.windowFlags() & Qt.WindowStaysOnTopHint
     screen = window.screen()
@@ -313,7 +314,7 @@ def test_projector_defaults_to_fullscreen_and_keeps_windowed_escape(qtbot, tmp_p
     assert not window.isVisible()
     window.start(audio)
     qtbot.waitUntil(lambda: window.isVisible())
-    assert window.isFullScreen()
+    qtbot.waitUntil(window.isFullScreen)
     window.stop()
     restored = VideoWindow(settings)
     qtbot.addWidget(restored, before_close_func=lambda _: restored.stop())
@@ -321,7 +322,7 @@ def test_projector_defaults_to_fullscreen_and_keeps_windowed_escape(qtbot, tmp_p
     assert restored.screen() == screen
     restored.start(audio)
     qtbot.waitUntil(lambda: restored.isVisible())
-    assert restored.isFullScreen()
+    qtbot.waitUntil(restored.isFullScreen)
     restored.fullscreen.trigger()
     assert not restored.isFullScreen() and restored.size().width() == 640
 
@@ -343,7 +344,7 @@ def test_projector_hides_at_video_end_while_audio_continues(qtbot, tmp_path, cli
     assert not window.isVisible()
     position[0] = replace(position[0], song_time=.25, epoch=1)
     qtbot.waitUntil(lambda: window.isVisible())
-    assert window.isFullScreen()
+    qtbot.waitUntil(window.isFullScreen)
     window.close()
     window.refresh()
     assert not window.isVisible()
@@ -354,7 +355,7 @@ def test_projector_hides_at_video_end_while_audio_continues(qtbot, tmp_path, cli
     assert not window.isVisible()
     position[0] = replace(position[0], song_index=0, epoch=3)
     qtbot.waitUntil(lambda: window.isVisible())
-    assert window.isFullScreen()
+    qtbot.waitUntil(window.isFullScreen)
 
 
 def test_projector_holds_last_frame_through_decoder_drought(qtbot, tmp_path, clip):
