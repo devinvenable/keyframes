@@ -5,12 +5,17 @@
 # ShowSync and Keyframes. Recording stops cleanly when Keyframes exits (Esc)
 # or on Ctrl+C.
 #
-# Usage: scripts/perform.sh [--audio usb|system|both] [--headless] [showsync args...]
-#   --audio usb     record only the Pulse default source (mixer USB feed)
+# Usage: scripts/perform.sh [--audio usb|system|both] [--mixer-source NAME]
+#                           [--headless] [showsync args...]
+#   --audio usb     record only the mixer source (default: the Pulse default
+#                   source, i.e. the mixer USB feed)
 #   --audio system  record only the default sink monitor (system audio,
 #                   i.e. the ShowSync backing tracks)
 #   --audio both    record BOTH as two separate audio tracks (default) so
 #                   takes can be rebalanced later
+#   --mixer-source NAME  record this pactl source as the mixer track instead
+#                   of the Pulse default source (env: PERFORM_MIXER_SOURCE);
+#                   `pactl list short sources` lists the names
 #   --headless      run ShowSync without the editor window (engine + projector
 #                   only); skips the --editor-screen placement logic. Combine
 #                   with --autostart [SECONDS] for a fully clickless take.
@@ -20,8 +25,9 @@
 # Editor: the ShowSync editor opens on a different monitor (via
 #         --editor-screen) so it stays clickable under fullscreen Keyframes;
 #         pass your own --editor-screen to override.
-# Audio : the PipeWire/Pulse default source and/or default sink monitor —
-#         re-route with `pactl set-default-source` / `set-default-sink`
+# Audio : the mixer source (--mixer-source, else the PipeWire/Pulse default
+#         source) and/or the default sink monitor — re-route with
+#         `pactl set-default-source` / `set-default-sink` or --mixer-source
 #         instead of editing this script.
 # Output: recordings/perform_YYYYmmdd_HHMMSS.mkv
 #
@@ -41,7 +47,7 @@ set -euo pipefail
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 usage() {
-    sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Parse `xrandr --listmonitors` and echo "WIDTH HEIGHT XOFF YOFF" for the
@@ -106,13 +112,32 @@ check_default_source() {
         echo "WARNING: could not query the Pulse default source (pactl failed)." >&2
         return 0
     }
-    echo "Mixer audio source: $src"
+    echo "Mixer audio source: $src (Pulse default)"
     case $src in
         *.monitor|*[Ww]ebcam*|*[Cc]amera*|*[Cc]am_*)
             echo "WARNING: default source '$src' looks like a webcam/monitor source," >&2
             echo "         not the mixer feed. Fix with: pactl set-default-source <name>" >&2
+            echo "         or pass --mixer-source <name> (pactl list short sources)." >&2
             ;;
     esac
+}
+
+# Abort when an explicitly requested --mixer-source does not exist: a typo
+# would silently record silence for the whole take. Skipped (warn only) when
+# pactl itself is unavailable — ffmpeg will then report its own error.
+check_mixer_source() {
+    local src=$1 names
+    names=$(pactl list short sources 2>/dev/null | cut -f2) || {
+        echo "WARNING: could not list Pulse sources (pactl failed);" >&2
+        echo "         trusting --mixer-source '$src' as given." >&2
+        return 0
+    }
+    if ! grep -Fxq "$src" <<<"$names"; then
+        echo "ERROR: mixer source '$src' not found. Available sources:" >&2
+        sed 's/^/         /' <<<"$names" >&2
+        return 1
+    fi
+    echo "Mixer audio source: $src"
 }
 
 # Echo the monitor source of the default sink (system audio / ShowSync
@@ -199,24 +224,26 @@ start_babysitter() {
 }
 
 # Fill the global FFMPEG_ARGS array with the capture command:
-#   build_ffmpeg_cmd OUT W H X Y MODE [SYSTEM_SOURCE] [ENCODER]
+#   build_ffmpeg_cmd OUT W H X Y MODE [SYSTEM_SOURCE] [ENCODER] [MIXER_SOURCE]
 # MODE is usb|system|both; SYSTEM_SOURCE is the sink monitor name (required
-# for system/both); ENCODER is libx264 (default) or h264_nvenc. Audio
-# tracks stay separate (titled "mixer"/"system") so takes can be rebalanced
-# afterwards. Kept as a function so the smoke test runs the exact same
-# invocation (scripts/perform_smoke_test.sh).
+# for system/both); ENCODER is libx264 (default) or h264_nvenc;
+# MIXER_SOURCE is the pactl source for the mixer track (default: the Pulse
+# default source). Audio tracks stay separate (titled "mixer"/"system") so
+# takes can be rebalanced afterwards. Kept as a function so the smoke test
+# runs the exact same invocation (scripts/perform_smoke_test.sh).
 # NOTE: no -nostdin — with it, ffmpeg 7.1 catches but never acts on
 # SIGINT/SIGTERM and the recording needs SIGKILL (losing the trailer).
 # Callers must redirect stdin from /dev/null instead.
 build_ffmpeg_cmd() {
     local out=$1 w=$2 h=$3 x=$4 y=$5 mode=$6 system_src=${7:-} encoder=${8:-libx264}
+    local mixer_src=${9:-default}
     FFMPEG_ARGS=(
         ffmpeg -hide_banner -loglevel warning
         -f x11grab -framerate 30 -video_size "${w}x${h}" -i "$DISPLAY+$x,$y"
     )
     case $mode in
         usb)
-            FFMPEG_ARGS+=(-f pulse -i default
+            FFMPEG_ARGS+=(-f pulse -i "$mixer_src"
                           -map 0:v -map 1:a
                           -metadata:s:a:0 title=mixer)
             ;;
@@ -226,7 +253,7 @@ build_ffmpeg_cmd() {
                           -metadata:s:a:0 title=system)
             ;;
         both)
-            FFMPEG_ARGS+=(-f pulse -i default
+            FFMPEG_ARGS+=(-f pulse -i "$mixer_src"
                           -f pulse -i "$system_src"
                           -map 0:v -map 1:a -map 2:a
                           -metadata:s:a:0 title=mixer
@@ -260,6 +287,7 @@ build_ffmpeg_cmd() {
 
 main() {
     local audio_mode="both" headless=0 showsync_args=()
+    local mixer_src=${PERFORM_MIXER_SOURCE:-}
     while (( $# )); do
         case $1 in
             --headless)
@@ -274,6 +302,15 @@ main() {
                 ;;
             --audio=*)
                 audio_mode=${1#--audio=}
+                shift
+                ;;
+            --mixer-source)
+                [[ -n ${2:-} ]] || { echo "ERROR: --mixer-source needs a pactl source name" >&2; exit 1; }
+                mixer_src=$2
+                shift 2
+                ;;
+            --mixer-source=*)
+                mixer_src=${1#--mixer-source=}
                 shift
                 ;;
             -h|--help)
@@ -332,7 +369,11 @@ main() {
 
     local system_src=""
     if [[ $audio_mode != system ]]; then
-        check_default_source
+        if [[ -n $mixer_src ]]; then
+            check_mixer_source "$mixer_src" || exit 1
+        else
+            check_default_source
+        fi
     fi
     if [[ $audio_mode != usb ]]; then
         if system_src=$(system_audio_source); then
@@ -432,12 +473,19 @@ main() {
     check_capture_lock "$lockfile" || exit 1
 
     echo "Recording to: $out (audio: $audio_mode)"
-    build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" "$audio_mode" "$system_src" "$encoder"
+    build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" "$audio_mode" "$system_src" "$encoder" \
+                     "${mixer_src:-default}"
+    # nice/ionice: capture must never outbid ShowSync's audio/clock threads
+    # for CPU or IO — a dropped capture frame is recoverable, an audio
+    # underrun in the live take is not. nice/ionice exec through, so $! and
+    # /proc/pid/comm still name ffmpeg for the lock and the babysitter.
+    local -a recorder_prefix=(nice -n 10)
+    command -v ionice >/dev/null && recorder_prefix+=(ionice -c 2 -n 7)
     # setsid: ffmpeg gets its own session/process group, so a terminal
     # Ctrl+C (delivered to the foreground group) never reaches it raw —
     # cleanup's single SIGINT is the only stop signal it ever sees — and a
     # terminal close (SIGHUP) cannot kill it mid-write.
-    setsid "${FFMPEG_ARGS[@]}" </dev/null 2>"$out.log" &
+    setsid "${recorder_prefix[@]}" "${FFMPEG_ARGS[@]}" </dev/null 2>"$out.log" &
     ffmpeg_pid=$!
     echo "$ffmpeg_pid" > "$lockfile"
     start_babysitter "$$" "$ffmpeg_pid" "$lockfile"

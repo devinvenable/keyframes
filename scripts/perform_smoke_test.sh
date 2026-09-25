@@ -108,6 +108,37 @@ encoder=$(detect_video_encoder) || fail "detect_video_encoder failed"
     fail "unexpected encoder '$encoder'"
 echo "detect_video_encoder: overrides + fallback OK (this box: $encoder)"
 
+# 0c. --mixer-source plumbing: build_ffmpeg_cmd must feed the named source
+#     to the mixer pulse input (usb and both modes) and keep the Pulse
+#     default when unset. DISPLAY may be unset before Xvfb starts.
+DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 both sink.monitor libx264 my_usb_mixer
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -i my_usb_mixer "* ]] ||
+    fail "both mode ignored the mixer source (args: ${FFMPEG_ARGS[*]})"
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -i sink.monitor "* ]] ||
+    fail "both mode lost the system source (args: ${FFMPEG_ARGS[*]})"
+DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 usb "" libx264 my_usb_mixer
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -i my_usb_mixer "* ]] ||
+    fail "usb mode ignored the mixer source (args: ${FFMPEG_ARGS[*]})"
+DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 usb "" libx264
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -i default "* ]] ||
+    fail "usb mode without a mixer source must record the Pulse default"
+
+# 0d. check_mixer_source: a known name passes, a typo aborts (it would
+#     record silence for the whole take), and a broken pactl only warns.
+mkdir -p "$TMPDIR/fakepactl"
+printf '#!/usr/bin/env bash\nprintf "1\\tgood_source\\tmodule\\n2\\tother_source\\tmodule\\n"\n' \
+    > "$TMPDIR/fakepactl/pactl"
+chmod +x "$TMPDIR/fakepactl/pactl"
+PATH="$TMPDIR/fakepactl:$PATH" check_mixer_source good_source >/dev/null ||
+    fail "check_mixer_source rejected a listed source"
+if PATH="$TMPDIR/fakepactl:$PATH" check_mixer_source no_such_source >/dev/null 2>&1; then
+    fail "check_mixer_source accepted an unknown source"
+fi
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMPDIR/fakepactl/pactl"
+PATH="$TMPDIR/fakepactl:$PATH" check_mixer_source anything >/dev/null 2>&1 ||
+    fail "check_mixer_source must not abort when pactl itself fails"
+echo "mixer-source: build_ffmpeg_cmd + check_mixer_source OK"
+
 command -v Xvfb >/dev/null || fail "Xvfb not installed"
 
 Xvfb "$XVFB_DISPLAY" -screen 0 1920x1080x24 &

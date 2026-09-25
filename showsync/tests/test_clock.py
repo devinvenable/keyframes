@@ -5,7 +5,7 @@ import pytest
 
 from showsync.audio import Position
 from showsync.clock import CLOCK, START, STOP, ClockEngine
-from showsync.priority import raise_thread_priority
+from showsync.priority import raise_thread_priority, thread_schedule
 from showsync.tempomap import TempoEvent as E, TempoMap
 
 
@@ -138,6 +138,54 @@ def test_mac_priority_mock():
     api.pthread_setschedparam.return_value = 0
     assert raise_thread_priority(platform='darwin', posix=api)
     assert api.pthread_setschedparam.call_args.args[1] == 2
+
+
+class FakeSchedApi:
+    """POSIX scheduling API double: a grant sticks and reads back."""
+    SCHED_OTHER, SCHED_FIFO, SCHED_RR = 0, 1, 2
+
+    def __init__(self, deny=False):
+        self.deny = deny
+        self.policy, self.priority = self.SCHED_OTHER, 0
+
+    def sched_param(self, priority):
+        return Mock(sched_priority=priority)
+
+    def sched_setscheduler(self, pid, policy, param):
+        if self.deny:
+            raise PermissionError('denied')
+        self.policy, self.priority = policy, param.sched_priority
+
+    def sched_getscheduler(self, pid):
+        return self.policy
+
+    def sched_getparam(self, pid):
+        return Mock(sched_priority=self.priority)
+
+
+def test_granted_priority_logs_positive_proof(caplog):
+    # Success must be readable in the take's log, not inferred from an
+    # absent warning — and it must be a kernel readback, not the request.
+    api = FakeSchedApi()
+    with caplog.at_level('INFO', logger='showsync.priority'):
+        assert raise_thread_priority(platform='linux', posix=api) is True
+    assert 'clock thread: SCHED_RR prio 1' in caplog.text
+
+
+def test_denied_priority_logs_achieved_fallback(caplog):
+    api = FakeSchedApi(deny=True)
+    with caplog.at_level('INFO', logger='showsync.priority'):
+        assert raise_thread_priority(platform='linux', posix=api) is False
+    assert 'clock priority unchanged' in caplog.text
+    assert 'running SCHED_OTHER' in caplog.text
+
+
+def test_thread_schedule_reads_back_policy_and_priority():
+    api = FakeSchedApi()
+    assert thread_schedule(api) == 'SCHED_OTHER'
+    api.policy, api.priority = api.SCHED_RR, 95
+    assert thread_schedule(api) == 'SCHED_RR prio 95'
+    assert thread_schedule(object()) is None  # no sched API: not an error
 
 
 def test_lead_in_sends_start_but_no_ticks_until_offset():
