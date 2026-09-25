@@ -468,3 +468,39 @@ def test_midi_transport_flag_drives_set_like_gui(qtbot, window_factory, monkeypa
     assert w.stack.currentWidget() is w.editor
     fake.callback(([0xFC], 0.0))  # echoed Stop while stopped: idempotent
     assert w.closed_engines == [True]
+
+
+def test_transport_keys_win_over_focused_offset_spinbox(qtbot, window_factory, tmp_path):
+    """Live transport shortcuts must fire even while the MIDI clock offset
+    spinbox holds keyboard focus: its line edit otherwise claims Ctrl+Right
+    (cursor word-move) and Space (text input) via ShortcutOverride, leaving
+    Skip and Pause silently dead until something else is clicked."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+    w = window_factory(document(tmp_path))
+    qtbot.mouseClick(w.play_button, Qt.LeftButton)
+    audio = w.audio
+    position(audio, 0)
+    w.refresh()
+    QApplication.setActiveWindow(w)
+
+    def press(key, modifier=Qt.NoModifier):
+        # Deliver where the window system would: the focus widget if any.
+        QTest.keyClick(w.focusWidget() or w, key, modifier)
+
+    press(Qt.Key_Right, Qt.ControlModifier)
+    assert audio._requested == (True, 1, 1)
+    w.offset_spin.setFocus()
+    assert w.focusWidget() in (w.offset_spin, w.offset_spin.lineEdit())
+    press(Qt.Key_Right, Qt.ControlModifier)  # Skip, not a cursor word-move
+    assert audio._requested == (True, 2, 2)
+    press(Qt.Key_Space)                      # Pause, not typed text
+    assert audio._requested == (False, 2, 2)
+    press(Qt.Key_Space)
+    assert audio._requested == (True, 2, 2)
+    # Finishing the edit releases focus, restoring every other shortcut too.
+    press(Qt.Key_Enter)
+    assert w.focusWidget() is not w.offset_spin
+    assert not w.offset_spin.hasFocus()
+    # Clicked live buttons never keep focus, so the keyboard stays global.
+    assert w.skip_button.focusPolicy() == Qt.NoFocus

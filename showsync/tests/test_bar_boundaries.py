@@ -404,3 +404,35 @@ def test_rig_offset_without_leadin_keeps_initial_tick_indices_at_every_song(offs
         if transport:
             assert emitted[0][3] == 1
     assert [b for _, b in fake.events if b != CLOCK] == ([START, STOP] * 4 if transport else [])
+
+
+def test_skip_pressed_as_previous_skip_applies_still_advances(monkeypatch):
+    """A press racing the callback's settle of the prior skip must not re-request
+    the target the callback just applied (a silent no-op press)."""
+    import showsync.audio as audio_module
+    rig = CallbackRig()
+    rig.block(round(.4 * RATE))
+    rig.audio.skip()
+    assert rig.audio._requested == (True, 1, 1)
+    rig.refill()  # producer has prepared the pending target
+    real = bisect_right
+    armed = ['skip']
+
+    def racing(a, x, *args):
+        # The audio callback applies the pending skip between skip()'s read of
+        # frames_played (already evaluated as x) and its settle-state check —
+        # the thread interleaving that made a live press vanish, made exact.
+        result = real(a, x, *args)
+        if armed:
+            armed.clear()
+            rig.block(64)
+        return result
+
+    monkeypatch.setattr(audio_module, 'bisect_right', racing)
+    rig.audio.skip()
+    monkeypatch.setattr(audio_module, 'bisect_right', real)
+    assert rig.audio._skip_applied == 1
+    assert rig.audio._requested == (True, 2, 2)
+    rig.refill()
+    rig.block(480)
+    assert rig.audio.position().song_index == 2

@@ -412,10 +412,16 @@ class AudioEngine:
 
     def skip(self):
         layout = self._layout
-        _, serial, _ = self._requested
+        # Read the applied serial before the queued frame. The callback writes
+        # frames_played before _skip_applied, so a skip that lands mid-call can
+        # only push this result forward — reading in the other order could pair
+        # a pre-jump frame with an already-settled serial and re-request the
+        # target the callback just applied, turning the press into a no-op.
+        applied = self._skip_applied
+        _, serial, queued = self._requested
         # Use queued position so rapid skips progress, even before the next callback.
         index = max(bisect_right(layout.starts, self.frames_played) - 1,
-                    self._requested[2] if serial != self._skip_applied else 0)
+                    queued if serial != applied else 0)
         target = min(index + 1, len(layout.starts))
         self._requested = (True, serial + 1, target)
 

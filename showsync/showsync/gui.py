@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 import time
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QDoubleSpinBox,
@@ -332,6 +332,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(button)
         return button
 
+    @classmethod
+    def live_button(cls, text, callback, layout):
+        button = cls.button(text, callback, layout)
+        # Live controls never keep keyboard focus: a clicked button would
+        # swallow Space (Pause) and re-fire itself on the next press.
+        button.setFocusPolicy(Qt.NoFocus)
+        return button
+
     def _build_editor(self):
         self.editor = QWidget()
         layout = QVBoxLayout(self.editor)
@@ -403,23 +411,23 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.queue, 1)
         order = QHBoxLayout()
         order.addWidget(QLabel('Upcoming songs'))
-        self.button('Move Up', lambda: self.move_upcoming(-1), order)
-        self.button('Move Down', lambda: self.move_upcoming(1), order)
+        self.live_button('Move Up', lambda: self.move_upcoming(-1), order)
+        self.live_button('Move Down', lambda: self.move_upcoming(1), order)
         order.addStretch()
         layout.addLayout(order)
         controls = QHBoxLayout()
-        self.pause_button = self.button('Pause', self.pause, controls)
-        self.skip_button = self.button('Skip', self.skip, controls)
-        self.restart_button = self.button('Restart', self.restart, controls)
-        self.stop_button = self.button('Stop', self.stop, controls)
-        self.editor_button = self.button('Return to Editor', self.return_to_editor, controls)
+        self.pause_button = self.live_button('Pause', self.pause, controls)
+        self.skip_button = self.live_button('Skip', self.skip, controls)
+        self.restart_button = self.live_button('Restart', self.restart, controls)
+        self.stop_button = self.live_button('Stop', self.stop, controls)
+        self.editor_button = self.live_button('Return to Editor', self.return_to_editor, controls)
         layout.addLayout(controls)
         offset_row = QHBoxLayout()
         offset_row.addWidget(QLabel('MIDI clock offset (ms)'))
         self.offset_spin = self.make_offset_spin()
         offset_row.addWidget(self.offset_spin)
-        self.button('−10 ms', lambda: self.offset_spin.setValue(self.clock_offset_ms - 10), offset_row)
-        self.button('+10 ms', lambda: self.offset_spin.setValue(self.clock_offset_ms + 10), offset_row)
+        self.live_button('−10 ms', lambda: self.offset_spin.setValue(self.clock_offset_ms - 10), offset_row)
+        self.live_button('+10 ms', lambda: self.offset_spin.setValue(self.clock_offset_ms + 10), offset_row)
         layout.addLayout(offset_row)
         layout.addWidget(QLabel('Increase if gear sounds late; decrease if gear sounds early.'))
         self.stack.addWidget(self.playback)
@@ -432,7 +440,26 @@ class MainWindow(QMainWindow):
         spin.setValue(self.clock_offset_ms)
         spin.setToolTip('Positive = earlier MIDI ticks; negative = later. Live while playing.')
         spin.valueChanged.connect(self.set_clock_offset)
+        # While its line edit holds focus (and it keeps focus after any click,
+        # including on its arrows), Ctrl+Right is a cursor key and Space is
+        # text input: the line edit claims both via ShortcutOverride and the
+        # Skip/Pause shortcuts go silently dead. Divert those overrides so
+        # transport keys always win; released focus on Enter restores the rest.
+        spin.setFocusPolicy(Qt.ClickFocus)
+        spin.editingFinished.connect(spin.clearFocus)
+        spin.installEventFilter(self)
+        spin.lineEdit().installEventFilter(self)
         return spin
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.ShortcutOverride:
+            pressed = QKeySequence(event.keyCombination())
+            if any(pressed.matches(action.shortcut()) == QKeySequence.ExactMatch
+                   for action in (self.pause_action, self.skip_action, self.restart_action,
+                                  self.stop_action, self.editor_action)):
+                event.ignore()  # the transport shortcut fires instead of text editing
+                return True
+        return super().eventFilter(obj, event)
 
     def set_clock_offset(self, value):
         self.clock_offset_ms = value
