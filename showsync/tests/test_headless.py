@@ -158,7 +158,7 @@ def test_engine_error_quits_with_failure(qtbot, show_factory):
 
 def test_transport_start_and_stop_drive_the_set(qtbot, show_factory, monkeypatch):
     import showsync.transport as transport
-    monkeypatch.setattr(transport, 'open_midi_input', lambda preferred=None: None)
+    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred=None: [])
     show = show_factory(midi_transport=True)
     assert show.transport.handle(START) == 'started set'
     assert show.audio is not None
