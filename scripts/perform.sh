@@ -149,6 +149,41 @@ system_audio_source() {
     echo "$sink.monitor"
 }
 
+# Snapshot PipeWire's per-node xrun counters (pw-top's ERR column) as
+# "ERR<TAB>ID<TAB>LABEL" lines. Taken at take start and end so the summary
+# can print the delta: graph-level xruns that ShowSync's own underrun
+# counter never sees (they happen outside its callback). pw-top prints one
+# full table per batch iteration; the first can be incomplete, so request
+# two and keep only the block after the last header. Rows are keyed by the
+# node ID — stable for the take — because column positions are not
+# trustworthy: a wide ERR value shifts everything right, follower rows
+# carry a "+" tree marker, and names/FORMAT may contain spaces. The label
+# (FORMAT + NAME as printed) is display-only.
+pw_xrun_snapshot() {
+    command -v pw-top >/dev/null || return 1
+    pw-top -b -n 2 2>/dev/null | awk '
+        /^S +ID +QUANT/ { seen = 1; delete err; delete label; next }
+        seen && NF >= 9 && $2 ~ /^[0-9]+$/ && $9 ~ /^[0-9]+$/ {
+            id = $2; err[id] = $9
+            line = $0
+            for (i = 1; i <= 9; ++i) sub(/^ *[^ ]+/, "", line)
+            gsub(/^[ +]+|[ ]+$/, "", line)
+            label[id] = line
+        }
+        END { for (id in err) printf "%d\t%s\t%s\n", err[id], id, label[id] }'
+}
+
+# Print per-node xrun deltas between two snapshot files (start, end).
+# Nodes that appeared mid-take (e.g. ShowSync/ffmpeg streams) count from 0;
+# only nodes with new xruns are printed.
+pw_xrun_delta() {
+    awk -F'\t' '
+        NR == FNR { start[$2] = $1; next }
+        { d = $1 - (($2 in start) ? start[$2] : 0)
+          if (d > 0) printf "  %6d  %s\n", d, $3 }
+    ' "$1" "$2"
+}
+
 # Echo the video encoder to use: h264_nvenc when the GPU can actually open
 # an encode session, else libx264. A listed encoder is not enough — NVENC
 # can still fail at runtime (sessions exhausted, driver mismatch), so probe
@@ -396,6 +431,7 @@ main() {
     lockfile="$outdir/.perform.lock"
     out="$outdir/perform_$(date +%Y%m%d_%H%M%S).mkv"
     ffmpeg_pid="" showsync_pid="" keyframes_pid="" BABYSITTER_PID=""
+    xrun_start="" xrun_end=""
 
     cleanup() {
         # Absorb repeat Ctrl+C (and TERM/HUP) while finalizing: a second
@@ -405,6 +441,12 @@ main() {
         # Never let a failing echo/ffprobe (e.g. EIO after the terminal
         # closed on SIGHUP) abort cleanup before ffmpeg is finalized.
         set +e
+        # End-of-take xrun snapshot BEFORE stopping the apps: their PipeWire
+        # nodes (and per-node ERR counters) disappear when they exit.
+        if [[ -n $xrun_start && -f $xrun_start ]]; then
+            xrun_end="$xrun_start.end"
+            pw_xrun_snapshot > "$xrun_end" 2>/dev/null
+        fi
         if [[ -n $ffmpeg_pid ]] && kill -0 "$ffmpeg_pid" 2>/dev/null; then
             echo ""
             echo "Finalizing recording — please wait (Ctrl+C is ignored until it is saved)..."
@@ -453,11 +495,27 @@ main() {
             echo ""
             echo "Recording saved: $out"
             [[ -n $dur ]] && echo "Duration: ${dur%.*}s"
+            # PipeWire xrun delta over the take: tells graph-level dropouts
+            # (nodes losing cycles) apart from ShowSync-level underruns
+            # (which ShowSync logs itself, with timeline positions).
+            if [[ -n $xrun_end && -s $xrun_end ]]; then
+                local xruns
+                xruns=$(pw_xrun_delta "$xrun_start" "$xrun_end")
+                if [[ -n $xruns ]]; then
+                    echo "PipeWire xruns during take (new ERRs per node — pw-top):"
+                    echo "$xruns"
+                else
+                    echo "PipeWire xruns during take: none"
+                fi
+            elif [[ -n $xrun_start ]]; then
+                echo "PipeWire xruns during take: unavailable (pw-top snapshot failed)"
+            fi
         elif [[ -n $ffmpeg_pid ]]; then
             # Only when a capture actually started — a lock refusal or a
             # failed ffmpeg launch already printed its own error.
             echo "WARNING: no recording was written to $out" >&2
         fi
+        [[ -n $xrun_start ]] && rm -f "$xrun_start" "$xrun_end"
     }
     # HUP included: closing the terminal must still finalize the file.
     trap cleanup INT TERM HUP EXIT
@@ -499,6 +557,16 @@ main() {
         echo "ERROR: ffmpeg failed to start — see $out.log" >&2
         tail -n 5 "$out.log" >&2 || true
         exit 1
+    fi
+
+    # Baseline PipeWire xrun counters; cleanup prints the take's delta.
+    xrun_start="$outdir/.perform_xruns_$$"
+    if pw_xrun_snapshot > "$xrun_start" 2>/dev/null && [[ -s $xrun_start ]]; then
+        echo "PipeWire xrun baseline captured (pw-top)"
+    else
+        rm -f "$xrun_start"
+        xrun_start=""
+        echo "NOTE: pw-top unavailable — no PipeWire xrun stats for this take."
     fi
 
     echo "Starting ShowSync..."
