@@ -336,6 +336,11 @@ class AudioEngine:
         self.frames_played = 0
         self.underruns = 0
         self.callbacks = 0
+        # Callback-side silence events, drained and logged by the producer
+        # thread (the callback must never log). Each entry:
+        # (kind, number, callback_no, frame, lost_frames, status).
+        self._events = deque(maxlen=256)
+        self._transition_frames = 0
         self._callback_schedule = None
         self.error = None
         self._slots = {}
@@ -510,8 +515,31 @@ class AudioEngine:
         return Position(index, seconds, anchor.playing and not ended, anchor.epoch,
                         ended, seconds >= layout.durations[index] and not ended, frame, layout)
 
+    def _timeline_label(self, frame, layout):
+        """Human position of an absolute set frame: set time + song + song time."""
+        set_seconds = frame / RATE
+        index = min(len(layout.starts) - 1, max(0, bisect_right(layout.starts, frame) - 1))
+        seconds = (frame - layout.starts[index]) / RATE
+        name = layout.setlist.songs[index].name
+        return (f'{int(set_seconds // 60)}:{set_seconds % 60:06.3f} into the set '
+                f"(song {index + 1} '{name}' at {int(seconds // 60)}:{seconds % 60:06.3f})")
+
+    def _log_events(self):
+        """Drain callback silence events; called from the producer thread."""
+        while self._events:
+            kind, number, callback_no, frame, lost, status = self._events.popleft()
+            where = self._timeline_label(frame, self._layout)
+            if kind == 'transition':
+                LOG.warning('audio transition silence: %.1f ms (%d frames) while a '
+                            'skip/restart settled, resumed at %s',
+                            lost / RATE * 1000, lost, where)
+                continue
+            detail = f'; portaudio reported: {status}' if status else ''
+            LOG.warning('audio underrun #%d: %.1f ms (%d frames) of silence at %s, '
+                        'callback %d%s — timeline continues',
+                        number, lost / RATE * 1000, lost, where, callback_no, detail)
+
     def _produce(self):
-        logged = 0
         announced = False
         try:
             while not self._halt.is_set():
@@ -560,14 +588,14 @@ class AudioEngine:
                 if not announced and self._callback_schedule is not None:
                     LOG.info('audio callback thread: %s', self._callback_schedule)
                     announced = True
-                if self.underruns != logged:
-                    LOG.warning('audio underrun: %d callback(s); output silence, timeline continues', self.underruns)
-                    logged = self.underruns
+                self._log_events()
                 self._halt.wait(.001)
         except Exception as exc:
             self.error = f'decode failed: {exc}'
             LOG.exception(self.error)
         finally:
+            # Events from the last callbacks of a take must still reach the log.
+            self._log_events()
             for slot in self._slots.values():
                 slot.close()
 
@@ -589,13 +617,22 @@ class AudioEngine:
                 self.frames_played = layout.starts[target] if target < len(layout.starts) else layout.total_frames
                 self._skip_applied = serial
                 self._epoch += 1
+                # Skip/restart settled: report how much silence the wait for
+                # the prebuffer emitted. Not an underrun (the counter stays),
+                # but it is real silence a recording will show.
+                if self._transition_frames:
+                    self._events.append(('transition', 0, self.callbacks,
+                                         self.frames_played, self._transition_frames, None))
+                    self._transition_frames = 0
             else:
                 playing = False
+                self._transition_frames += frames
         if self.error:
             playing = False
         begin = self.frames_played
         playing = playing and begin < layout.total_frames
         offset = 0
+        lost = 0
         missed = bool(status)
         while playing and offset < frames and self.frames_played < layout.total_frames:
             index = bisect_right(layout.starts, self.frames_played) - 1
@@ -607,13 +644,19 @@ class AudioEngine:
                 count = min(count, audio_left)
                 slot = self._slots.get(index)
                 if slot is not None:
-                    missed |= bool(slot.ring.read_into(output[offset:offset + count]))
+                    shortfall = slot.ring.read_into(output[offset:offset + count])
+                    if shortfall:
+                        missed = True
+                        lost += shortfall
                 else:
                     missed = True
+                    lost += count
             self.frames_played += count
             offset += count
         if missed:
             self.underruns += 1
+            self._events.append(('underrun', self.underruns, self.callbacks,
+                                 begin, lost, status))
         # PortAudio's times use its own epoch: translate the DAC delay to monotonic.
         self._anchors.append(Anchor(begin, self.frames_played, stamp, playing, self._epoch))
 

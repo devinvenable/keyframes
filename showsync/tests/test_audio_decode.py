@@ -304,6 +304,88 @@ def test_callback_underrun_keeps_frame_counter():
     np.testing.assert_array_equal(out, 0)
 
 
+def test_underrun_log_carries_timeline_position_and_duration(caplog):
+    # A recording gap can only be correlated with the logs if each underrun
+    # warning names WHERE on the timeline it happened and HOW LONG it was.
+    engine = make_engine()
+    engine._requested = (True, 0, 0)
+    engine.frames_played = RATE // 2          # 0.5 s into song one
+    callback(engine, 256)                     # no slot: the whole block is lost
+    with caplog.at_level('WARNING', logger='showsync.audio'):
+        engine._log_events()
+    assert len(caplog.records) == 1
+    message = caplog.records[0].getMessage()
+    assert 'audio underrun #1' in message
+    assert '5.3 ms (256 frames)' in message
+    assert "0:00.500 into the set (song 1 'one' at 0:00.500)" in message
+    assert 'callback 1' in message
+
+
+def halt_producer(engine):
+    # Deterministic event tests: the producer thread also drains the event
+    # log and refills rings, so stop it and drain manually instead.
+    engine._halt.set()
+    engine._worker.join(timeout=5)
+    assert not engine._worker.is_alive()
+    engine._events.clear()
+
+
+def test_underrun_log_reports_partial_ring_shortfall(caplog):
+    engine = make_engine()
+    try:
+        engine.prepare()
+        halt_producer(engine)
+        engine._requested = (True, 0, 0)
+        # Leave only 100 frames in the ring: 156 of 256 requested are lost.
+        slot = engine._slots[0]
+        slot.ring.written = slot.ring.consumed + 100
+        callback(engine, 256)
+        assert engine.underruns == 1
+        with caplog.at_level('WARNING', logger='showsync.audio'):
+            engine._log_events()
+        assert '3.2 ms (156 frames)' in caplog.records[0].getMessage()
+    finally:
+        engine.close()
+
+
+def test_underrun_log_includes_portaudio_status(caplog):
+    engine = make_engine()
+    engine._requested = (True, 0, 0)
+    output = np.empty((256, 2), dtype=np.float32)
+    engine._callback(output, 256, SimpleNamespace(currentTime=10, outputBufferDacTime=10),
+                     'output underflow')
+    with caplog.at_level('WARNING', logger='showsync.audio'):
+        engine._log_events()
+    assert 'portaudio reported: output underflow' in caplog.records[0].getMessage()
+
+
+def test_skip_settling_silence_is_logged_but_not_an_underrun(caplog):
+    # A skip waiting for its prebuffer emits silence without touching the
+    # underrun counter; that silence must still be visible in the logs.
+    engine = make_engine()
+    try:
+        engine.prepare()
+        wait_for_slot(engine, 1)              # 1 s songs prefetch immediately
+        halt_producer(engine)
+        engine._requested = (True, 0, 0)
+        callback(engine, 256)
+        engine.skip()
+        callback(engine, 256)                 # not prepared yet: silent settling
+        assert engine.underruns == 0
+        engine._skip_ready = engine._requested[1]   # producer would publish this
+        callback(engine, 256)                 # skip applies here
+        with caplog.at_level('WARNING', logger='showsync.audio'):
+            engine._log_events()
+        messages = [r.getMessage() for r in caplog.records]
+        transition = [m for m in messages if 'transition silence' in m]
+        assert len(transition) == 1
+        assert '5.3 ms (256 frames)' in transition[0]
+        assert "song 2 'two' at 0:00.000" in transition[0]
+        assert engine.underruns == 0
+    finally:
+        engine.close()
+
+
 def test_start_prerolls_silent_callbacks_before_playback():
     # The stream must run silent warm-up callbacks before playback is
     # requested, so the set-start burst cannot starve the first audible
