@@ -574,7 +574,11 @@ main() {
     showsync_pid=$!
 
     echo "Starting Keyframes (Esc in Keyframes ends the take)..."
-    "$python" "$REPO_ROOT/keyframes/main.py" &
+    # nice: Keyframes' video decode threads must never outbid ShowSync's
+    # audio for CPU — a late video frame is fine, an audio underrun is not
+    # (canon midi:I39). nice execs through, so $! still names the python
+    # process for wait/cleanup. Deliberately NOT RT-elevated.
+    nice -n 5 "$python" "$REPO_ROOT/keyframes/main.py" &
     keyframes_pid=$!
 
     # Wait for Keyframes to exit (Esc) — Ctrl+C lands in the trap instead.

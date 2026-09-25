@@ -151,7 +151,10 @@ def test_video_player_freezes_on_last_frame():
     path = _video_path()
     if path is None:
         pytest.skip('no .mp4 in images/ to decode')
-    player = main.VideoPlayer(path, (main.GRID_THUMB_W, main.GRID_THUMB_H))
+    # Step clock: a frame is due on every call, so the tight loop below
+    # reaches end-of-stream regardless of fps pacing.
+    player = main.VideoPlayer(path, (main.GRID_THUMB_W, main.GRID_THUMB_H),
+                              clock=main.make_step_clock(1.0))
     try:
         last = None
         for _ in range(10000):

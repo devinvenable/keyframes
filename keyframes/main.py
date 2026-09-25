@@ -524,25 +524,108 @@ def play_midi_file(filepath, msg_queue, stop_event, loop=False):
     print("MIDI file playback finished.")
 
 
-class VideoPlayer:
-    """Manages video playback for a single video file."""
+# Upper bound on frames consumed (grabbed, not rendered) in one get_frame()
+# call to catch up after a render stall. Past this the player resyncs and
+# plays on from where it is: a burst of decode work would steal CPU from the
+# audio graph, which is the exact failure pacing exists to prevent.
+MAX_DECODE_CATCHUP = 5
 
-    def __init__(self, path, target_size, loop=False):
+# FFmpeg decode threads per open stream. Left alone, a 1080p H.264 open
+# spawns a frame-thread pool larger than nproc (11 threads on the 6-core
+# perform host) that competes with ShowSync's audio graph (canon midi:I39).
+# CAP_PROP_N_THREADS as an open-parameter is honored by this OpenCV build
+# (the OPENCV_FFMPEG_CAPTURE_OPTIONS env knob is NOT). With decode paced to
+# media fps, 2 threads decode 1080p comfortably.
+VIDEO_DECODE_THREADS = 2
+
+
+def open_video_capture(path):
+    """Open a video with a capped FFmpeg decode-thread pool when supported."""
+    if hasattr(cv2, 'CAP_PROP_N_THREADS'):
+        try:
+            cap = cv2.VideoCapture(path, cv2.CAP_FFMPEG,
+                                   [cv2.CAP_PROP_N_THREADS,
+                                    VIDEO_DECODE_THREADS])
+            if cap.isOpened():
+                return cap
+            cap.release()
+        except cv2.error:
+            pass
+    return cv2.VideoCapture(path)
+
+
+def make_step_clock(step, start=0.0):
+    """A fake monotonic clock advancing ``step`` seconds per call.
+
+    For tests and the packaging smoke test, where frames must be due on
+    every get_frame() call regardless of real elapsed time."""
+    state = [start]
+
+    def clock():
+        state[0] += step
+        return state[0]
+
+    return clock
+
+
+class VideoPlayer:
+    """Manages video playback for a single video file.
+
+    Decoding is paced by the media's own frame rate, not by the caller's
+    render loop: get_frame() decodes a new frame only when one is due by the
+    wall clock (``clock``, injectable for tests), returning the previous
+    surface otherwise. Media faster than the render loop is kept real-time by
+    grab()-skipping the frames that will never be shown. Streams that don't
+    report a frame rate fall back to one decode per call."""
+
+    def __init__(self, path, target_size, loop=False, clock=time.monotonic):
         self.path = path
         self.target_size = target_size
         self.loop = loop
-        self.cap = cv2.VideoCapture(path)
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
+        self.clock = clock
+        self.cap = open_video_capture(path)
+        fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self.fps = fps if fps and fps > 0 else 0  # 0 = unknown, decode unpaced
         self.last_surface = None
         self.finished = False
+        self._next_frame_due = None
+
+    def _consume_frame(self):
+        """Advance one frame without rendering it; rewind a looping stream."""
+        if self.cap.grab():
+            return True
+        if self.loop:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            return self.cap.grab()
+        return False
 
     def get_frame(self):
-        """Read next frame and return as a pygame surface.
+        """Return the frame due now as a pygame surface.
 
         At end-of-stream a looping player (animated GIFs) rewinds and keeps
         playing; a non-looping one freezes on its last frame."""
         if self.finished:
             return self.last_surface
+
+        if self.fps:
+            now = self.clock()
+            if self._next_frame_due is None:
+                self._next_frame_due = now
+            if now < self._next_frame_due and self.last_surface is not None:
+                return self.last_surface
+            interval = 1.0 / self.fps
+            # Behind by more than one frame (media fps > render rate, or a
+            # stall): consume the frames that will never be shown, capped.
+            skip = max(0, min(int((now - self._next_frame_due) / interval),
+                              MAX_DECODE_CATCHUP))
+            for _ in range(skip):
+                if not self._consume_frame():
+                    break
+            self._next_frame_due += (skip + 1) * interval
+            if self._next_frame_due < now:
+                # Still behind after the capped catch-up — resync rather than
+                # accumulate decode debt.
+                self._next_frame_due = now + interval
 
         ret, frame = self.cap.read()
         if not ret and self.loop:
@@ -782,7 +865,7 @@ def make_thumbnail(media, thumb_size):
     if media['type'] == 'image':
         return crop_to_fill(media['surface'], thumb_size)
 
-    cap = cv2.VideoCapture(media['path'])
+    cap = open_video_capture(media['path'])
     ret, frame = cap.read()
     cap.release()
     if not ret:
@@ -1428,7 +1511,11 @@ def run_packaging_smoke_test():
         # GIFs play through a looping VideoPlayer: reading past end-of-stream
         # must rewind (CAP_PROP_POS_FRAMES) and keep yielding frames.
         gif_frames = int(cv2.VideoCapture(str(gif_files[0])).get(cv2.CAP_PROP_FRAME_COUNT)) or 1
-        looping = VideoPlayer(str(gif_files[0]), (64, 48), loop=True)
+        # A stepped clock makes every get_frame() call due immediately —
+        # fps pacing would otherwise let this tight loop finish without
+        # ever reaching end-of-stream, proving nothing about rewind.
+        looping = VideoPlayer(str(gif_files[0]), (64, 48), loop=True,
+                              clock=make_step_clock(1.0))
         try:
             for _ in range(gif_frames + 2):
                 if looping.get_frame() is None:
