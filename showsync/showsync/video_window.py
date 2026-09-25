@@ -123,14 +123,23 @@ class VideoWindow(QWidget):
             self.blank_and_hide()
             return
         result = self.worker.result
-        pictures = result[1] if result and result[0] == key else ()
+        published = result if result and result[0] == key else None
+        pictures = published[1] if published else ()
         # A slow decoder can publish an already obsolete frame; never display it.
         picture = next((p for p in reversed(pictures)
                         if p.pts <= seconds + 1e-9 < p.until), None)
-        # Never cover another app with an empty projector, including after a
-        # short video ends while its separate backing track keeps playing.
         if picture is None:
-            self.blank_and_hide()
+            # Hide only when the absence of a frame is authoritative: nothing
+            # published for this song yet, the video is over (a short clip
+            # under a longer backing track — never cover another app with an
+            # empty projector), or decoding failed (the worker publishes end
+            # 0). A decoder merely running behind mid-video keeps the last
+            # frame on screen instead: hiding would re-reveal moments later,
+            # and every reveal raises, so churn here turns the projector and
+            # fullscreen Keyframes — both kept ABOVE, ordered by whoever
+            # raised last — into a visible raise war (task 144).
+            if published is None or seconds + 1e-9 >= published[2]:
+                self.blank_and_hide()
             return
         if picture is not self.picture:
             self.picture = picture

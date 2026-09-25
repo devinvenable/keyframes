@@ -161,6 +161,7 @@ def test_stalled_video_never_blocks_audio_or_publishes_old_epoch(clip):
     entered, release = threading.Event(), threading.Event()
     closed = []
     class SlowReader:
+        end = 1.0
         def __init__(self, path, audio_origin=False):
             pass
         def pictures_at(self, seconds, **kwargs):
@@ -354,6 +355,63 @@ def test_projector_hides_at_video_end_while_audio_continues(qtbot, tmp_path, cli
     position[0] = replace(position[0], song_index=0, epoch=3)
     qtbot.waitUntil(lambda: window.isVisible())
     assert window.isFullScreen()
+
+
+def test_projector_holds_last_frame_through_decoder_drought(qtbot, tmp_path, clip):
+    """A decoder running behind mid-video must not hide the projector: hiding
+    re-reveals a tick later, every reveal raises, and repeated raising is a
+    visible stacking war against fullscreen Keyframes (task 144). Only a
+    published end at or before the current time makes the blank authoritative."""
+    song = Song('clip', clip, 120)
+    position = [Position(0, .25, True)]
+    audio = SimpleNamespace(position=lambda: position[0], setlist=Setlist('show', (song,)))
+    window = VideoWindow(QSettings(str(tmp_path / 'drought.ini'), QSettings.IniFormat))
+    qtbot.addWidget(window, before_close_func=lambda _: window.stop())
+
+    class FakeWorker:
+        result = None
+        def submit(self, key, seconds=0):
+            pass
+        def close(self):
+            pass
+
+    window.audio = audio
+    window.worker = FakeWorker()
+    reveals = []
+    real_show = window.show_projector
+    window.show_projector = lambda: (reveals.append(True), real_show())[1]
+    key = (clip, True, 0, 0)
+    frame = Picture(.2, .3, np.zeros((48, 64, 3), dtype=np.uint8))
+    window.refresh()
+    assert not window.isVisible(), 'no frame published yet: stay hidden'
+    FakeWorker.result = (key, (frame,), 1.0)
+    window.refresh()
+    assert window.isVisible() and window.picture is frame
+    assert len(reveals) == 1
+    # Drought: playback has run past every published frame, but the video is
+    # not over. The projector must keep the last frame up, not hide.
+    position[0] = replace(position[0], song_time=.5)
+    window.refresh()
+    assert window.isVisible() and window.picture is frame
+    assert not window.image.isNull()
+    # The worker catches up: the fresh frame replaces the held one in place,
+    # with no hide/reveal cycle and therefore no second raise.
+    caught_up = Picture(.5, .6, np.zeros((48, 64, 3), dtype=np.uint8))
+    FakeWorker.result = (key, (caught_up,), 1.0)
+    window.refresh()
+    assert window.isVisible() and window.picture is caught_up
+    assert len(reveals) == 1, 'holding through the drought must not re-reveal'
+    # Past the published end the blank is authoritative: video over, hide.
+    position[0] = replace(position[0], song_time=1.25)
+    window.refresh()
+    assert not window.isVisible() and window.image.isNull()
+    # A failed decode publishes end 0.0, which also hides immediately.
+    position[0] = replace(position[0], song_time=.75)
+    FakeWorker.result = (key, (), 0.0)
+    window.refresh()
+    assert not window.isVisible()
+    window.worker = None
+    window.timer.stop()
 
 
 def test_main_window_starts_and_stops_video(window_factory, clip, qtbot):

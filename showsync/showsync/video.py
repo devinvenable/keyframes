@@ -124,7 +124,7 @@ class VideoWorker:
     def __init__(self, reader_factory=VideoReader):
         self.reader_factory = reader_factory
         self.request = None  # ((path, audio_origin, epoch, song_index), seconds)
-        self.result = None   # (key, tuple[Picture, ...]), at most eight frames
+        self.result = None   # (key, tuple[Picture, ...] of at most eight frames, stream end)
         self.error = None
         self.halt = threading.Event()
         self.wake = threading.Event()
@@ -162,11 +162,13 @@ class VideoWorker:
                     pictures = reader.pictures_at(request[1], cancelled=cancelled)
                     latest = self.request
                     if latest is not None and latest[0] == key:
-                        self.result = (key, pictures)
+                        # The stream end lets the GUI tell "video over" from
+                        # "decoder running behind" when no frame is due.
+                        self.result = (key, pictures, reader.end)
                 except Exception as exc:
                     failed = key
                     self.error = (key, str(exc))
-                    self.result = (key, ())
+                    self.result = (key, (), 0.0)
                     LOG.warning('Video %s: %s; audio continues', key[0], exc)
         finally:
             if reader:

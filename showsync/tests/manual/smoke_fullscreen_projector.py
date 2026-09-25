@@ -41,7 +41,10 @@ with tempfile.TemporaryDirectory(prefix='showsync-130-smoke-') as directory:
         background = bystander = window = None
         try:
             wait_for(lambda: '_NET_SUPPORTING_WM_CHECK(WINDOW)' in xprop('-root', '_NET_SUPPORTING_WM_CHECK'))
-            clip = make_video(tmp / 'clip.mp4')
+            # Silent video: the file itself is the audio master, so playback
+            # (and the projector) runs the full 30 s — long enough to treat as
+            # the continuous segment for the task-144 stacking-stability window.
+            clip = make_video(tmp / 'clip.mp4', audio=False, video_seconds=30)
             def start(setlist):
                 audio = AudioEngine(setlist)
                 return audio, SimpleNamespace(error=None), audio.close
@@ -96,11 +99,7 @@ while True:
             pixel = app.primaryScreen().grabWindow(0).toImage().pixelColor(640, 360)
             assert (abs(pixel.green() - pixel.red()) < 30
                     and abs(pixel.green() - pixel.blue()) < 30), pixel.getRgb()
-            QTest.keyClick(projector, Qt.Key_Escape)
-            wait_for(lambda: not projector.isFullScreen())
-            projector.fullscreen.trigger()
-            wait_for(lambda: projector.isFullScreen())
-            # Task 132: while the projector still covers everything, raise an
+            # Task 132: while the projector covers everything, raise an
             # ordinary third window (as if the operator clicked a terminal).
             # Without _NET_WM_STATE_ABOVE on Keyframes, hiding the projector
             # would reveal this window instead of the visuals.
@@ -120,6 +119,34 @@ while True:
             wait_for(lambda: (tmp / 'bystander.id').exists())
             other = int((tmp / 'bystander.id').read_text())
             wait_for(lambda: other in stacking())
+            # Task 144: during the continuous segment the projector must stay
+            # above Keyframes with ZERO stacking flips — no one re-raises while
+            # both are mapped, even as focus moves between the editor and a
+            # bystander (two _NET_WM_STATE_ABOVE windows order by whoever
+            # raised last, so any repeated raise shows up here as a flip).
+            reveals = []
+            original_show = projector.show_projector
+            projector.show_projector = lambda: (reveals.append(True), original_show())[1]
+            end = time.monotonic() + 5
+            next_poke, poke_editor = time.monotonic() + 1, True
+            while time.monotonic() < end:
+                app.processEvents()
+                assert projector.isVisible(), 'projector hid mid-segment (hide/reveal churn)'
+                order = stacking()
+                assert order.index(wid) > order.index(bg), \
+                    f'stacking flipped: Keyframes above projector ({order})'
+                if time.monotonic() >= next_poke:
+                    target = int(window.winId()) if poke_editor else other
+                    subprocess.check_call(['xdotool', 'windowactivate', '--sync', str(target)])
+                    poke_editor = not poke_editor
+                    next_poke += 1
+                time.sleep(.02)
+            assert not reveals, 'projector re-revealed (re-raised) during a continuous segment'
+            projector.show_projector = original_show
+            QTest.keyClick(projector, Qt.Key_Escape)
+            wait_for(lambda: not projector.isFullScreen())
+            projector.fullscreen.trigger()
+            wait_for(lambda: projector.isFullScreen())
             subprocess.check_call(['xdotool', 'windowactivate', '--sync', str(other)])
             # The freshly activated ordinary window must still stack below the
             # always-on-top Keyframes window.
@@ -130,7 +157,7 @@ while True:
             pixel = app.primaryScreen().grabWindow(0).toImage().pixelColor(640, 360)
             assert pixel.green() == 160 and pixel.red() == 0, pixel.getRgb()
             assert background.poll() is None and bystander.poll() is None
-            print('PASS: MainWindow video playback covers fullscreen Keyframes; FULLSCREEN/ABOVE flags on both, borderless, screen bounds, frame pixel, Escape, fullscreen restore, raised bystander stays below Keyframes, stop reveals Keyframes (not the bystander), independent heartbeat.')
+            print('PASS: MainWindow video playback covers fullscreen Keyframes; FULLSCREEN/ABOVE flags on both, borderless, screen bounds, frame pixel, 5s zero-flip stacking stability across focus changes (no re-raise, no hide churn), Escape, fullscreen restore, raised bystander stays below Keyframes, stop reveals Keyframes (not the bystander), independent heartbeat.')
         finally:
             if window:
                 window.timer.stop()
