@@ -18,6 +18,7 @@ keyframes/images/*
 !keyframes/images/.gitkeep
 !keyframes/images/starter-neon.png
 !keyframes/images/starter-pulse.mp4
+!keyframes/images/starter-pulse.gif
 keep/
 BL_proxy/
 

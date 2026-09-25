@@ -9,7 +9,8 @@ KEYFRAMES FOR WINDOWS
 5. Press ESC to quit.
 
 Supported images: .png, .jpg, .jpeg, .bmp
-Supported videos: .mp4, .avi, .mov, .mkv, .webm
+Supported videos: .mp4, .avi, .mov, .mkv, .webm, .gif
+Animated GIFs play as looping videos for as long as the key is held.
 
 Keep the images folder beside Keyframes.exe.  It is intentionally editable and
 is not stored inside the program.

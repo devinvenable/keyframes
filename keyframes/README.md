@@ -176,7 +176,7 @@ and is ignored (nothing copied or deleted).
 Drop any images or videos into the `images/` directory — any filenames, any order. Supported formats:
 
 - **Images**: `.png`, `.jpg`, `.jpeg`, `.bmp`
-- **Videos**: `.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`
+- **Videos**: `.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`, `.gif` (animated GIFs loop while held)
 
 On a first launch, files are sorted and each receives one distinct key in order.
 Videos are interleaved with images so they don't cluster together. Later files

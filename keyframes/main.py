@@ -1380,11 +1380,13 @@ def select_midi_ports(available_ports, port_filter=None):
 
 
 def run_packaging_smoke_test():
-    """Exercise the shipped image, video, and RT-MIDI backend without hardware."""
+    """Exercise the shipped image, video, GIF, and RT-MIDI backend without hardware."""
     image_files = sorted(Path(IMAGES_DIR).glob('*.png'))
     video_files = sorted(Path(IMAGES_DIR).glob('*.mp4'))
-    if not image_files or not video_files:
-        raise RuntimeError('Packaging smoke test needs one .png and one .mp4 in images/.')
+    gif_files = sorted(Path(IMAGES_DIR).glob('*.gif'))
+    if not image_files or not video_files or not gif_files:
+        raise RuntimeError(
+            'Packaging smoke test needs one .png, one .mp4, and one .gif in images/.')
 
     pygame.init()
     try:
@@ -1399,6 +1401,45 @@ def run_packaging_smoke_test():
         finally:
             player.release()
 
+        # Animated-GIF support rides on the bundled OpenCV/ffmpeg decoding
+        # GIFs frame-by-frame.  Reading only the first frame would pass even
+        # if animation were broken, so require a SECOND frame that differs
+        # from the first.
+        gif_cap = cv2.VideoCapture(str(gif_files[0]))
+        try:
+            got_first, first_frame = gif_cap.read()
+            if not got_first:
+                raise RuntimeError(f'OpenCV could not decode {gif_files[0].name}.')
+            animated = False
+            for _ in range(64):
+                got_next, next_frame = gif_cap.read()
+                if not got_next:
+                    break
+                if next_frame.shape != first_frame.shape or (next_frame != first_frame).any():
+                    animated = True
+                    break
+            if not animated:
+                raise RuntimeError(
+                    f'{gif_files[0].name} decoded only one distinct frame; '
+                    'animated GIF playback would be broken in this build.')
+        finally:
+            gif_cap.release()
+
+        # GIFs play through a looping VideoPlayer: reading past end-of-stream
+        # must rewind (CAP_PROP_POS_FRAMES) and keep yielding frames.
+        gif_frames = int(cv2.VideoCapture(str(gif_files[0])).get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+        looping = VideoPlayer(str(gif_files[0]), (64, 48), loop=True)
+        try:
+            for _ in range(gif_frames + 2):
+                if looping.get_frame() is None:
+                    raise RuntimeError(
+                        f'Looping playback of {gif_files[0].name} stopped yielding frames.')
+            if looping.finished:
+                raise RuntimeError(
+                    f'Looping player finished on {gif_files[0].name}; GIF loop rewind failed.')
+        finally:
+            looping.release()
+
         # This import and enumeration load the dynamically selected mido RT-MIDI
         # backend.  No input device is required for either operation.
         import mido.backends.rtmidi  # noqa: F401
@@ -1406,7 +1447,8 @@ def run_packaging_smoke_test():
     finally:
         pygame.quit()
 
-    print('Packaging smoke test passed: image, video, and RT-MIDI backend are available.')
+    print('Packaging smoke test passed: image, video, animated GIF, '
+          'and RT-MIDI backend are available.')
 
 
 def main():
