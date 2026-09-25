@@ -470,10 +470,11 @@ def test_midi_transport_flag_drives_set_like_gui(qtbot, window_factory, monkeypa
     assert w.closed_engines == [True]
 
 
-def test_live_controls_never_trap_keyboard_focus(qtbot, window_factory, tmp_path):
-    """Space and Ctrl+Right must keep meaning Pause and Skip after using the
-    mouse on live controls: a focused button re-fires itself on Space, and a
-    focused offset spinbox swallows Ctrl+Right as a cursor key."""
+def test_transport_keys_win_over_focused_offset_spinbox(qtbot, window_factory, tmp_path):
+    """Live transport shortcuts must fire even while the MIDI clock offset
+    spinbox holds keyboard focus: its line edit otherwise claims Ctrl+Right
+    (cursor word-move) and Space (text input) via ShortcutOverride, leaving
+    Skip and Pause silently dead until something else is clicked."""
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
     w = window_factory(document(tmp_path))
@@ -487,15 +488,19 @@ def test_live_controls_never_trap_keyboard_focus(qtbot, window_factory, tmp_path
         # Deliver where the window system would: the focus widget if any.
         QTest.keyClick(w.focusWidget() or w, key, modifier)
 
-    qtbot.mouseClick(w.skip_button, Qt.LeftButton)
-    assert audio._requested == (True, 1, 1)
-    press(Qt.Key_Space)  # Pause — must not re-press the clicked Skip button
-    assert audio._requested == (False, 1, 1)
-    press(Qt.Key_Space)
+    press(Qt.Key_Right, Qt.ControlModifier)
     assert audio._requested == (True, 1, 1)
     w.offset_spin.setFocus()
-    press(Qt.Key_Enter)  # done editing the clock offset
+    assert w.focusWidget() in (w.offset_spin, w.offset_spin.lineEdit())
+    press(Qt.Key_Right, Qt.ControlModifier)  # Skip, not a cursor word-move
+    assert audio._requested == (True, 2, 2)
+    press(Qt.Key_Space)                      # Pause, not typed text
+    assert audio._requested == (False, 2, 2)
+    press(Qt.Key_Space)
+    assert audio._requested == (True, 2, 2)
+    # Finishing the edit releases focus, restoring every other shortcut too.
+    press(Qt.Key_Enter)
     assert w.focusWidget() is not w.offset_spin
     assert not w.offset_spin.hasFocus()
-    press(Qt.Key_Right, Qt.ControlModifier)  # Skip
-    assert audio._requested == (True, 2, 2)
+    # Clicked live buttons never keep focus, so the keyboard stays global.
+    assert w.skip_button.focusPolicy() == Qt.NoFocus

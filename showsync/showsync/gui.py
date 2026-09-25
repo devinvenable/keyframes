@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 import time
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QDoubleSpinBox,
@@ -440,12 +440,26 @@ class MainWindow(QMainWindow):
         spin.setValue(self.clock_offset_ms)
         spin.setToolTip('Positive = earlier MIDI ticks; negative = later. Live while playing.')
         spin.valueChanged.connect(self.set_clock_offset)
-        # While its line edit holds focus, Ctrl+Right is a cursor key and never
-        # reaches the Skip shortcut. Focus only on click, released on Enter, so
-        # editing the offset cannot leave the transport keys dead afterwards.
+        # While its line edit holds focus (and it keeps focus after any click,
+        # including on its arrows), Ctrl+Right is a cursor key and Space is
+        # text input: the line edit claims both via ShortcutOverride and the
+        # Skip/Pause shortcuts go silently dead. Divert those overrides so
+        # transport keys always win; released focus on Enter restores the rest.
         spin.setFocusPolicy(Qt.ClickFocus)
         spin.editingFinished.connect(spin.clearFocus)
+        spin.installEventFilter(self)
+        spin.lineEdit().installEventFilter(self)
         return spin
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.ShortcutOverride:
+            pressed = QKeySequence(event.keyCombination())
+            if any(pressed.matches(action.shortcut()) == QKeySequence.ExactMatch
+                   for action in (self.pause_action, self.skip_action, self.restart_action,
+                                  self.stop_action, self.editor_action)):
+                event.ignore()  # the transport shortcut fires instead of text editing
+                return True
+        return super().eventFilter(obj, event)
 
     def set_clock_offset(self, value):
         self.clock_offset_ms = value
