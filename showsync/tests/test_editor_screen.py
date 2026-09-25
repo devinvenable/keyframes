@@ -86,3 +86,20 @@ def test_cli_default_is_no_editor_screen(monkeypatch):
     monkeypatch.setattr(cli, 'last_setlist', lambda: None)
     assert cli.main([]) == 0
     assert seen['editor_screen'] is None
+
+
+# Task 140: --editor-screen must never drag the projector along. The
+# projector resolves its own monitor: remembered name, else primary.
+
+def test_projector_screen_resolves_remembered_name():
+    from showsync.video_window import projector_screen
+    pool = screens('DP-1', 'HDMI-0')
+    assert projector_screen(pool, pool[0], 'HDMI-0') is pool[1]
+
+
+def test_projector_screen_falls_back_to_primary_never_editor():
+    from showsync.video_window import projector_screen
+    pool = screens('DP-1', 'HDMI-0')
+    primary = pool[0]
+    assert projector_screen(pool, primary, '') is primary
+    assert projector_screen(pool, primary, 'DP-GONE') is primary

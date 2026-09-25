@@ -214,6 +214,11 @@ main() {
         echo "      Keyframes to drop it out of fullscreen first."
     fi
 
+    # Hands-free start: the KeyStep's hardware Play/Stop drive the set.
+    if [[ " ${showsync_args[*]-} " != *" --midi-transport"* ]]; then
+        showsync_args+=(--midi-transport)
+    fi
+
     local system_src=""
     if [[ $audio_mode != system ]]; then
         check_default_source

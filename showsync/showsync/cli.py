@@ -27,6 +27,9 @@ def main(argv=None):
                         help='open the editor window on this screen (xrandr-style name '
                              'like HDMI-0, or index); the video projector keeps its own '
                              'remembered screen')
+    parser.add_argument('--midi-transport', action='store_true',
+                        help='listen for MIDI realtime Start/Continue/Stop on the MIDI '
+                             'input and drive the set like the GUI controls')
     parser.add_argument('--clock-offset', type=float, metavar='MS',
                         help='MIDI clock offset (-250..250 ms); positive = earlier ticks; this run only')
     parser.add_argument('--export-bundle', metavar='ZIP',
@@ -142,7 +145,8 @@ def main(argv=None):
                          remember=remember_setlist,
                          notice=notice, clock_offset_ms=offset,
                          offset_changed=change_offset, devices=devices,
-                         editor_screen=args.editor_screen)
+                         editor_screen=args.editor_screen,
+                         midi_transport=args.midi_transport)
     except KeyboardInterrupt:
         return 0
     except Exception as exc:

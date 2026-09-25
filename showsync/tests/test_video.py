@@ -441,3 +441,28 @@ def test_transport_skip_audio_only_song_and_restart_reseek_video(qtbot, tmp_path
     finally:
         window.stop()
         engine.close()
+
+
+def test_hidden_reveal_reresolves_remembered_screen_not_current(qtbot, tmp_path, monkeypatch):
+    """Task 140: while hidden, the window's own screen tracks the editor
+    (transient parent), so show_projector must re-resolve the remembered
+    monitor on every reveal instead of trusting self.screen()."""
+    settings = QSettings(str(tmp_path / 'pin.ini'), QSettings.IniFormat)
+    window = VideoWindow(settings)
+    qtbot.addWidget(window, before_close_func=lambda _: window.stop())
+    resolved = []
+    real = window.remembered_screen
+
+    def spy():
+        resolved.append(True)
+        return real()
+
+    monkeypatch.setattr(window, 'remembered_screen', spy)
+    assert not window.isVisible()
+    window.show_projector()
+    assert resolved, 'hidden reveal must resolve the remembered/primary screen'
+    # A visible toggle keeps the screen the user put it on: no re-resolve.
+    resolved.clear()
+    window.toggle_fullscreen()
+    assert not resolved
+    window.hide()

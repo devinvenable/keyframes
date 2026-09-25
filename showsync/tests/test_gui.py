@@ -436,3 +436,35 @@ def test_video_window_follows_trim(qtbot, tmp_path):
     assert key[0] == song.file
     assert seconds == pytest.approx(1.5 + 8.656)
     window.timer.stop()
+
+
+def test_midi_transport_flag_drives_set_like_gui(qtbot, window_factory, monkeypatch, tmp_path):
+    import showsync.transport as transport
+
+    class FakeInput:
+        callback = None
+        closed = False
+
+        def set_callback(self, callback):
+            self.callback = callback
+
+        def close_port(self):
+            self.closed = True
+
+    fake = FakeInput()
+    monkeypatch.setattr(transport, 'open_midi_input', lambda preferred=None: fake)
+    w = window_factory(document(tmp_path), midi_transport=True)
+    assert w.midi_input is fake and fake.callback is not None
+    fake.callback(([0xF8], 0.0))  # clock ticks never reach the handler
+    assert w.audio is None
+    fake.callback(([0xFA], 0.0))  # KeyStep Play
+    assert w.audio is not None and w.stack.currentWidget() is w.playback
+    audio = w.audio
+    position(audio, 0)
+    fake.callback(([0xFA], 0.0))  # echoed Start while playing: idempotent
+    assert w.audio is audio
+    fake.callback(([0xFC], 0.0))  # KeyStep Stop
+    assert w.audio is None and w.closed_engines == [True]
+    assert w.stack.currentWidget() is w.editor
+    fake.callback(([0xFC], 0.0))  # echoed Stop while stopped: idempotent
+    assert w.closed_engines == [True]

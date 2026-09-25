@@ -6,6 +6,15 @@ from PySide6.QtWidgets import QApplication, QWidget
 from .video import VideoWorker
 
 
+def projector_screen(screens, primary, name):
+    """Resolve the projector's target monitor: the remembered screen by
+    name, else the primary. Never derived from the window's current
+    screen, which follows the transient parent (the editor) whenever the
+    platform window is (re)created — e.g. after --editor-screen moved the
+    editor, or after setWindowFlag rebuilt the native window (task 140)."""
+    return next((s for s in screens if s.name() == name), primary)
+
+
 class VideoWindow(QWidget):
     def __init__(self, settings, parent=None):
         super().__init__(parent, Qt.Window)
@@ -29,9 +38,7 @@ class VideoWindow(QWidget):
         if geometry is not None:
             self.restoreGeometry(geometry)
         self.setWindowState(Qt.WindowNoState)
-        screen_name = settings.value('video/screen', '')
-        screen = next((s for s in QApplication.screens() if s.name() == screen_name),
-                      QApplication.primaryScreen())
+        screen = self.remembered_screen()
         self.setScreen(screen)
         if not screen.availableGeometry().intersects(self.frameGeometry()):
             self.move(screen.availableGeometry().topLeft())
@@ -59,8 +66,14 @@ class VideoWindow(QWidget):
         self.settings.setValue('video/geometry', self.windowed_geometry)
         self.settings.setValue('video/screen', self.screen().name())
 
+    def remembered_screen(self):
+        return projector_screen(QApplication.screens(), QApplication.primaryScreen(),
+                                self.settings.value('video/screen', ''))
+
     def show_projector(self):
-        screen = self.screen()
+        # While hidden the window's own screen tracks the editor (transient
+        # parent), so re-resolve the remembered monitor on every reveal.
+        screen = self.screen() if self.isVisible() else self.remembered_screen()
         self.setWindowFlag(Qt.FramelessWindowHint, self.projector_fullscreen)
         self.setWindowFlag(Qt.WindowStaysOnTopHint, self.projector_fullscreen)
         self.setScreen(screen)
