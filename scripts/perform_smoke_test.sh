@@ -35,6 +35,28 @@ trap cleanup INT TERM EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# 0. pick_editor_screen unit checks against canned xrandr --listmonitors
+#    bodies (no display needed). Capture monitor is DP-1 at +1080+0.
+THREE_MONITORS=' 0: +DP-3 1080/300x1920/530+0+0  DP-3
+ 1: +*DP-1 1920/480x1080/270+1080+0  DP-1
+ 2: +HDMI-0 1920/480x1080/270+3000+0  HDMI-0'
+TWO_MONITORS=' 0: +DP-3 1080/300x1920/530+0+0  DP-3
+ 1: +*DP-1 1920/480x1080/270+1080+0  DP-1'
+ONE_MONITOR=' 0: +*DP-1 1920/480x1080/270+1080+0  DP-1'
+
+got=$(pick_editor_screen 1080 0 <<<"$THREE_MONITORS") ||
+    fail "pick_editor_screen found nothing with 3 monitors"
+[[ $got == HDMI-0 ]] || fail "3 monitors: expected HDMI-0 (other landscape), got '$got'"
+
+got=$(pick_editor_screen 1080 0 <<<"$TWO_MONITORS") ||
+    fail "pick_editor_screen found nothing with 2 monitors"
+[[ $got == DP-3 ]] || fail "2 monitors: expected DP-3 (portrait fallback), got '$got'"
+
+if got=$(pick_editor_screen 1080 0 <<<"$ONE_MONITOR"); then
+    fail "1 monitor: expected failure, got '$got'"
+fi
+echo "pick_editor_screen: 3/2/1-monitor cases OK"
+
 command -v Xvfb >/dev/null || fail "Xvfb not installed"
 
 Xvfb "$XVFB_DISPLAY" -screen 0 1920x1080x24 &

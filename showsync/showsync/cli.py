@@ -23,6 +23,10 @@ def main(argv=None):
     parser.add_argument('--midi-port', help='MIDI output index or exact name')
     parser.add_argument('--list-devices', action='store_true')
     parser.add_argument('--freeze-gc', action='store_true', help='Freeze startup objects to reduce GC timing pauses')
+    parser.add_argument('--editor-screen', metavar='NAME|INDEX',
+                        help='open the editor window on this screen (xrandr-style name '
+                             'like HDMI-0, or index); the video projector keeps its own '
+                             'remembered screen')
     parser.add_argument('--clock-offset', type=float, metavar='MS',
                         help='MIDI clock offset (-250..250 ms); positive = earlier ticks; this run only')
     parser.add_argument('--export-bundle', metavar='ZIP',
@@ -137,7 +141,8 @@ def main(argv=None):
         return main_loop(document, start_engines=start_engines,
                          remember=remember_setlist,
                          notice=notice, clock_offset_ms=offset,
-                         offset_changed=change_offset, devices=devices)
+                         offset_changed=change_offset, devices=devices,
+                         editor_screen=args.editor_screen)
     except KeyboardInterrupt:
         return 0
     except Exception as exc:

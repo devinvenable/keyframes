@@ -1,5 +1,6 @@
 """Qt desktop shell. Engines publish snapshots; only transport actions write them."""
 from copy import deepcopy
+import logging
 import math
 from pathlib import Path
 import time
@@ -1065,12 +1066,47 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
+def resolve_screen(screens, spec):
+    """Pick a screen by exact xrandr-style name, else by decimal index.
+
+    Name wins over index so a monitor literally named '1' is still reachable.
+    Returns None when spec is None or matches nothing."""
+    if spec is None:
+        return None
+    for screen in screens:
+        if screen.name() == spec:
+            return screen
+    if spec.isdecimal() and int(spec) < len(screens):
+        return screens[int(spec)]
+    return None
+
+
+def place_editor(window, screens, spec):
+    """Move the editor window onto the screen named by --editor-screen.
+
+    Unknown specs warn and leave default placement. The projector window
+    keeps its own remembered screen (see VideoWindow) either way."""
+    if spec is None:
+        return
+    screen = resolve_screen(screens, spec)
+    if screen is None:
+        logging.warning('--editor-screen %r matches no connected screen (%s); '
+                        'using default placement', spec,
+                        ', '.join(s.name() for s in screens))
+        return
+    window.setScreen(screen)
+    window.move(screen.availableGeometry().topLeft())
+
+
 def main_loop(document, *, start_engines, dialogs=None, remember=None, notice='',
-              clock_offset_ms=0, offset_changed=None, devices=None):
+              clock_offset_ms=0, offset_changed=None, devices=None,
+              editor_screen=None):
     app = QApplication.instance() or QApplication(application_arguments())
     window = MainWindow(document, start_engines=start_engines, dialogs=dialogs,
                         remember=remember, notice=notice, clock_offset_ms=clock_offset_ms,
                         offset_changed=offset_changed, devices=devices)
+    if editor_screen is not None:
+        place_editor(window, app.screens(), editor_screen)
     window.show()
     try:
         return app.exec()

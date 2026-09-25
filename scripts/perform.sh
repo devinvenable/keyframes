@@ -14,6 +14,9 @@
 #   Remaining arguments are passed through to ShowSync (setlist path, etc.).
 #
 # Video : the first landscape monitor (same pick as Keyframes fullscreen).
+# Editor: the ShowSync editor opens on a different monitor (via
+#         --editor-screen) so it stays clickable under fullscreen Keyframes;
+#         pass your own --editor-screen to override.
 # Audio : the PipeWire/Pulse default source and/or default sink monitor —
 #         re-route with `pactl set-default-source` / `set-default-sink`
 #         instead of editing this script.
@@ -24,7 +27,7 @@ set -euo pipefail
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 usage() {
-    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Parse `xrandr --listmonitors` and echo "WIDTH HEIGHT XOFF YOFF" for the
@@ -47,6 +50,35 @@ detect_capture_region() {
     done < <(xrandr --listmonitors | tail -n +2)
     if [[ -n $first ]]; then
         echo "$first"
+        return 0
+    fi
+    return 1
+}
+
+# Read `xrandr --listmonitors` body (already stripped of the header line) on
+# stdin and echo the NAME of a monitor other than the capture one, which is
+# identified by its +X+Y offset (args: CAP_X CAP_Y). Prefers another
+# landscape monitor, falls back to any other; returns 1 when the capture
+# monitor is the only one connected. The name matches Qt's QScreen.name(),
+# so it can be passed straight to ShowSync --editor-screen.
+pick_editor_screen() {
+    local cap_x=$1 cap_y=$2 line name geom w h x y fallback=""
+    while IFS= read -r line; do
+        geom=$(awk '{print $3}' <<<"$line")
+        name=$(awk '{print $NF}' <<<"$line")
+        if [[ $geom =~ ^([0-9]+)/[0-9]+x([0-9]+)/[0-9]+\+(-?[0-9]+)\+(-?[0-9]+)$ ]]; then
+            w=${BASH_REMATCH[1]} h=${BASH_REMATCH[2]}
+            x=${BASH_REMATCH[3]} y=${BASH_REMATCH[4]}
+            (( x == cap_x && y == cap_y )) && continue
+            if (( w > h )); then
+                echo "$name"
+                return 0
+            fi
+            [[ -z $fallback ]] && fallback=$name
+        fi
+    done
+    if [[ -n $fallback ]]; then
+        echo "$fallback"
         return 0
     fi
     return 1
@@ -165,6 +197,22 @@ main() {
     }
     read -r w h x y <<<"$region"
     echo "Capture region: ${w}x${h}+${x}+${y} on $DISPLAY"
+
+    # Keep the ShowSync editor off the capture monitor, where fullscreen
+    # always-on-top Keyframes would cover it. Respect an explicit
+    # --editor-screen in the pass-through args.
+    local editor_screen=""
+    if [[ " ${showsync_args[*]-} " == *" --editor-screen"* ]]; then
+        echo "Editor screen: set by caller"
+    elif editor_screen=$(xrandr --listmonitors | tail -n +2 |
+                         pick_editor_screen "$x" "$y"); then
+        echo "Editor screen: $editor_screen"
+        showsync_args+=(--editor-screen "$editor_screen")
+    else
+        echo "NOTE: only one monitor — the ShowSync editor will open under fullscreen"
+        echo "      Keyframes. Start the set via keyboard/MIDI, or press F11 in"
+        echo "      Keyframes to drop it out of fullscreen first."
+    fi
 
     local system_src=""
     if [[ $audio_mode != system ]]; then
