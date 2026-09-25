@@ -57,6 +57,35 @@ if got=$(pick_editor_screen 1080 0 <<<"$ONE_MONITOR"); then
 fi
 echo "pick_editor_screen: 3/2/1-monitor cases OK"
 
+# 0b. detect_video_encoder: env-var override in both directions, invalid
+#     value rejected, and the fallback path — a PATH shim makes the ffmpeg
+#     NVENC probe fail, which must select libx264.
+got=$(PERFORM_VIDEO_ENCODER=libx264 detect_video_encoder) ||
+    fail "detect_video_encoder rejected PERFORM_VIDEO_ENCODER=libx264"
+[[ $got == libx264 ]] || fail "override libx264: got '$got'"
+
+got=$(PERFORM_VIDEO_ENCODER=h264_nvenc detect_video_encoder) ||
+    fail "detect_video_encoder rejected PERFORM_VIDEO_ENCODER=h264_nvenc"
+[[ $got == h264_nvenc ]] || fail "override h264_nvenc: got '$got'"
+
+if got=$(PERFORM_VIDEO_ENCODER=mpeg1video detect_video_encoder 2>/dev/null); then
+    fail "invalid PERFORM_VIDEO_ENCODER accepted (got '$got')"
+fi
+
+mkdir -p "$TMPDIR/fakebin"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMPDIR/fakebin/ffmpeg"
+chmod +x "$TMPDIR/fakebin/ffmpeg"
+got=$(PATH="$TMPDIR/fakebin:$PATH" detect_video_encoder) ||
+    fail "detect_video_encoder errored when the NVENC probe failed"
+[[ $got == libx264 ]] || fail "failed NVENC probe: expected libx264, got '$got'"
+
+# Real-environment probe: use whichever encoder this box provides for the
+# capture run below, so the smoke test exercises the production path.
+encoder=$(detect_video_encoder) || fail "detect_video_encoder failed"
+[[ $encoder == libx264 || $encoder == h264_nvenc ]] ||
+    fail "unexpected encoder '$encoder'"
+echo "detect_video_encoder: overrides + fallback OK (this box: $encoder)"
+
 command -v Xvfb >/dev/null || fail "Xvfb not installed"
 
 Xvfb "$XVFB_DISPLAY" -screen 0 1920x1080x24 &
@@ -82,7 +111,7 @@ else
     mode="usb" expected_audio=1
 fi
 out="$TMPDIR/smoke.mkv"
-build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" "$mode" "$system_src"
+build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" "$mode" "$system_src" "$encoder"
 "${FFMPEG_ARGS[@]}" </dev/null 2>"$out.log" &
 FFMPEG_PID=$!
 sleep 4
@@ -110,4 +139,4 @@ duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$out")
 [[ $duration =~ ^[0-9]+(\.[0-9]+)?$ ]] || fail "non-numeric duration '$duration'"
 awk -v d="$duration" 'BEGIN { exit !(d+0 > 0) }' || fail "duration not > 0 (got '$duration')"
 
-echo "PASS: ${w}x${h} capture, 1 video + $audio_count audio, duration ${duration}s"
+echo "PASS: ${w}x${h} capture ($encoder), 1 video + $audio_count audio, duration ${duration}s"
