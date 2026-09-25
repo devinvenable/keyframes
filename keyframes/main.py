@@ -487,6 +487,12 @@ def set_display_mode(fullscreen, windowed_size, state):
     so every transition explicitly recreates the display surface instead.
     """
     if fullscreen:
+        # SDL iconifies a fullscreen window the moment it loses focus, so the
+        # first click on any other window (the ShowSync editor, a terminal)
+        # would MINIMIZE Keyframes — always-on-top can't reveal an iconified
+        # window. SDL re-reads this hint from the environment on each focus
+        # loss, so setting it here covers windows created earlier too.
+        os.environ['SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS'] = '0'
         display_index, display_w, display_h = choose_landscape_display()
         flags = pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
         screen = pygame.display.set_mode((display_w, display_h), flags,
@@ -496,6 +502,9 @@ def set_display_mode(fullscreen, windowed_size, state):
         display_w, display_h = windowed_size
         screen = pygame.display.set_mode((display_w, display_h), pygame.RESIZABLE)
         pygame.mouse.set_visible(True)
+    # Fullscreen is the performance/reveal layer under the ShowSync projector,
+    # so it must stay above ordinary windows; a windowed toggle stacks normally.
+    set_window_always_on_top(fullscreen)
     target_size = update_display_target_size(state, display_w, display_h)
     return screen, display_w, display_h, target_size
 
@@ -980,9 +989,31 @@ def normalize_drop_paths(raw):
     return paths
 
 
-# Cached X11 connection for pointer queries: (libX11, Display*) once opened,
-# or False after a failed attempt so non-X11 platforms don't retry every drop.
-_x11_pointer_conn = None
+# Cached X11 connection: (libX11, Display*) once opened, or False after a
+# failed attempt so non-X11 platforms don't retry on every use.  Shared by the
+# drop-target pointer query and the always-on-top state setter — one private
+# connection, no SDL internals touched.
+_x11_conn = None
+
+
+def _x11_connection():
+    """Return the cached private (libX11, Display*) pair, or None off-X11."""
+    global _x11_conn
+    if _x11_conn is False:
+        return None
+    if _x11_conn is None:
+        try:
+            xlib = ctypes.CDLL('libX11.so.6')
+            xlib.XOpenDisplay.restype = ctypes.c_void_p
+            xlib.XOpenDisplay.argtypes = [ctypes.c_char_p]
+            display = xlib.XOpenDisplay(None)
+        except Exception:
+            display = None
+        if not display:
+            _x11_conn = False
+            return None
+        _x11_conn = (xlib, display)
+    return _x11_conn
 
 
 def x11_query_pointer():
@@ -994,23 +1025,15 @@ def x11_query_pointer():
     asks the server directly (it ignores the drag source's pointer grab), via a
     private connection so no SDL internals are touched.  Returns None off-X11
     or on any failure; callers fall back to pygame's view."""
-    global _x11_pointer_conn
-    if _x11_pointer_conn is False:
-        return None
+    global _x11_conn
     try:
         window = pygame.display.get_wm_info().get('window')
         if not window:
             return None
-        if _x11_pointer_conn is None:
-            xlib = ctypes.CDLL('libX11.so.6')
-            xlib.XOpenDisplay.restype = ctypes.c_void_p
-            xlib.XOpenDisplay.argtypes = [ctypes.c_char_p]
-            display = xlib.XOpenDisplay(None)
-            if not display:
-                _x11_pointer_conn = False
-                return None
-            _x11_pointer_conn = (xlib, display)
-        xlib, display = _x11_pointer_conn
+        conn = _x11_connection()
+        if conn is None:
+            return None
+        xlib, display = conn
         root = ctypes.c_ulong()
         child = ctypes.c_ulong()
         root_x = ctypes.c_int()
@@ -1028,7 +1051,7 @@ def x11_query_pointer():
             return None
         return win_x.value, win_y.value
     except Exception:
-        _x11_pointer_conn = False
+        _x11_conn = False
         return None
 
 
@@ -1042,6 +1065,98 @@ def drop_pointer_pos():
     if pos is not None:
         return pos
     return pygame.mouse.get_pos()
+
+
+# EWMH client-message constants for _NET_WM_STATE on a mapped window.
+_NET_WM_STATE_REMOVE = 0
+_NET_WM_STATE_ADD = 1
+_X_CLIENT_MESSAGE = 33
+_X_SUBSTRUCTURE_MASKS = (1 << 19) | (1 << 20)  # Notify | Redirect
+
+
+class _XClientMessageEvent(ctypes.Structure):
+    """Just the XClientMessageEvent members, padded out to XEvent's 192 bytes
+    (``long pad[24]``) so libX11 may copy the full union safely."""
+    _fields_ = [('type', ctypes.c_int),
+                ('serial', ctypes.c_ulong),
+                ('send_event', ctypes.c_int),
+                ('display', ctypes.c_void_p),
+                ('window', ctypes.c_ulong),
+                ('message_type', ctypes.c_ulong),
+                ('format', ctypes.c_int),
+                ('data', ctypes.c_long * 5),
+                ('pad', ctypes.c_byte * 104)]
+
+
+def build_wm_state_event(window, state_atom, above_atom, action):
+    """Build the EWMH _NET_WM_STATE client message toggling ABOVE on a window.
+
+    A window that is already mapped ignores direct property writes; the WM only
+    honors a ClientMessage sent to the root window, which is why this exists
+    instead of an XChangeProperty call."""
+    event = _XClientMessageEvent()
+    event.type = _X_CLIENT_MESSAGE
+    event.window = window
+    event.message_type = state_atom
+    event.format = 32
+    event.data[0] = action
+    event.data[1] = above_atom
+    return event
+
+
+def _x11_set_always_on_top(window, on_top):
+    """Ask the X11 window manager to keep ``window`` above normal windows."""
+    conn = _x11_connection()
+    if conn is None:
+        return False
+    xlib, display = conn
+    xlib.XInternAtom.restype = ctypes.c_ulong
+    xlib.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+    state = xlib.XInternAtom(display, b'_NET_WM_STATE', 0)
+    above = xlib.XInternAtom(display, b'_NET_WM_STATE_ABOVE', 0)
+    xlib.XDefaultRootWindow.restype = ctypes.c_ulong
+    xlib.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+    root = xlib.XDefaultRootWindow(display)
+    action = _NET_WM_STATE_ADD if on_top else _NET_WM_STATE_REMOVE
+    event = build_wm_state_event(window, state, above, action)
+    xlib.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int,
+                                ctypes.c_long, ctypes.c_void_p]
+    sent = xlib.XSendEvent(display, root, 0, _X_SUBSTRUCTURE_MASKS,
+                           ctypes.byref(event))
+    xlib.XFlush(ctypes.c_void_p(display))
+    return bool(sent)
+
+
+def _windows_set_always_on_top(hwnd, on_top):
+    """Pin/unpin the window in Windows' topmost band via SetWindowPos."""
+    HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE = 0x0002, 0x0001, 0x0010
+    insert_after = HWND_TOPMOST if on_top else HWND_NOTOPMOST
+    return bool(ctypes.windll.user32.SetWindowPos(
+        hwnd, insert_after, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+
+
+def set_window_always_on_top(on_top):
+    """Set/clear always-on-top on the current display window. Best effort.
+
+    Keyframes runs fullscreen beneath the ShowSync projector (itself fullscreen
+    + always-on-top): the projector raises itself for video and hides after, so
+    Keyframes must outrank every NORMAL window or whatever was clicked last is
+    revealed instead of the visuals.  Fullscreen pins the window above the
+    normal layer; the windowed F11 toggle clears it so a desktop window behaves
+    like one.  Returns True only when the platform call reports success —
+    unsupported platforms/backends (e.g. the dummy video driver, Wayland
+    without XWayland) just return False and the show goes on unpinned."""
+    try:
+        window = pygame.display.get_wm_info().get('window')
+        if not window:
+            return False
+        if sys.platform == 'win32':
+            return _windows_set_always_on_top(window, on_top)
+        return _x11_set_always_on_top(window, on_top)
+    except Exception:
+        return False
 
 
 def import_dropped_file(src):
@@ -1354,19 +1469,12 @@ def main():
 
     last_windowed_size = parse_window_size(args.size)
     fullscreen = not args.windowed
-    if args.windowed:
-        w, h = last_windowed_size
-        screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
-        display_w, display_h = w, h
-    else:
-        display_index, display_w, display_h = choose_landscape_display()
-        flags = pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
-        screen = pygame.display.set_mode((display_w, display_h), flags, display=display_index)
-        pygame.mouse.set_visible(False)
+    # Same path the F11 toggle takes, so launch and toggle agree on flags,
+    # cursor visibility, and the always-on-top state (fullscreen only).
+    screen, display_w, display_h, target_size = set_display_mode(
+        fullscreen, last_windowed_size, {'video_player': None})
 
     pygame.display.set_caption("Keyframes")
-
-    target_size = (display_w, display_h)
 
     # Load media
     note_to_media = load_media(start_note, end_note)
