@@ -110,17 +110,45 @@ system_audio_source() {
     echo "$sink.monitor"
 }
 
+# Echo the video encoder to use: h264_nvenc when the GPU can actually open
+# an encode session, else libx264. A listed encoder is not enough — NVENC
+# can still fail at runtime (sessions exhausted, driver mismatch), so probe
+# with a real 3-frame null encode. Honors PERFORM_VIDEO_ENCODER=libx264|
+# h264_nvenc to skip the probe (used by the smoke test's fallback check).
+detect_video_encoder() {
+    case ${PERFORM_VIDEO_ENCODER:-} in
+        libx264|h264_nvenc)
+            echo "$PERFORM_VIDEO_ENCODER"
+            return 0
+            ;;
+        "") ;;
+        *)
+            echo "ERROR: PERFORM_VIDEO_ENCODER must be libx264 or h264_nvenc" \
+                 "(got '$PERFORM_VIDEO_ENCODER')" >&2
+            return 1
+            ;;
+    esac
+    if ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i color=c=black:s=256x256:r=30 -frames:v 3 \
+            -c:v h264_nvenc -f null - </dev/null >/dev/null 2>&1; then
+        echo h264_nvenc
+    else
+        echo libx264
+    fi
+}
+
 # Fill the global FFMPEG_ARGS array with the capture command:
-#   build_ffmpeg_cmd OUT W H X Y MODE [SYSTEM_SOURCE]
+#   build_ffmpeg_cmd OUT W H X Y MODE [SYSTEM_SOURCE] [ENCODER]
 # MODE is usb|system|both; SYSTEM_SOURCE is the sink monitor name (required
-# for system/both). Audio tracks stay separate (titled "mixer"/"system") so
-# takes can be rebalanced afterwards. Kept as a function so the smoke test
-# runs the exact same invocation (scripts/perform_smoke_test.sh).
+# for system/both); ENCODER is libx264 (default) or h264_nvenc. Audio
+# tracks stay separate (titled "mixer"/"system") so takes can be rebalanced
+# afterwards. Kept as a function so the smoke test runs the exact same
+# invocation (scripts/perform_smoke_test.sh).
 # NOTE: no -nostdin — with it, ffmpeg 7.1 catches but never acts on
 # SIGINT/SIGTERM and the recording needs SIGKILL (losing the trailer).
 # Callers must redirect stdin from /dev/null instead.
 build_ffmpeg_cmd() {
-    local out=$1 w=$2 h=$3 x=$4 y=$5 mode=$6 system_src=${7:-}
+    local out=$1 w=$2 h=$3 x=$4 y=$5 mode=$6 system_src=${7:-} encoder=${8:-libx264}
     FFMPEG_ARGS=(
         ffmpeg -hide_banner -loglevel warning
         -f x11grab -framerate 30 -video_size "${w}x${h}" -i "$DISPLAY+$x,$y"
@@ -148,8 +176,22 @@ build_ffmpeg_cmd() {
             return 1
             ;;
     esac
+    case $encoder in
+        h264_nvenc)
+            # GPU encode keeps the CPU free for Keyframes/ShowSync during a
+            # live take: low-latency tune, VBR with a CRF-like quality target.
+            FFMPEG_ARGS+=(-c:v h264_nvenc -preset p4 -tune ll
+                          -rc vbr -cq 23 -b:v 0 -pix_fmt yuv420p)
+            ;;
+        libx264)
+            FFMPEG_ARGS+=(-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p)
+            ;;
+        *)
+            echo "ERROR: unknown video encoder '$encoder'" >&2
+            return 1
+            ;;
+    esac
     FFMPEG_ARGS+=(
-        -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p
         -c:a aac
         "$out"
     )
@@ -287,8 +329,16 @@ main() {
     }
     trap cleanup INT TERM EXIT
 
+    local encoder
+    encoder=$(detect_video_encoder) || exit 1
+    if [[ $encoder == h264_nvenc ]]; then
+        echo "Video encoder: h264_nvenc (GPU)"
+    else
+        echo "Video encoder: libx264 (CPU — NVENC unavailable)"
+    fi
+
     echo "Recording to: $out (audio: $audio_mode)"
-    build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" "$audio_mode" "$system_src"
+    build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" "$audio_mode" "$system_src" "$encoder"
     "${FFMPEG_ARGS[@]}" </dev/null 2>"$out.log" &
     ffmpeg_pid=$!
 
