@@ -159,7 +159,10 @@ def test_long_stall_resyncs_instead_of_decode_burst(gif_path):
         clock.t += 10.0  # a 10s stall is 100 overdue frames at 10fps
         player.get_frame()
         burst = player.cap.consumed - consumed_before
-        assert burst <= main.MAX_DECODE_CATCHUP + 1
+        # Literal bound, deliberately NOT main.MAX_DECODE_CATCHUP: a
+        # constant-derived bound would move with a broken constant and
+        # pass on an unbounded burst.
+        assert burst <= 10
         # Resynced: the very next call a frame later decodes exactly one.
         clock.t += 0.1
         consumed_before = player.cap.consumed
