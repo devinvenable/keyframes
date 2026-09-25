@@ -339,6 +339,29 @@ def test_start_prerolls_silent_callbacks_before_playback():
         engine.close()
 
 
+def test_first_callback_elevates_its_own_thread_to_sched_rr(monkeypatch):
+    # PortAudio creates the callback thread, so only the callback itself can
+    # request SCHED_RR for it. The first (silent, pre-roll) callback must make
+    # exactly one elevation attempt and store the kernel readback for the log.
+    from showsync import audio
+    calls = []
+
+    def fake_elevate(priority):
+        calls.append(priority)
+        return f'SCHED_RR prio {priority}'
+
+    monkeypatch.setattr(audio, 'elevate_thread', fake_elevate)
+    engine = make_engine()
+    try:
+        engine.prepare()
+        callback(engine, 256)
+        callback(engine, 256)
+        assert calls == [audio.CALLBACK_PRIORITY]  # once, not per callback
+        assert engine._callback_schedule == f'SCHED_RR prio {audio.CALLBACK_PRIORITY}'
+    finally:
+        engine.close()
+
+
 def test_audio_callback_thread_schedule_is_logged(caplog):
     import logging
     engine = make_engine()
