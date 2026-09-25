@@ -18,7 +18,7 @@ import numpy as np
 
 from .setlist import SetlistError, VIDEO_SUFFIXES
 from .media import stream_duration
-from .priority import thread_schedule
+from .priority import CALLBACK_PRIORITY, elevate_thread
 
 RATE = 48_000
 LOG = logging.getLogger(__name__)
@@ -574,9 +574,11 @@ class AudioEngine:
     def _callback(self, output, frames, timing, status):
         self.callbacks += 1
         if self._callback_schedule is None:
-            # One-time kernel readback (two cheap syscalls) on the first,
-            # silent pre-roll callback; the producer thread does the logging.
-            self._callback_schedule = thread_schedule() or 'an unknown policy'
+            # One-time SCHED_RR request + kernel readback (three cheap
+            # syscalls) on the first, silent pre-roll callback. PortAudio
+            # owns this thread, so only the thread itself can elevate it;
+            # the producer thread does the logging.
+            self._callback_schedule = elevate_thread(CALLBACK_PRIORITY)
         layout = self._layout
         stamp = self.now() + (timing.outputBufferDacTime - timing.currentTime)
         output.fill(0)

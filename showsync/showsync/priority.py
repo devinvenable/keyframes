@@ -8,6 +8,26 @@ LOG = logging.getLogger(__name__)
 
 _POLICIES = ('SCHED_OTHER', 'SCHED_FIFO', 'SCHED_RR', 'SCHED_BATCH', 'SCHED_IDLE')
 
+# The audio callback feeds the DAC — the hardest deadline — so it outranks
+# the clock thread's SCHED_RR prio 1.
+CALLBACK_PRIORITY = 2
+
+
+def elevate_thread(priority, api=None):
+    """Request SCHED_RR for the calling thread; return the achieved schedule.
+
+    Never logs and never raises: the audio callback calls this, where logging
+    could block. Denial is folded into the returned readback string so the
+    producer thread can log it as either positive proof or the fallback.
+    """
+    api = os if api is None else api
+    try:
+        api.sched_setscheduler(0, api.SCHED_RR, api.sched_param(priority))
+    except (OSError, AttributeError) as exc:
+        achieved = thread_schedule(api) or 'an unknown policy'
+        return f'{achieved} (SCHED_RR denied: {exc})'
+    return thread_schedule(api) or f'SCHED_RR prio {priority}'
+
 
 def thread_schedule(api=None):
     """Read back the calling thread's achieved policy+priority, or None.

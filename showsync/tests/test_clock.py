@@ -5,7 +5,8 @@ import pytest
 
 from showsync.audio import Position
 from showsync.clock import CLOCK, START, STOP, ClockEngine
-from showsync.priority import raise_thread_priority, thread_schedule
+from showsync.priority import (CALLBACK_PRIORITY, elevate_thread,
+                               raise_thread_priority, thread_schedule)
 from showsync.tempomap import TempoEvent as E, TempoMap
 
 
@@ -186,6 +187,30 @@ def test_thread_schedule_reads_back_policy_and_priority():
     api.policy, api.priority = api.SCHED_RR, 95
     assert thread_schedule(api) == 'SCHED_RR prio 95'
     assert thread_schedule(object()) is None  # no sched API: not an error
+
+
+def test_elevate_thread_grant_reads_back_from_kernel():
+    # The audio callback outranks the clock's prio 1, and the returned
+    # string is a kernel readback, not an echo of the request.
+    api = FakeSchedApi()
+    assert CALLBACK_PRIORITY > 1
+    assert elevate_thread(CALLBACK_PRIORITY, api) == f'SCHED_RR prio {CALLBACK_PRIORITY}'
+    assert (api.policy, api.priority) == (api.SCHED_RR, CALLBACK_PRIORITY)
+
+
+def test_elevate_thread_denial_reports_achieved_fallback():
+    api = FakeSchedApi(deny=True)
+    result = elevate_thread(CALLBACK_PRIORITY, api)
+    assert 'SCHED_OTHER' in result
+    assert 'SCHED_RR denied: denied' in result
+
+
+def test_elevate_thread_without_sched_api_is_nonfatal():
+    # Platforms with no POSIX scheduler (e.g. Windows) must not crash the
+    # audio callback; the log still explains what happened.
+    result = elevate_thread(CALLBACK_PRIORITY, object())
+    assert 'an unknown policy' in result
+    assert 'SCHED_RR denied' in result
 
 
 def test_lead_in_sends_start_but_no_ticks_until_offset():
