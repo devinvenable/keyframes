@@ -49,18 +49,31 @@ class TransportControl:
         return None
 
 
+class TransportInputs:
+    """The set of open transport input ports, closed as one."""
+
+    def __init__(self, inputs):
+        self.inputs = inputs
+
+    def close_port(self):
+        for midi_in in self.inputs:
+            midi_in.close_port()
+        self.inputs = []
+
+
 def connect_transport(owner, control, preferred=None):
-    """Open a MIDI input and route Start/Continue/Stop bytes to `control`.
+    """Open the MIDI inputs and route Start/Continue/Stop bytes to `control`.
 
     `owner` must expose a `transport_received` Qt signal; emitting through it
     hops from the rtmidi callback thread to the GUI thread. Returns the open
-    input port (caller closes it), or None when no input could be opened."""
+    inputs as one closeable object (caller calls close_port()), or None when
+    no input could be opened."""
     try:
-        midi_input = open_midi_input(preferred)
+        inputs = open_midi_inputs(preferred)
     except Exception as exc:
         logging.warning('--midi-transport: could not open MIDI input: %s', exc)
         return None
-    if midi_input is None:
+    if not inputs:
         logging.warning('--midi-transport: no MIDI input port available')
         return None
     owner.transport_received.connect(control.handle)
@@ -71,29 +84,43 @@ def connect_transport(owner, control, preferred=None):
         if message and message[0] in transport_bytes:
             owner.transport_received.emit(message[0])
 
-    midi_input.set_callback(callback)
-    return midi_input
+    for midi_in in inputs:
+        midi_in.set_callback(callback)
+    return TransportInputs(inputs)
 
 
-def open_midi_input(preferred=None):
-    """Open a MIDI input port for transport listening.
+def open_midi_inputs(preferred=None):
+    """Open every hardware MIDI input port for transport listening.
 
-    Prefers an exact match on `preferred` (the configured MIDI output name —
-    the KeyStep arrives through the same interface, so the input side shares
-    its name), else the first hardware port. Returns None when no suitable
-    input exists. Incoming clock/sysex/sensing stay ignored (rtmidi default),
-    so only channel and transport messages reach the callback."""
+    The Start-sending device can enter through any jack of a multi-port
+    interface (a KeyStep behind a TBOX 2x2 shows up on whichever of its two
+    ports it is plugged into), so opening one guessed port risks a set that
+    never starts — open them all; TransportControl.handle is idempotent, so
+    hearing the same byte on several ports is safe. An exact match on
+    `preferred` (the configured MIDI output name) is ordered first but never
+    excludes the rest. Ports named through/virtual/loopback are skipped to
+    avoid our own clock egress looping back. Incoming clock/sysex/sensing
+    stay ignored (rtmidi default), so only channel and transport messages
+    reach the callback."""
     import rtmidi
-    midi_in = rtmidi.MidiIn()
-    ports = midi_in.get_ports()
-    candidates = [i for i, name in enumerate(ports) if name == preferred]
-    if not candidates:
-        candidates = [i for i, name in enumerate(ports)
-                      if not any(word in name.lower()
-                                 for word in ('through', 'virtual', 'loopback'))]
-    if not candidates:
-        midi_in.delete()
-        return None
-    midi_in.open_port(candidates[0])
-    logging.info('MIDI transport input: listening on %r', ports[candidates[0]])
-    return midi_in
+    probe = rtmidi.MidiIn()
+    ports = probe.get_ports()
+    probe.delete()
+    candidates = [i for i, name in enumerate(ports)
+                  if name == preferred
+                  or not any(word in name.lower()
+                             for word in ('through', 'virtual', 'loopback'))]
+    candidates.sort(key=lambda i: ports[i] != preferred)
+    inputs = []
+    for index in candidates:
+        midi_in = rtmidi.MidiIn()
+        try:
+            midi_in.open_port(index)
+        except Exception as exc:
+            logging.warning('MIDI transport input: could not open %r: %s',
+                            ports[index], exc)
+            midi_in.delete()
+            continue
+        logging.info('MIDI transport input: listening on %r', ports[index])
+        inputs.append(midi_in)
+    return inputs

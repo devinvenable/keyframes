@@ -452,9 +452,9 @@ def test_midi_transport_flag_drives_set_like_gui(qtbot, window_factory, monkeypa
             self.closed = True
 
     fake = FakeInput()
-    monkeypatch.setattr(transport, 'open_midi_input', lambda preferred=None: fake)
+    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred=None: [fake])
     w = window_factory(document(tmp_path), midi_transport=True)
-    assert w.midi_input is fake and fake.callback is not None
+    assert w.midi_input is not None and fake.callback is not None
     fake.callback(([0xF8], 0.0))  # clock ticks never reach the handler
     assert w.audio is None
     fake.callback(([0xFA], 0.0))  # KeyStep Play
