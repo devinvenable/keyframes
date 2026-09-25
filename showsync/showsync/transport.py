@@ -49,6 +49,32 @@ class TransportControl:
         return None
 
 
+def connect_transport(owner, control, preferred=None):
+    """Open a MIDI input and route Start/Continue/Stop bytes to `control`.
+
+    `owner` must expose a `transport_received` Qt signal; emitting through it
+    hops from the rtmidi callback thread to the GUI thread. Returns the open
+    input port (caller closes it), or None when no input could be opened."""
+    try:
+        midi_input = open_midi_input(preferred)
+    except Exception as exc:
+        logging.warning('--midi-transport: could not open MIDI input: %s', exc)
+        return None
+    if midi_input is None:
+        logging.warning('--midi-transport: no MIDI input port available')
+        return None
+    owner.transport_received.connect(control.handle)
+    transport_bytes = (START, CONTINUE, STOP)
+
+    def callback(event, _data=None):
+        message = event[0]
+        if message and message[0] in transport_bytes:
+            owner.transport_received.emit(message[0])
+
+    midi_input.set_callback(callback)
+    return midi_input
+
+
 def open_midi_input(preferred=None):
     """Open a MIDI input port for transport listening.
 

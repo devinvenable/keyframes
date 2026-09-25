@@ -11,6 +11,7 @@ from .clock import ClockEngine, open_midi_port
 from .document import Document
 from .devices import Devices
 from .gui import main_loop
+from .headless import headless_loop
 from .midifile import MidiEventsView, load_setlist_events
 from .setlist import SetlistError
 
@@ -27,6 +28,15 @@ def main(argv=None):
                         help='open the editor window on this screen (xrandr-style name '
                              'like HDMI-0, or index); the video projector keeps its own '
                              'remembered screen')
+    parser.add_argument('--headless', action='store_true',
+                        help='run the playback engine and video projector without the '
+                             'editor window; the set must be playable as-is. Exits when '
+                             'the set ends, on Ctrl+C, or on Esc in the projector')
+    parser.add_argument('--autostart', nargs='?', const=3.0, type=float, metavar='SECONDS',
+                        help='start the set automatically after a countdown '
+                             '(default %(const)ss when SECONDS is omitted; write '
+                             '--autostart=N or put the setlist first so the path '
+                             'is not read as the seconds value)')
     parser.add_argument('--midi-transport', action='store_true',
                         help='listen for MIDI realtime Start/Continue/Stop on the MIDI '
                              'input and drive the set like the GUI controls')
@@ -65,6 +75,9 @@ def main(argv=None):
     if args.clock_offset is not None and (not math.isfinite(args.clock_offset) or
                                           not -250 <= args.clock_offset <= 250):
         parser.error('--clock-offset must be between -250 and 250 ms')
+    if args.autostart is not None and (not math.isfinite(args.autostart) or
+                                       not 0 <= args.autostart <= 3600):
+        parser.error('--autostart must be between 0 and 3600 seconds')
     offset = clock_offset_ms() if args.clock_offset is None else args.clock_offset
 
     def change_offset(value):
@@ -137,6 +150,27 @@ def main(argv=None):
             action = 'OPEN SETLIST' if args.setlist else 'REOPEN LAST SETLIST'
             notice = f'COULD NOT {action}: {exc}'
     problem = document.first_problem()
+    if args.headless:
+        # No editor to fix anything with — refuse to start unless playable.
+        if not path:
+            parser.error('--headless needs a setlist (none given and none remembered)')
+        if notice:
+            logging.error('%s', notice)
+            return 1
+        if problem:
+            row, message = problem
+            logging.error('Not playable: %s', f'{row.name}: {message}' if row else message)
+            return 1
+        try:
+            return headless_loop(document, start_engines=start_engines,
+                                 remember=remember_setlist, devices=devices,
+                                 autostart=args.autostart,
+                                 midi_transport=args.midi_transport)
+        except KeyboardInterrupt:
+            return 0
+        except Exception as exc:
+            logging.error('%s', exc)
+            return 1
     if args.setlist and not notice and problem:
         row, message = problem
         notice = f"NOT PLAYABLE YET — {f'{row.name}: ' if row else ''}{message}"
@@ -146,7 +180,8 @@ def main(argv=None):
                          notice=notice, clock_offset_ms=offset,
                          offset_changed=change_offset, devices=devices,
                          editor_screen=args.editor_screen,
-                         midi_transport=args.midi_transport)
+                         midi_transport=args.midi_transport,
+                         autostart=args.autostart)
     except KeyboardInterrupt:
         return 0
     except Exception as exc:

@@ -16,9 +16,11 @@ def projector_screen(screens, primary, name):
 
 
 class VideoWindow(QWidget):
-    def __init__(self, settings, parent=None):
+    def __init__(self, settings, parent=None, on_escape=None):
         super().__init__(parent, Qt.Window)
         self.settings = settings
+        # Headless mode (no editor window) routes Esc here to quit the show.
+        self.on_escape = on_escape
         self.setWindowTitle('ShowSync Video — double-click or F11 for fullscreen')
         self.resize(960, 540)
         self.image = QImage()
@@ -161,7 +163,9 @@ class VideoWindow(QWidget):
         self.toggle_fullscreen()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape and self.isFullScreen():
+        if event.key() == Qt.Key_Escape and self.on_escape is not None:
+            self.on_escape()
+        elif event.key() == Qt.Key_Escape and self.isFullScreen():
             self.toggle_fullscreen()
         else:
             super().keyPressEvent(event)

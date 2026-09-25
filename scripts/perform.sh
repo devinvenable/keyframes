@@ -5,12 +5,15 @@
 # ShowSync and Keyframes. Recording stops cleanly when Keyframes exits (Esc)
 # or on Ctrl+C.
 #
-# Usage: scripts/perform.sh [--audio usb|system|both] [showsync args...]
+# Usage: scripts/perform.sh [--audio usb|system|both] [--headless] [showsync args...]
 #   --audio usb     record only the Pulse default source (mixer USB feed)
 #   --audio system  record only the default sink monitor (system audio,
 #                   i.e. the ShowSync backing tracks)
 #   --audio both    record BOTH as two separate audio tracks (default) so
 #                   takes can be rebalanced later
+#   --headless      run ShowSync without the editor window (engine + projector
+#                   only); skips the --editor-screen placement logic. Combine
+#                   with --autostart [SECONDS] for a fully clickless take.
 #   Remaining arguments are passed through to ShowSync (setlist path, etc.).
 #
 # Video : the first landscape monitor (same pick as Keyframes fullscreen).
@@ -27,7 +30,7 @@ set -euo pipefail
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 usage() {
-    sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Parse `xrandr --listmonitors` and echo "WIDTH HEIGHT XOFF YOFF" for the
@@ -156,9 +159,14 @@ build_ffmpeg_cmd() {
 }
 
 main() {
-    local audio_mode="both" showsync_args=()
+    local audio_mode="both" headless=0 showsync_args=()
     while (( $# )); do
         case $1 in
+            --headless)
+                headless=1
+                showsync_args+=(--headless)
+                shift
+                ;;
             --audio)
                 [[ -n ${2:-} ]] || { echo "ERROR: --audio needs usb|system|both" >&2; exit 1; }
                 audio_mode=$2
@@ -202,7 +210,9 @@ main() {
     # always-on-top Keyframes would cover it. Respect an explicit
     # --editor-screen in the pass-through args.
     local editor_screen=""
-    if [[ " ${showsync_args[*]-} " == *" --editor-screen"* ]]; then
+    if (( headless )); then
+        echo "Editor screen: none (headless — projector only)"
+    elif [[ " ${showsync_args[*]-} " == *" --editor-screen"* ]]; then
         echo "Editor screen: set by caller"
     elif editor_screen=$(xrandr --listmonitors | tail -n +2 |
                          pick_editor_screen "$x" "$y"); then

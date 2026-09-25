@@ -275,7 +275,7 @@ class MainWindow(QMainWindow):
     def __init__(self, document, *, start_engines, dialogs=None, remember=None,
                  estimator=estimate_grid, trim_suggester=suggest_trim, settings=None,
                  notice='', clock_offset_ms=0, offset_changed=None, devices=None,
-                 midi_transport=False):
+                 midi_transport=False, autostart=None):
         super().__init__()
         if dialogs is None:
             from .dialogs import Dialogs
@@ -314,6 +314,9 @@ class MainWindow(QMainWindow):
         self.midi_input = None
         if midi_transport:
             self.enable_midi_transport()
+        if autostart is not None:
+            logging.info('Autostart: set begins in %gs.', autostart)
+            QTimer.singleShot(round(autostart * 1000), self.play)
         self.update_title()
         self.refresh()
         if document.path:
@@ -969,7 +972,7 @@ class MainWindow(QMainWindow):
 
     def enable_midi_transport(self):
         """--midi-transport: hardware Play/Stop drive the set like the GUI."""
-        from .transport import CONTINUE, START, STOP, TransportControl, open_midi_input
+        from .transport import TransportControl, connect_transport
         self.transport = TransportControl(
             is_active=lambda: self.audio is not None,
             is_playing=lambda: (self.audio is not None
@@ -977,23 +980,8 @@ class MainWindow(QMainWindow):
             is_paused=lambda: (self.audio is not None
                                and not (p := self.audio.position()).playing and not p.ended),
             start=self.play, resume=self.pause, stop=self.stop)
-        try:
-            self.midi_input = open_midi_input(self.devices.midi if self.devices else None)
-        except Exception as exc:
-            logging.warning('--midi-transport: could not open MIDI input: %s', exc)
-            return
-        if self.midi_input is None:
-            logging.warning('--midi-transport: no MIDI input port available')
-            return
-        self.transport_received.connect(lambda status: self.transport.handle(status))
-        transport_bytes = (START, CONTINUE, STOP)
-
-        def callback(event, _data=None):
-            message = event[0]
-            if message and message[0] in transport_bytes:
-                self.transport_received.emit(message[0])
-
-        self.midi_input.set_callback(callback)
+        self.midi_input = connect_transport(
+            self, self.transport, self.devices.midi if self.devices else None)
 
     def restart(self):
         if self.audio is not None and (self.audio.position().ended or self.confirm(
@@ -1139,12 +1127,12 @@ def place_editor(window, screens, spec):
 
 def main_loop(document, *, start_engines, dialogs=None, remember=None, notice='',
               clock_offset_ms=0, offset_changed=None, devices=None,
-              editor_screen=None, midi_transport=False):
+              editor_screen=None, midi_transport=False, autostart=None):
     app = QApplication.instance() or QApplication(application_arguments())
     window = MainWindow(document, start_engines=start_engines, dialogs=dialogs,
                         remember=remember, notice=notice, clock_offset_ms=clock_offset_ms,
                         offset_changed=offset_changed, devices=devices,
-                        midi_transport=midi_transport)
+                        midi_transport=midi_transport, autostart=autostart)
     if editor_screen is not None:
         place_editor(window, app.screens(), editor_screen)
     window.show()
