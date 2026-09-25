@@ -71,6 +71,10 @@ def test_cli_autostart_reaches_gui_mode_too(monkeypatch, tmp_path):
 
 
 def test_cli_autostart_rejects_bad_values(monkeypatch, tmp_path):
+    # Stub both loops so a missing bounds check fails the assertion below
+    # instead of launching a real Qt event loop.
+    loop_recorder(monkeypatch, 'headless_loop')
+    loop_recorder(monkeypatch, 'main_loop')
     for bad in ('-1', 'nan', '3601'):
         with pytest.raises(SystemExit):
             cli.main(['--autostart', bad, saved_setlist(tmp_path)])
