@@ -304,6 +304,56 @@ def test_callback_underrun_keeps_frame_counter():
     np.testing.assert_array_equal(out, 0)
 
 
+def test_start_prerolls_silent_callbacks_before_playback():
+    # The stream must run silent warm-up callbacks before playback is
+    # requested, so the set-start burst cannot starve the first audible
+    # callbacks; the timeline still begins at frame 0.
+    class FakeStream:
+        def __init__(self, callback=None, **kwargs):
+            self.callback = callback
+
+        def start(self):
+            for _ in range(3):
+                out = np.empty((256, 2), dtype=np.float32)
+                self.callback(out, 256, SimpleNamespace(currentTime=10, outputBufferDacTime=10.01), False)
+                np.testing.assert_array_equal(out, 0)
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    songs = (Song('one', FIXTURES / 'tone.wav', 120),)
+    engine = AudioEngine(Setlist('test', songs), stream_factory=lambda **kw: FakeStream(**kw))
+    try:
+        begin = time.monotonic()
+        engine.start(warmup=5)
+        assert time.monotonic() - begin < 2  # exits on callbacks, not the timeout
+        assert engine.callbacks >= 2
+        assert engine.frames_played == 0  # pre-roll never advances the timeline
+        assert engine.underruns == 0      # silence warm-up is not an underrun
+        assert engine._requested[0] is True  # playback requested only after warm-up
+        assert engine._callback_schedule     # schedule readback captured for the log
+    finally:
+        engine.close()
+
+
+def test_audio_callback_thread_schedule_is_logged(caplog):
+    import logging
+    engine = make_engine()
+    try:
+        with caplog.at_level(logging.INFO, logger='showsync.audio'):
+            engine.prepare()
+            callback(engine, 256)
+            deadline = time.monotonic() + 5
+            while 'audio callback thread' not in caplog.text and time.monotonic() < deadline:
+                time.sleep(.005)
+        assert f'audio callback thread: {engine._callback_schedule}' in caplog.text
+    finally:
+        engine.close()
+
+
 def test_duration_validation_before_device_open():
     from showsync.tempomap import TempoEvent
     from showsync.setlist import SetlistError

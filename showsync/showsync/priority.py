@@ -4,6 +4,27 @@ import logging
 import os
 import sys
 
+LOG = logging.getLogger(__name__)
+
+_POLICIES = ('SCHED_OTHER', 'SCHED_FIFO', 'SCHED_RR', 'SCHED_BATCH', 'SCHED_IDLE')
+
+
+def thread_schedule(api=None):
+    """Read back the calling thread's achieved policy+priority, or None.
+
+    A good take must carry positive proof of real-time scheduling, so this
+    queries the kernel rather than assuming a successful request stuck.
+    """
+    api = os if api is None else api
+    try:
+        policy = api.sched_getscheduler(0)
+        priority = api.sched_getparam(0).sched_priority
+    except (OSError, AttributeError):
+        return None
+    names = {getattr(api, name): name for name in _POLICIES if hasattr(api, name)}
+    label = names.get(policy, f'policy {policy}')
+    return f'{label} prio {priority}' if priority else label
+
 
 def raise_thread_priority(*, platform=None, windows=None, posix=None):
     platform = sys.platform if platform is None else platform
@@ -15,6 +36,7 @@ def raise_thread_priority(*, platform=None, windows=None, posix=None):
             kernel.SetThreadPriority.restype = ctypes.c_int
             if not kernel.SetThreadPriority(kernel.GetCurrentThread(), 2):
                 raise OSError('SetThreadPriority denied')
+            granted = 'Windows priority ABOVE_NORMAL'
         elif platform == 'darwin':
             lib = posix if posix is not None else ctypes.CDLL(None)
             class SchedParam(ctypes.Structure):
@@ -25,10 +47,15 @@ def raise_thread_priority(*, platform=None, windows=None, posix=None):
             # Darwin SCHED_RR = 2. Permission depends on the login/session policy.
             if lib.pthread_setschedparam(lib.pthread_self(), 2, ctypes.byref(SchedParam(10))):
                 raise OSError('pthread_setschedparam denied')
+            granted = 'SCHED_RR prio 10'
         else:
             api = os if posix is None else posix
             api.sched_setscheduler(0, api.SCHED_RR, api.sched_param(1))
+            granted = thread_schedule(api) or 'SCHED_RR prio 1'
+        LOG.info('clock thread: %s', granted)
         return True
     except (OSError, AttributeError) as exc:
-        logging.getLogger(__name__).info('clock priority unchanged: %s', exc)
+        fallback = thread_schedule(os if posix is None else posix)
+        LOG.info('clock priority unchanged: %s — running %s',
+                 exc, fallback or 'the default policy')
         return False

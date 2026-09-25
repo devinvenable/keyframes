@@ -18,6 +18,7 @@ import numpy as np
 
 from .setlist import SetlistError, VIDEO_SUFFIXES
 from .media import stream_duration
+from .priority import thread_schedule
 
 RATE = 48_000
 LOG = logging.getLogger(__name__)
@@ -334,6 +335,8 @@ class AudioEngine:
         self.maps = MapsView(self)
         self.frames_played = 0
         self.underruns = 0
+        self.callbacks = 0
+        self._callback_schedule = None
         self.error = None
         self._slots = {}
         self._anchors = deque([Anchor(0, 0, -math.inf, False, 0)], maxlen=2048)
@@ -395,7 +398,7 @@ class AudioEngine:
             time.sleep(.005)
         raise TimeoutError('audio prebuffer timed out')
 
-    def start(self):
+    def start(self, warmup=.25):
         self.prepare()
         if self._stream_factory is None:
             import sounddevice as sd
@@ -403,8 +406,17 @@ class AudioEngine:
         self.stream = self._stream_factory(samplerate=RATE, channels=2, dtype='float32',
                                           blocksize=self.blocksize, latency='low',
                                           device=self.device, callback=self._callback)
-        self._requested = (True, 0, 0)
+        # Pre-roll: run the device on silence until a couple of callbacks have
+        # completed, so PortAudio's thread, the callback code path, and its
+        # pages are warm before the timeline starts. The set-start burst
+        # (video decode, MIDI, capture) then cannot starve the first audible
+        # callbacks. Playback still begins at frame 0. Real wall-clock here,
+        # not self.now: injected fake clocks must not stall the wait.
         self.stream.start()
+        deadline = time.monotonic() + warmup
+        while self.callbacks < 2 and time.monotonic() < deadline:
+            time.sleep(.005)
+        self._requested = (True, 0, 0)
 
     def toggle_pause(self):
         playing, serial, target = self._requested
@@ -500,6 +512,7 @@ class AudioEngine:
 
     def _produce(self):
         logged = 0
+        announced = False
         try:
             while not self._halt.is_set():
                 layout = self._layout
@@ -544,6 +557,9 @@ class AudioEngine:
                 # old ring while we reopen a backward target (or a newer request
                 # while this pass is still decoding an earlier serial).
                 self._skip_ready = serial
+                if not announced and self._callback_schedule is not None:
+                    LOG.info('audio callback thread: %s', self._callback_schedule)
+                    announced = True
                 if self.underruns != logged:
                     LOG.warning('audio underrun: %d callback(s); output silence, timeline continues', self.underruns)
                     logged = self.underruns
@@ -556,6 +572,11 @@ class AudioEngine:
                 slot.close()
 
     def _callback(self, output, frames, timing, status):
+        self.callbacks += 1
+        if self._callback_schedule is None:
+            # One-time kernel readback (two cheap syscalls) on the first,
+            # silent pre-roll callback; the producer thread does the logging.
+            self._callback_schedule = thread_schedule() or 'an unknown policy'
         layout = self._layout
         stamp = self.now() + (timing.outputBufferDacTime - timing.currentTime)
         output.fill(0)
