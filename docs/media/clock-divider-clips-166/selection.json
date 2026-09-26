@@ -1,0 +1,136 @@
+{
+  "blend": "/home/devin/src/2026/videdit/work/small for clipping.blend",
+  "archive": "/home/devin/src/2026/midi/songs/demo_with_video.zip",
+  "archive_member": "clock_divider_missing_on_the_one.mp4",
+  "source_fps": "30000/1001",
+  "source_frames": 10101,
+  "selection_basis": "Saved workspace remaining range, using full archived source as explicitly confirmed by Devin via pm-midi-1. Visual selections only; no audio or musical synchronization.",
+  "gif_size": [
+    480,
+    270
+  ],
+  "gif_fps": 15,
+  "gif_loop": 0,
+  "clips": [
+    {
+      "name": "clock-divider-01-circuit-static",
+      "start": 67.0,
+      "duration": 5.0
+    },
+    {
+      "name": "clock-divider-02-tape-machine",
+      "start": 89.5,
+      "duration": 3.0
+    },
+    {
+      "name": "clock-divider-03-submerged-figures",
+      "start": 93.3,
+      "duration": 3.5
+    },
+    {
+      "name": "clock-divider-04-laser-haze",
+      "start": 97.1,
+      "duration": 3.5
+    },
+    {
+      "name": "clock-divider-05-neon-performer",
+      "start": 111.25,
+      "duration": 4
+    },
+    {
+      "name": "clock-divider-06-red-mask",
+      "start": 120.1,
+      "duration": 3.8
+    },
+    {
+      "name": "clock-divider-07-blue-mannequins",
+      "start": 129.25,
+      "duration": 4.5
+    },
+    {
+      "name": "clock-divider-08-smoke-tower",
+      "start": 135,
+      "duration": 3.25
+    },
+    {
+      "name": "clock-divider-09-choir-portal",
+      "start": 139.0,
+      "duration": 3.7
+    },
+    {
+      "name": "clock-divider-10-static-dancers",
+      "start": 145.0,
+      "duration": 5.0
+    },
+    {
+      "name": "clock-divider-11-striped-gateway",
+      "start": 156.3,
+      "duration": 3.4
+    },
+    {
+      "name": "clock-divider-12-light-vortex",
+      "start": 160.75,
+      "duration": 3.5
+    },
+    {
+      "name": "clock-divider-13-magenta-dancer",
+      "start": 165.25,
+      "duration": 1.75
+    },
+    {
+      "name": "clock-divider-14-vintage-faces",
+      "start": 181.2,
+      "duration": 2
+    },
+    {
+      "name": "clock-divider-15-cloud-warp",
+      "start": 193.0,
+      "duration": 6.0
+    },
+    {
+      "name": "clock-divider-16-cube-portal",
+      "start": 215.25,
+      "duration": 1.5
+    },
+    {
+      "name": "clock-divider-17-rotating-gallery",
+      "start": 229.0,
+      "duration": 3.5
+    },
+    {
+      "name": "clock-divider-18-solar-drummer",
+      "start": 237.75,
+      "duration": 2.25
+    },
+    {
+      "name": "clock-divider-19-green-beams",
+      "start": 247.0,
+      "duration": 5.0
+    },
+    {
+      "name": "clock-divider-20-light-corridor",
+      "start": 265.0,
+      "duration": 6.0
+    },
+    {
+      "name": "clock-divider-21-street-kaleidoscope",
+      "start": 274,
+      "duration": 5
+    },
+    {
+      "name": "clock-divider-22-color-orbits",
+      "start": 311.0,
+      "duration": 8.0
+    },
+    {
+      "name": "clock-divider-23-grid-hand",
+      "start": 321.0,
+      "duration": 6.0
+    },
+    {
+      "name": "clock-divider-24-negative-grid",
+      "start": 329.0,
+      "duration": 2.5
+    }
+  ]
+}
