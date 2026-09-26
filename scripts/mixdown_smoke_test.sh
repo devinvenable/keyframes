@@ -48,8 +48,8 @@ mean_volume() {
 louder_than() { awk -v v="$1" -v t="$2" 'BEGIN { exit !(v > t) }'; }
 
 # Assert OUT has 1 h264 video + 1 aac audio and a duration close to 2s.
-# The video packet count must match the input's — the only cheap property
-# that survives -c:v copy but not a silent re-encode.
+# The video BITSTREAM md5 must match the input's: it survives the
+# mkv->mp4 remux under -c:v copy but no re-encode can reproduce it.
 assert_mixdown_shape() {
     local out=$1 in=$2 label=$3 streams vc ac dur pin pout
     [[ -s $out ]] || fail "$label: no output written"
@@ -62,12 +62,10 @@ assert_mixdown_shape() {
     dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$out")
     awk -v d="$dur" 'BEGIN { exit !(d >= 1.5 && d <= 3.0) }' ||
         fail "$label: duration '$dur' not ~2s"
-    pin=$(ffprobe -v error -count_packets -select_streams v:0 \
-        -show_entries stream=nb_read_packets -of csv=p=0 "$in")
-    pout=$(ffprobe -v error -count_packets -select_streams v:0 \
-        -show_entries stream=nb_read_packets -of csv=p=0 "$out")
-    [[ $pin == "$pout" ]] ||
-        fail "$label: video packet count changed ($pin -> $pout) — video was re-encoded?"
+    pin=$(ffmpeg -v error -i "$in" -map 0:v:0 -c copy -f md5 - </dev/null)
+    pout=$(ffmpeg -v error -i "$out" -map 0:v:0 -c copy -f md5 - </dev/null)
+    [[ -n $pin && $pin == "$pout" ]] ||
+        fail "$label: video bitstream changed ($pin -> $pout) — video was re-encoded"
     echo "$label: OK (1 h264 copy + 1 aac, ${dur}s)"
 }
 
