@@ -198,6 +198,22 @@ def test_trim_is_beat_zero_of_the_tempo_map(tmp_path):
     assert tempo.B(1.5) == 0
 
 
+def test_trimmed_ambient_bed_interlude(tmp_path):
+    # The live set's transition shape (T173): a 25s beatless bed trimmed to an
+    # 8s heard length, carrying the outgoing->incoming ramp so the tempo has
+    # settled on the target before the bar-quantized boundary Stop/Start.
+    path = write(tmp_path, dict(name='Rise', file='song.wav', bpm=112.003456, trim=17,
+                                tempo=[dict(at=18, bpm=120, ramp=6)]))
+    song = load_setlist(path, duration_probe=lambda _: 25).songs[0]
+    heard = 25 - song.trim
+    assert heard == pytest.approx(8)
+    tempo = song.tempo_map(heard)
+    assert tempo.bpm_at(0) == pytest.approx(112.003456)
+    assert tempo.bpm_at(4) == pytest.approx(116.001728)  # mid-ramp glide
+    assert tempo.bpm_at(7) == 120  # ramp lands a second before the boundary
+    assert tempo.bpm_at(heard) == 120
+
+
 def test_trim_shifts_tempo_events_with_the_timeline(tmp_path):
     trimmed = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, trim=2,
                                    tempo=[dict(at=10, bpm=140, ramp=20)]))
