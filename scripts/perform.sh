@@ -370,14 +370,13 @@ start_babysitter() {
 build_ffmpeg_cmd() {
     local out=$1 w=$2 h=$3 x=$4 y=$5 mode=$6 system_src=${7:-} encoder=${8:-libx264}
     local mixer_src=${9:-default}
-    # thread_queue_size on EVERY input: each input demuxes on its own thread
-    # into a packet queue the muxer drains. The default queue (8 packets) is
-    # tiny — when the muxer briefly blocks on one input, the x11grab queue
-    # fills and frames are dropped at the source (T170: takes came out at
-    # ~13fps effective with the live projector fine). Audio packets are
-    # small, so a deep audio queue is nearly free; the video queue holds
-    # raw frames by reference, so 64 (~2s at 30fps) bounds worst-case
-    # memory while riding out encoder/mux stalls.
+    # Bound buffering on every input. Queues alone do not prevent the T175
+    # stalls: FFmpeg opens live inputs sequentially and otherwise rebases
+    # each to zero, losing their different wallclock start times. With two
+    # Pulse inputs that made FFmpeg 7.1 throttle video to ~13fps. -isync 0
+    # (requires FFmpeg >=5.1) aligns BOTH audio inputs to x11grab's clock;
+    # keep Pulse's default wallclock=1. The resulting audio start offsets
+    # are real and must be preserved when mixing (see mixdown.sh).
     FFMPEG_ARGS=(
         ffmpeg -hide_banner -loglevel warning
         -f x11grab -framerate "$CAPTURE_FPS" -video_size "${w}x${h}"
@@ -385,18 +384,18 @@ build_ffmpeg_cmd() {
     )
     case $mode in
         usb)
-            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -i "$mixer_src"
+            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -isync 0 -i "$mixer_src"
                           -map 0:v -map 1:a
                           -metadata:s:a:0 title=mixer)
             ;;
         system)
-            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -i "$system_src"
+            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -isync 0 -i "$system_src"
                           -map 0:v -map 1:a
                           -metadata:s:a:0 title=system)
             ;;
         both)
-            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -i "$mixer_src"
-                          -f pulse -thread_queue_size 4096 -i "$system_src"
+            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -isync 0 -i "$mixer_src"
+                          -f pulse -thread_queue_size 4096 -isync 0 -i "$system_src"
                           -map 0:v -map 1:a -map 2:a
                           -metadata:s:a:0 title=mixer
                           -metadata:s:a:1 title=system)
@@ -649,9 +648,8 @@ main() {
                      "${mixer_src:-default}"
     # ionice only — no nice. Audio is protected by priority CLASS now:
     # PipeWire's data-loop runs SCHED_RR (canon midi:I41/I42), which beats
-    # any SCHED_OTHER nice level outright, so nicing ffmpeg protected
-    # nothing and only made x11grab lose CPU races under take load —
-    # recorded takes dropped to ~13fps effective (T170). ionice stays:
+    # any SCHED_OTHER nice level outright. T170 removed CPU niceness;
+    # T175 fixes the remaining multi-input timestamp stalls above. ionice stays:
     # keeping the mkv writes in best-effort/lowest IO priority is free for
     # the grab loop (capture IO is buffered writeback) and still yields the
     # disk to sample streaming. ionice execs through, so $! and

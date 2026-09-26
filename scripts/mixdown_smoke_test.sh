@@ -137,4 +137,35 @@ grep -q "must be a number" "$TMPDIR/gain.err" ||
 "$MIXDOWN" -y "$TAKE" >/dev/null || fail "-y refused to overwrite"
 echo "failure paths: OK (no-audio, bad gain, missing input, no-clobber)"
 
+# 6. Live inputs have different real start times. Both brief tones must
+# remain at their original positions, including when the mixer starts last.
+# PCM fixtures avoid AAC priming obscuring the deliberately staggered PTS.
+for offsets in '0.25 0.85' '0.85 0.25'; do
+    read -r mixer_start system_start <<<"$offsets"
+    staggered="$TMPDIR/staggered_${mixer_start}.mkv"
+    mixed="$TMPDIR/staggered_${mixer_start}.mp4"
+    ffmpeg -hide_banner -loglevel error \
+        -f lavfi -i 'color=black:size=320x240:rate=30:duration=2' \
+        -itsoffset "$mixer_start" -f lavfi -i 'sine=f=440:r=48000:d=0.2' \
+        -itsoffset "$system_start" -f lavfi -i 'sine=f=880:r=48000:d=0.2' \
+        -map 0:v -map 1:a -map 2:a -c:v libx264 -preset ultrafast \
+        -c:a pcm_s16le -metadata:s:a:0 title=mixer -metadata:s:a:1 title=system \
+        "$staggered"
+    "$MIXDOWN" -o "$mixed" "$staggered" >/dev/null || fail "staggered mixdown failed"
+    assert_mixdown_shape "$mixed" "$staggered" "staggered $offsets"
+    for window in '0.05 0.15 silent' '0.30 0.40 tone' '0.55 0.65 silent' '0.90 1.00 tone'; do
+        read -r start end expected <<<"$window"
+        vol=$(ffmpeg -hide_banner -i "$mixed" -map 0:a:0 \
+            -af "atrim=start=$start:end=$end,volumedetect" -f null - 2>&1 |
+            sed -n 's/.*mean_volume: \(-\{0,1\}[0-9.]*\) dB.*/\1/p')
+        [[ -n $vol ]] || fail "staggered $offsets: missing samples at $start..$end"
+        if [[ $expected == tone ]]; then
+            louder_than "$vol" -40 || fail "staggered $offsets: lost tone at $start..$end ($vol dB)"
+        else
+            louder_than "$vol" -70 && fail "staggered $offsets: moved tone into $start..$end ($vol dB)"
+        fi
+    done
+done
+echo "staggered timestamps: OK (leading silence and both tone positions preserved)"
+
 echo "PASS: mixdown.sh — default mix, gain routing, single-track, loudnorm, failure paths"

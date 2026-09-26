@@ -112,15 +112,15 @@ echo "detect_video_encoder: overrides + fallback OK (this box: $encoder)"
 #     to the mixer pulse input (usb and both modes) and keep the Pulse
 #     default when unset. DISPLAY may be unset before Xvfb starts.
 DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 both sink.monitor libx264 my_usb_mixer
-[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -i my_usb_mixer "* ]] ||
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -isync 0 -i my_usb_mixer "* ]] ||
     fail "both mode ignored the mixer source (args: ${FFMPEG_ARGS[*]})"
-[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -i sink.monitor "* ]] ||
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -isync 0 -i sink.monitor "* ]] ||
     fail "both mode lost the system source (args: ${FFMPEG_ARGS[*]})"
 DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 usb "" libx264 my_usb_mixer
-[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -i my_usb_mixer "* ]] ||
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -isync 0 -i my_usb_mixer "* ]] ||
     fail "usb mode ignored the mixer source (args: ${FFMPEG_ARGS[*]})"
 DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 usb "" libx264
-[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -i default "* ]] ||
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -isync 0 -i default "* ]] ||
     fail "usb mode without a mixer source must record the Pulse default"
 
 # Every input needs its own -thread_queue_size: a full default-size (8
@@ -264,7 +264,7 @@ read -r w h x y <<<"$region"
 echo "Detected region: ${w}x${h}+${x}+${y}"
 [[ $w == 1920 && $h == 1080 ]] || fail "expected 1920x1080, got ${w}x${h}"
 
-# 2. Record ~4 seconds in --audio both mode using the exact command
+# 2. Record ~8 seconds in --audio both mode using the exact command
 #    perform.sh runs (falls back to usb mode if no sink monitor exists).
 mode="both" system_src=""
 if system_src=$(system_audio_source); then
@@ -277,7 +277,7 @@ out="$TMPDIR/smoke.mkv"
 build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" "$mode" "$system_src" "$encoder"
 "${FFMPEG_ARGS[@]}" </dev/null 2>"$out.log" &
 FFMPEG_PID=$!
-sleep 4
+sleep 8
 kill -0 "$FFMPEG_PID" 2>/dev/null || { cat "$out.log" >&2; fail "ffmpeg exited early"; }
 kill -INT "$FFMPEG_PID"
 # Graceful SIGINT must finish quickly; a hang here means the -nostdin
@@ -301,6 +301,14 @@ audio_count=$(grep -c '^audio$' <<<"$streams" || true)
 duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$out")
 [[ $duration =~ ^[0-9]+(\.[0-9]+)?$ ]] || fail "non-numeric duration '$duration'"
 awk -v d="$duration" 'BEGIN { exit !(d+0 > 0) }' || fail "duration not > 0 (got '$duration')"
+
+# Exercise the live multi-input path, not just synthetic health fixtures:
+# a valid MKV can still have the T175 repeating capture stalls.
+stats=$(capture_health_stats "$out") || fail "live capture health unavailable"
+IFS=$'\t' read -r frames efps gaps maxgap <<<"$stats"
+awk -v e="$efps" 'BEGIN { exit !(e >= 27) }' ||
+    fail "live $mode capture: ${efps}fps <27 ($frames frames, $gaps gaps, max ${maxgap}ms)"
+echo "Live capture health: ${efps}fps, $gaps gaps >100ms, max ${maxgap}ms"
 
 echo "PASS: ${w}x${h} capture ($encoder), 1 video + $audio_count audio, duration ${duration}s"
 
