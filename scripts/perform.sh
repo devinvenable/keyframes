@@ -411,12 +411,15 @@ build_ffmpeg_cmd() {
             # live take: low-latency tune, VBR with a CRF-like quality target.
             # -g 60: keyframe every 2s — without it NVENC emits a single IDR
             # for the whole take, making cuts/scrubbing impossible (T177).
+            # Bitrate-capped at ~4.6Mbps (Devin 2026-09-26): keeps takes
+            # small enough to cut and share without a re-encode pass.
             FFMPEG_ARGS+=(-c:v h264_nvenc -preset p4 -tune ll -g 60
-                          -rc vbr -cq 23 -b:v 0 -pix_fmt yuv420p)
+                          -rc vbr -cq 23 -b:v 4600k -maxrate 5500k
+                          -pix_fmt yuv420p)
             ;;
         libx264)
             FFMPEG_ARGS+=(-c:v libx264 -preset veryfast -crf 23 -g 60
-                          -pix_fmt yuv420p)
+                          -maxrate 5500k -bufsize 11M -pix_fmt yuv420p)
             ;;
         *)
             echo "ERROR: unknown video encoder '$encoder'" >&2
