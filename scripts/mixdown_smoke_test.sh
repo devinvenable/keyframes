@@ -125,8 +125,13 @@ VIDONLY="$TMPDIR/videoonly.mkv"
 ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=320x240:rate=30" \
     -t 1 -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$VIDONLY"
 "$MIXDOWN" "$VIDONLY" >/dev/null 2>&1 && fail "a video-only file was accepted"
-"$MIXDOWN" --mixer-gain 'foo;volume' "$TAKE" >/dev/null 2>&1 &&
+# The gain must be rejected by mixdown.sh's own validation (clear error,
+# no ffmpeg run) — not merely crash ffmpeg's filtergraph parser: a value
+# ffmpeg would swallow could rewire the graph silently.
+"$MIXDOWN" --mixer-gain 'foo;volume' "$TAKE" >/dev/null 2>"$TMPDIR/gain.err" &&
     fail "a non-numeric gain was accepted"
+grep -q "must be a number" "$TMPDIR/gain.err" ||
+    fail "bad gain was not caught by check_gain (stderr: $(cat "$TMPDIR/gain.err"))"
 "$MIXDOWN" "$TMPDIR/no_such_take.mkv" >/dev/null 2>&1 && fail "a missing input was accepted"
 "$MIXDOWN" "$TAKE" >/dev/null 2>&1 && fail "an existing output was overwritten without -y"
 "$MIXDOWN" -y "$TAKE" >/dev/null || fail "-y refused to overwrite"
