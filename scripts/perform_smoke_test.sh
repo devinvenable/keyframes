@@ -112,16 +112,26 @@ echo "detect_video_encoder: overrides + fallback OK (this box: $encoder)"
 #     to the mixer pulse input (usb and both modes) and keep the Pulse
 #     default when unset. DISPLAY may be unset before Xvfb starts.
 DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 both sink.monitor libx264 my_usb_mixer
-[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -i my_usb_mixer "* ]] ||
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -i my_usb_mixer "* ]] ||
     fail "both mode ignored the mixer source (args: ${FFMPEG_ARGS[*]})"
-[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -i sink.monitor "* ]] ||
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -i sink.monitor "* ]] ||
     fail "both mode lost the system source (args: ${FFMPEG_ARGS[*]})"
 DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 usb "" libx264 my_usb_mixer
-[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -i my_usb_mixer "* ]] ||
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -i my_usb_mixer "* ]] ||
     fail "usb mode ignored the mixer source (args: ${FFMPEG_ARGS[*]})"
 DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 usb "" libx264
-[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -i default "* ]] ||
+[[ " ${FFMPEG_ARGS[*]} " == *" -f pulse -thread_queue_size 4096 -i default "* ]] ||
     fail "usb mode without a mixer source must record the Pulse default"
+
+# Every input needs its own -thread_queue_size: a full default-size (8
+# packet) queue on ANY input blocks the muxer and makes x11grab drop
+# frames at the source (T170: takes recorded at ~13fps effective).
+DISPLAY=${DISPLAY:-:0} build_ffmpeg_cmd out.mkv 100 100 0 0 both sink.monitor libx264
+tqs_count=$(printf '%s\n' "${FFMPEG_ARGS[@]}" | grep -cx -- '-thread_queue_size') || tqs_count=0
+input_count=$(printf '%s\n' "${FFMPEG_ARGS[@]}" | grep -cx -- '-i') || input_count=0
+[[ $input_count == 3 ]] || fail "both mode: expected 3 inputs, got $input_count"
+[[ $tqs_count == "$input_count" ]] ||
+    fail "expected -thread_queue_size on all $input_count inputs, found $tqs_count"
 
 # 0d. check_mixer_source: a known name passes, a typo aborts (it would
 #     record silence for the whole take), and a broken pactl only warns.
@@ -190,6 +200,54 @@ got=$(resolve_mixer_source "$TMPDIR/no_such.conf" 2>&1) ||
     fail "resolve_mixer_source failed with no conf file"
 [[ -z $got ]] || fail "missing conf must yield the Pulse default, got '$got'"
 echo "mixer-source: detect/resolve via perform.conf OK"
+
+# 0f. capture_health_stats / report_capture_health against synthetic
+#     fixtures with KNOWN timing: a clean constant-30fps clip must read
+#     ~30fps with zero gaps and no warning; a clip with frames 30..89
+#     dropped (pts passthrough keeps the original clock, leaving one ~2s
+#     hole) must be flagged — this is the reference shape of the T170
+#     droppy takes (perform_20260925_200909.mkv: 13fps effective).
+CLEAN_MKV="$TMPDIR/health_clean.mkv"
+DROPPY_MKV="$TMPDIR/health_droppy.mkv"
+ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=r=30:s=64x64:d=2 \
+    -c:v libx264 -preset ultrafast "$CLEAN_MKV" </dev/null ||
+    fail "could not build the clean health fixture"
+ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=r=30:s=64x64:d=4 \
+    -vf "select='lt(n,30)+gte(n,90)'" -fps_mode passthrough \
+    -c:v libx264 -preset ultrafast "$DROPPY_MKV" </dev/null ||
+    fail "could not build the droppy health fixture"
+
+stats=$(capture_health_stats "$CLEAN_MKV") ||
+    fail "capture_health_stats failed on the clean fixture"
+IFS=$'\t' read -r frames efps gaps maxgap <<<"$stats"
+[[ $frames == 60 ]] || fail "clean fixture: expected 60 frames, got $frames"
+[[ $gaps == 0 ]] || fail "clean fixture: expected 0 gaps >100ms, got $gaps"
+awk -v e="$efps" 'BEGIN { exit !(e >= 28 && e <= 32) }' ||
+    fail "clean fixture: effective fps $efps not ~30"
+
+stats=$(capture_health_stats "$DROPPY_MKV") ||
+    fail "capture_health_stats failed on the droppy fixture"
+IFS=$'\t' read -r frames efps gaps maxgap <<<"$stats"
+[[ $frames == 60 ]] || fail "droppy fixture: expected 60 kept frames, got $frames"
+[[ $gaps == 1 ]] || fail "droppy fixture: expected exactly 1 gap >100ms, got $gaps"
+awk -v g="$maxgap" 'BEGIN { exit !(g >= 1900 && g <= 2200) }' ||
+    fail "droppy fixture: max gap ${maxgap}ms not ~2000ms"
+awk -v e="$efps" 'BEGIN { exit !(e < 20) }' ||
+    fail "droppy fixture: effective fps $efps should be well under nominal"
+
+report=$(report_capture_health "$CLEAN_MKV")
+grep -q "Capture health: 60 frames" <<<"$report" ||
+    fail "clean fixture report missing the health line: $report"
+grep -q "WARNING" <<<"$report" &&
+    fail "clean fixture report must not warn: $report"
+report=$(report_capture_health "$DROPPY_MKV")
+grep -q "WARNING: capture dropped frames" <<<"$report" ||
+    fail "droppy fixture report did not warn: $report"
+report=$(report_capture_health "$TMPDIR/no_such_file.mkv") ||
+    fail "report_capture_health must not fail on an unreadable file"
+grep -q "Capture health: unavailable" <<<"$report" ||
+    fail "unreadable file must report health as unavailable: $report"
+echo "capture health: clean/droppy/unreadable fixtures OK"
 
 command -v Xvfb >/dev/null || fail "Xvfb not installed"
 
@@ -338,6 +396,8 @@ grep -q "removing stale capture lock" "$OUT_NORMAL/run.log" ||
     fail "stale lock was not reported/removed (run.log lacks the note)"
 grep -q "Recording saved" "$OUT_NORMAL/run.log" ||
     { cat "$OUT_NORMAL/run.log" >&2; fail "normal run did not report a saved recording"; }
+grep -q "Capture health: [0-9]* frames" "$OUT_NORMAL/run.log" ||
+    { cat "$OUT_NORMAL/run.log" >&2; fail "normal run summary lacks the capture-health line"; }
 file_gone "$OUT_NORMAL/.perform.lock" || fail "normal run left the lock behind"
 assert_valid_mkv "$OUT_NORMAL" "normal+stale-lock"
 
