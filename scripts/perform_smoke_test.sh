@@ -139,6 +139,58 @@ PATH="$TMPDIR/fakepactl:$PATH" check_mixer_source anything >/dev/null 2>&1 ||
     fail "check_mixer_source must not abort when pactl itself fails"
 echo "mixer-source: build_ffmpeg_cmd + check_mixer_source OK"
 
+# 0e. detect_mixer_source + resolve_mixer_source: the config-file default
+#     path (Behringer pattern). Fake pactl lists a webcam, a sink monitor
+#     whose name would match the pattern, and the Behringer line-in.
+cat > "$TMPDIR/fakepactl/pactl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' \
+    $'1\talsa_input.usb-C922_Pro_Stream_Webcam-02.analog-stereo\tmodule' \
+    $'2\talsa_output.usb-Burr-Brown_from_TI_USB_Audio_CODEC-00.analog-stereo.monitor\tmodule' \
+    $'3\talsa_input.usb-Burr-Brown_from_TI_USB_Audio_CODEC-00.analog-stereo-input\tmodule'
+EOF
+chmod +x "$TMPDIR/fakepactl/pactl"
+
+got=$(PATH="$TMPDIR/fakepactl:$PATH" detect_mixer_source 'Burr-Brown|USB_Audio_CODEC') ||
+    fail "detect_mixer_source found no Behringer in the fake source list"
+[[ $got == alsa_input.usb-Burr-Brown_from_TI_USB_Audio_CODEC-00.analog-stereo-input ]] ||
+    fail "detect_mixer_source picked '$got' (must skip .monitor and the webcam)"
+if got=$(PATH="$TMPDIR/fakepactl:$PATH" detect_mixer_source 'No_Such_Device'); then
+    fail "detect_mixer_source matched a nonexistent pattern (got '$got')"
+fi
+
+# The shipped conf must resolve to the Behringer against the fake list.
+got=$(PATH="$TMPDIR/fakepactl:$PATH" resolve_mixer_source "$HERE/perform.conf") ||
+    fail "resolve_mixer_source failed on the shipped perform.conf"
+[[ $got == alsa_input.usb-Burr-Brown_from_TI_USB_Audio_CODEC-00.analog-stereo-input ]] ||
+    fail "shipped perform.conf resolved to '$got', not the Behringer line-in"
+
+# Device absent (pattern matches nothing): must echo NOTHING (fall back to
+# the Pulse default) and warn, never abort — mixer unplugged is recordable.
+printf '#!/usr/bin/env bash\nprintf "1\\tsome_other_source\\tmodule\\n"\n' \
+    > "$TMPDIR/fakepactl/pactl"
+got=$(PATH="$TMPDIR/fakepactl:$PATH" resolve_mixer_source "$HERE/perform.conf" 2>"$TMPDIR/resolve.err") ||
+    fail "resolve_mixer_source aborted when the pattern matched nothing"
+[[ -z $got ]] || fail "absent device must fall back to default, got '$got'"
+grep -q "falling back to the Pulse default" "$TMPDIR/resolve.err" ||
+    fail "absent-device fallback did not warn"
+
+# Exact MIXER_SOURCE in the conf: present -> chosen; absent -> fallback.
+printf 'MIXER_SOURCE=some_other_source\n' > "$TMPDIR/exact.conf"
+got=$(PATH="$TMPDIR/fakepactl:$PATH" resolve_mixer_source "$TMPDIR/exact.conf") ||
+    fail "resolve_mixer_source failed on an exact MIXER_SOURCE conf"
+[[ $got == some_other_source ]] || fail "exact MIXER_SOURCE ignored (got '$got')"
+printf 'MIXER_SOURCE=unplugged_device\n' > "$TMPDIR/exact.conf"
+got=$(PATH="$TMPDIR/fakepactl:$PATH" resolve_mixer_source "$TMPDIR/exact.conf" 2>/dev/null) ||
+    fail "resolve_mixer_source aborted on an absent MIXER_SOURCE"
+[[ -z $got ]] || fail "absent MIXER_SOURCE must fall back to default, got '$got'"
+
+# No conf file at all: silently defer to the Pulse default source.
+got=$(resolve_mixer_source "$TMPDIR/no_such.conf" 2>&1) ||
+    fail "resolve_mixer_source failed with no conf file"
+[[ -z $got ]] || fail "missing conf must yield the Pulse default, got '$got'"
+echo "mixer-source: detect/resolve via perform.conf OK"
+
 command -v Xvfb >/dev/null || fail "Xvfb not installed"
 
 Xvfb "$XVFB_DISPLAY" -screen 0 1920x1080x24 &
@@ -227,7 +279,7 @@ launch_perform() {
     local outdir=$1
     shift
     setsid env "$@" PERFORM_PYTHON="$STUB" PERFORM_OUTDIR="$outdir" \
-        PERFORM_VIDEO_ENCODER=libx264 \
+        PERFORM_VIDEO_ENCODER=libx264 PERFORM_CONF="$TMPDIR/lifecycle-no.conf" \
         python3 -c 'import signal, os, sys
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 os.execvp(sys.argv[1], sys.argv[1:])' \

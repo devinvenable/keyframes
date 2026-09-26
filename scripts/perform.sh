@@ -14,7 +14,7 @@
 #   --audio both    record BOTH as two separate audio tracks (default) so
 #                   takes can be rebalanced later
 #   --mixer-source NAME  record this pactl source as the mixer track instead
-#                   of the Pulse default source (env: PERFORM_MIXER_SOURCE);
+#                   of the configured/default source (env: PERFORM_MIXER_SOURCE);
 #                   `pactl list short sources` lists the names
 #   --headless      run ShowSync without the editor window (engine + projector
 #                   only); skips the --editor-screen placement logic. Combine
@@ -25,10 +25,13 @@
 # Editor: the ShowSync editor opens on a different monitor (via
 #         --editor-screen) so it stays clickable under fullscreen Keyframes;
 #         pass your own --editor-screen to override.
-# Audio : the mixer source (--mixer-source, else the PipeWire/Pulse default
-#         source) and/or the default sink monitor — re-route with
-#         `pactl set-default-source` / `set-default-sink` or --mixer-source
-#         instead of editing this script.
+# Audio : the mixer source and/or the default sink monitor. The mixer
+#         source is picked, in order: --mixer-source / PERFORM_MIXER_SOURCE,
+#         scripts/perform.conf (MIXER_SOURCE exact name, else the first
+#         non-monitor source matching MIXER_SOURCE_PATTERN — ships matching
+#         the Behringer's Burr-Brown USB codec), else the PipeWire/Pulse
+#         default source. A configured device that is absent falls back to
+#         the default source with a warning instead of aborting.
 # Output: recordings/perform_YYYYmmdd_HHMMSS.mkv
 #
 # Only one capture at a time: recordings/.perform.lock holds the pid of the
@@ -39,6 +42,7 @@
 #
 # Test hooks (used by scripts/perform_smoke_test.sh):
 #   PERFORM_OUTDIR         override the recordings/ output directory
+#   PERFORM_CONF           override the scripts/perform.conf path
 #   PERFORM_PYTHON         override the python used for ShowSync/Keyframes
 #   PERFORM_VIDEO_ENCODER  skip the NVENC probe (libx264|h264_nvenc)
 
@@ -47,7 +51,7 @@ set -euo pipefail
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 usage() {
-    sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,41p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Parse `xrandr --listmonitors` and echo "WIDTH HEIGHT XOFF YOFF" for the
@@ -138,6 +142,50 @@ check_mixer_source() {
         return 1
     fi
     echo "Mixer audio source: $src"
+}
+
+# Echo the first non-monitor pulse source whose name matches the ERE $1.
+# Matches by NAME only — a SUSPENDED source (the Behringer idles that way)
+# is still a valid capture target; pactl/pipewire resume it on open.
+# Returns 1 when pactl fails or nothing matches.
+detect_mixer_source() {
+    local pattern=$1 names
+    names=$(pactl list short sources 2>/dev/null | cut -f2) || return 1
+    grep -E -- "$pattern" <<<"$names" | grep -v '\.monitor$' | head -n1 | grep .
+}
+
+# Resolve the mixer source when neither --mixer-source nor
+# PERFORM_MIXER_SOURCE was given: source the config file $1, which may set
+#   MIXER_SOURCE          exact pactl source name (wins over the pattern)
+#   MIXER_SOURCE_PATTERN  ERE for detect_mixer_source (ships matching the
+#                         Behringer's Burr-Brown USB codec)
+# Echoes the chosen source name, or nothing when the take should use the
+# Pulse default source. Never aborts the take: a configured device that is
+# absent only warns — recording must still work with the mixer unplugged.
+resolve_mixer_source() {
+    local conf=$1 src="" names=""
+    local MIXER_SOURCE="" MIXER_SOURCE_PATTERN=""
+    if [[ -f $conf ]]; then
+        # shellcheck source=scripts/perform.conf
+        source "$conf"
+    fi
+    if [[ -n $MIXER_SOURCE ]]; then
+        if names=$(pactl list short sources 2>/dev/null | cut -f2) &&
+           ! grep -Fxq "$MIXER_SOURCE" <<<"$names"; then
+            echo "WARNING: configured mixer source '$MIXER_SOURCE' ($conf) is absent;" >&2
+            echo "         falling back to the Pulse default source." >&2
+            return 0
+        fi
+        # Present, or pactl itself is broken — trust the config as given.
+        echo "$MIXER_SOURCE"
+    elif [[ -n $MIXER_SOURCE_PATTERN ]]; then
+        if src=$(detect_mixer_source "$MIXER_SOURCE_PATTERN"); then
+            echo "$src"
+        else
+            echo "WARNING: no pulse source matches pattern '$MIXER_SOURCE_PATTERN' ($conf);" >&2
+            echo "         falling back to the Pulse default source." >&2
+        fi
+    fi
 }
 
 # Echo the monitor source of the default sink (system audio / ShowSync
@@ -407,7 +455,13 @@ main() {
         if [[ -n $mixer_src ]]; then
             check_mixer_source "$mixer_src" || exit 1
         else
-            check_default_source
+            local conf=${PERFORM_CONF:-"$REPO_ROOT/scripts/perform.conf"}
+            mixer_src=$(resolve_mixer_source "$conf")
+            if [[ -n $mixer_src ]]; then
+                echo "Mixer audio source: $mixer_src (from $conf)"
+            else
+                check_default_source
+            fi
         fi
     fi
     if [[ $audio_mode != usb ]]; then
