@@ -50,6 +50,10 @@ set -euo pipefail
 
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
+# Nominal capture frame rate: build_ffmpeg_cmd asks x11grab for this, and
+# the end-of-take health report compares the file's effective fps to it.
+CAPTURE_FPS=30
+
 usage() {
     sed -n '2,41p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
@@ -232,6 +236,52 @@ pw_xrun_delta() {
     ' "$1" "$2"
 }
 
+# Video-timing stats for a finished take, from the container's packet
+# timestamps (no decode — fast even on long takes). Echoes one line:
+#   FRAMES<TAB>EFFECTIVE_FPS<TAB>GAPS_OVER_100MS<TAB>MAX_GAP_MS
+# Returns 1 when ffprobe is missing or the file has fewer than two
+# timestamped video packets. pts are sorted because B-frame packets are
+# stored in decode order, not presentation order.
+capture_health_stats() {
+    local file=$1
+    command -v ffprobe >/dev/null || return 1
+    ffprobe -v error -select_streams v:0 -show_entries packet=pts_time \
+            -of csv=p=0 "$file" 2>/dev/null |
+    grep -E '^[0-9]' | sort -n | awk '
+        { pts[++n] = $1 }
+        END {
+            if (n < 2) exit 1
+            span = pts[n] - pts[1]
+            if (span <= 0) exit 1
+            gaps = 0; maxgap = 0
+            for (i = 2; i <= n; ++i) {
+                g = pts[i] - pts[i-1]
+                if (g > 0.1) ++gaps
+                if (g > maxgap) maxgap = g
+            }
+            printf "%d\t%.1f\t%d\t%d\n", n, (n - 1) / span, gaps, maxgap * 1000
+        }'
+}
+
+# Print the take-summary health lines for a finished recording: effective
+# fps vs nominal and stall gaps, so capture-side frame drops are visible
+# per take instead of discovered while editing (T170). Warns when the
+# effective rate is below 90% of nominal. Never fails the caller.
+report_capture_health() {
+    local file=$1 stats frames efps gaps maxgap
+    if ! stats=$(capture_health_stats "$file"); then
+        echo "Capture health: unavailable (ffprobe packet scan failed)"
+        return 0
+    fi
+    IFS=$'\t' read -r frames efps gaps maxgap <<<"$stats"
+    echo "Capture health: $frames frames, ${efps} fps effective" \
+         "(${CAPTURE_FPS} nominal), ${gaps} gaps >100ms, max gap ${maxgap}ms"
+    if awk -v e="$efps" -v n="$CAPTURE_FPS" 'BEGIN { exit !(e < 0.9 * n) }'; then
+        echo "WARNING: capture dropped frames — ${efps} fps effective vs" \
+             "${CAPTURE_FPS} nominal. Check CPU load during the take ($file.log)."
+    fi
+}
+
 # Echo the video encoder to use: h264_nvenc when the GPU can actually open
 # an encode session, else libx264. A listed encoder is not enough — NVENC
 # can still fail at runtime (sessions exhausted, driver mismatch), so probe
@@ -320,24 +370,33 @@ start_babysitter() {
 build_ffmpeg_cmd() {
     local out=$1 w=$2 h=$3 x=$4 y=$5 mode=$6 system_src=${7:-} encoder=${8:-libx264}
     local mixer_src=${9:-default}
+    # thread_queue_size on EVERY input: each input demuxes on its own thread
+    # into a packet queue the muxer drains. The default queue (8 packets) is
+    # tiny — when the muxer briefly blocks on one input, the x11grab queue
+    # fills and frames are dropped at the source (T170: takes came out at
+    # ~13fps effective with the live projector fine). Audio packets are
+    # small, so a deep audio queue is nearly free; the video queue holds
+    # raw frames by reference, so 64 (~2s at 30fps) bounds worst-case
+    # memory while riding out encoder/mux stalls.
     FFMPEG_ARGS=(
         ffmpeg -hide_banner -loglevel warning
-        -f x11grab -framerate 30 -video_size "${w}x${h}" -i "$DISPLAY+$x,$y"
+        -f x11grab -framerate "$CAPTURE_FPS" -video_size "${w}x${h}"
+        -thread_queue_size 64 -i "$DISPLAY+$x,$y"
     )
     case $mode in
         usb)
-            FFMPEG_ARGS+=(-f pulse -i "$mixer_src"
+            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -i "$mixer_src"
                           -map 0:v -map 1:a
                           -metadata:s:a:0 title=mixer)
             ;;
         system)
-            FFMPEG_ARGS+=(-f pulse -i "$system_src"
+            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -i "$system_src"
                           -map 0:v -map 1:a
                           -metadata:s:a:0 title=system)
             ;;
         both)
-            FFMPEG_ARGS+=(-f pulse -i "$mixer_src"
-                          -f pulse -i "$system_src"
+            FFMPEG_ARGS+=(-f pulse -thread_queue_size 4096 -i "$mixer_src"
+                          -f pulse -thread_queue_size 4096 -i "$system_src"
                           -map 0:v -map 1:a -map 2:a
                           -metadata:s:a:0 title=mixer
                           -metadata:s:a:1 title=system)
@@ -549,6 +608,7 @@ main() {
             echo ""
             echo "Recording saved: $out"
             [[ -n $dur ]] && echo "Duration: ${dur%.*}s"
+            report_capture_health "$out"
             # PipeWire xrun delta over the take: tells graph-level dropouts
             # (nodes losing cycles) apart from ShowSync-level underruns
             # (which ShowSync logs itself, with timeline positions).
@@ -587,17 +647,23 @@ main() {
     echo "Recording to: $out (audio: $audio_mode)"
     build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" "$audio_mode" "$system_src" "$encoder" \
                      "${mixer_src:-default}"
-    # nice/ionice: capture must never outbid ShowSync's audio/clock threads
-    # for CPU or IO — a dropped capture frame is recoverable, an audio
-    # underrun in the live take is not. nice/ionice exec through, so $! and
+    # ionice only — no nice. Audio is protected by priority CLASS now:
+    # PipeWire's data-loop runs SCHED_RR (canon midi:I41/I42), which beats
+    # any SCHED_OTHER nice level outright, so nicing ffmpeg protected
+    # nothing and only made x11grab lose CPU races under take load —
+    # recorded takes dropped to ~13fps effective (T170). ionice stays:
+    # keeping the mkv writes in best-effort/lowest IO priority is free for
+    # the grab loop (capture IO is buffered writeback) and still yields the
+    # disk to sample streaming. ionice execs through, so $! and
     # /proc/pid/comm still name ffmpeg for the lock and the babysitter.
-    local -a recorder_prefix=(nice -n 10)
+    local -a recorder_prefix=()
     command -v ionice >/dev/null && recorder_prefix+=(ionice -c 2 -n 7)
     # setsid: ffmpeg gets its own session/process group, so a terminal
     # Ctrl+C (delivered to the foreground group) never reaches it raw —
     # cleanup's single SIGINT is the only stop signal it ever sees — and a
     # terminal close (SIGHUP) cannot kill it mid-write.
-    setsid "${recorder_prefix[@]}" "${FFMPEG_ARGS[@]}" </dev/null 2>"$out.log" &
+    setsid ${recorder_prefix[@]+"${recorder_prefix[@]}"} "${FFMPEG_ARGS[@]}" \
+        </dev/null 2>"$out.log" &
     ffmpeg_pid=$!
     echo "$ffmpeg_pid" > "$lockfile"
     start_babysitter "$$" "$ffmpeg_pid" "$lockfile"
