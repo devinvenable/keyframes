@@ -108,8 +108,11 @@ main() {
         mode="single track #$only ($label, gain $gain)"
     fi
     if [[ -z $fc ]]; then
-        fc="[0:${mixer_idx}]volume=${mixer_gain}[m];"
-        fc+="[0:${system_idx}]volume=${system_gain}[s];"
+        # Live inputs start at different timestamps (-isync in perform.sh).
+        # amix combines samples, so pad each stream to the common origin
+        # before mixing, rather than moving a later track's sound earlier.
+        fc="[0:${mixer_idx}]aresample=async=1:first_pts=0,volume=${mixer_gain}[m];"
+        fc+="[0:${system_idx}]aresample=async=1:first_pts=0,volume=${system_gain}[s];"
         fc+="[m][s]amix=inputs=2:duration=longest:normalize=0[aout]"
     fi
     if (( loudnorm )); then
