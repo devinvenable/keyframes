@@ -409,6 +409,31 @@ grep -q "Capture health: [0-9]* frames" "$OUT_NORMAL/run.log" ||
 file_gone "$OUT_NORMAL/.perform.lock" || fail "normal run left the lock behind"
 assert_valid_mkv "$OUT_NORMAL" "normal+stale-lock"
 
+# 4a-post. The shareable post-take outputs must exist by default with the
+#          expected streams (usb mode: mp4 = 1 video + 1 aac audio; mp3 =
+#          1 mp3 audio, no video) and be reported with paths in the log.
+share=$(compgen -G "$OUT_NORMAL/perform_*_share.mp4" | head -n1) ||
+    fail "post: no _share.mp4 produced (run.log: $(cat "$OUT_NORMAL/run.log"))"
+[[ -s $share ]] || fail "post: _share.mp4 is empty"
+streams=$(ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 "$share") ||
+    fail "post: ffprobe cannot read $share"
+grep -qx 'h264,video' <<<"$streams" || fail "post: _share.mp4 video is not h264: $streams"
+[[ $(grep -cx 'aac,audio' <<<"$streams") == 1 ]] ||
+    fail "post: _share.mp4 must carry 1 aac audio stream (usb mode): $streams"
+mp3=$(compgen -G "$OUT_NORMAL/perform_*.mp3" | head -n1) || fail "post: no .mp3 produced"
+[[ -s $mp3 ]] || fail "post: .mp3 is empty"
+streams=$(ffprobe -v error -show_entries stream=codec_type,codec_name -of csv=p=0 "$mp3") ||
+    fail "post: ffprobe cannot read $mp3"
+[[ $(grep -cx 'mp3.*,audio' <<<"$streams" || true) == 1 && $(grep -c ',video$' <<<"$streams" || true) == 0 ]] ||
+    fail "post: .mp3 must be exactly one mp3 audio stream: $streams"
+grep -q "Share MP4: .*_share\.mp4" "$OUT_NORMAL/run.log" ||
+    fail "post: summary lacks the Share MP4 line"
+grep -q "Mixer MP3: .*\.mp3" "$OUT_NORMAL/run.log" ||
+    fail "post: summary lacks the Mixer MP3 line"
+compgen -G "$OUT_NORMAL/*_share.mp4.log" >/dev/null &&
+    fail "post: successful share encode left its log behind"
+echo "post-take outputs: _share.mp4 + .mp3 streams and summary lines OK"
+
 # 4b. SIGKILL the script mid-capture: no trap runs, so only the babysitter
 #     can save the take — ffmpeg must be gone within ~5s, the mkv must be
 #     finalized, and the lock cleared.
@@ -484,4 +509,56 @@ DUMMY_FFMPEG=""
 RUN_PID=""
 echo "live-lock refusal: OK"
 
-echo "PASS: main() lifecycle — normal/stale-lock, SIGKILL babysitter, double-SIGINT, live-lock refusal"
+# 4e. Post-processing opt-out: PERFORM_NO_POSTPROCESS=1 must skip both
+#     derivatives (and say so) while the master take is still produced.
+OUT_NOPOST="$TMPDIR/run_nopost"
+mkdir -p "$OUT_NOPOST"
+launch_perform "$OUT_NOPOST" STUB_KEYFRAMES_SLEEP=3 PERFORM_NO_POSTPROCESS=1
+wait_for 300 not_running "$RUN_PID" ||
+    { cat "$OUT_NOPOST/run.log" >&2; fail "no-postprocess run did not exit within 30s"; }
+wait "$RUN_PID" || { cat "$OUT_NOPOST/run.log" >&2; fail "no-postprocess run exited nonzero"; }
+RUN_PID=""
+assert_valid_mkv "$OUT_NOPOST" "no-postprocess"
+compgen -G "$OUT_NOPOST/*_share.mp4" >/dev/null &&
+    fail "PERFORM_NO_POSTPROCESS=1 still produced a _share.mp4"
+compgen -G "$OUT_NOPOST/*.mp3" >/dev/null &&
+    fail "PERFORM_NO_POSTPROCESS=1 still produced an .mp3"
+grep -q "Post-processing skipped" "$OUT_NOPOST/run.log" ||
+    fail "no-postprocess run did not report the skip"
+echo "post-processing opt-out: OK"
+
+# 4f. Post-processing failure must never harm the master: a fake ffmpeg
+#     that leaves a partial output and exits 1 stands in for a post-encode
+#     crash. The master mkv must remain valid, both warnings must print,
+#     the partial derivatives must be deleted, and the run still exits 0.
+FAILING_FFMPEG="$TMPDIR/failing-ffmpeg"
+cat > "$FAILING_FFMPEG" <<'EOF'
+#!/usr/bin/env bash
+# Simulate a post-process crash that leaves a partial output file behind.
+for last; do :; done
+touch "$last"
+exit 1
+EOF
+chmod +x "$FAILING_FFMPEG"
+OUT_POSTFAIL="$TMPDIR/run_postfail"
+mkdir -p "$OUT_POSTFAIL"
+launch_perform "$OUT_POSTFAIL" STUB_KEYFRAMES_SLEEP=3 \
+    PERFORM_POSTPROCESS_FFMPEG="$FAILING_FFMPEG"
+wait_for 300 not_running "$RUN_PID" ||
+    { cat "$OUT_POSTFAIL/run.log" >&2; fail "post-fail run did not exit within 30s"; }
+wait "$RUN_PID" || { cat "$OUT_POSTFAIL/run.log" >&2; fail "post-fail run exited nonzero"; }
+RUN_PID=""
+assert_valid_mkv "$OUT_POSTFAIL" "post-fail (master survives)"
+grep -q "WARNING: share mp4 failed" "$OUT_POSTFAIL/run.log" ||
+    { cat "$OUT_POSTFAIL/run.log" >&2; fail "post-fail run lacks the share mp4 warning"; }
+grep -q "WARNING: mixer mp3 failed" "$OUT_POSTFAIL/run.log" ||
+    fail "post-fail run lacks the mixer mp3 warning"
+compgen -G "$OUT_POSTFAIL/*_share.mp4" >/dev/null &&
+    fail "failed post-processing left a partial _share.mp4 behind"
+compgen -G "$OUT_POSTFAIL/*.mp3" >/dev/null &&
+    fail "failed post-processing left a partial .mp3 behind"
+grep -q "Capture health: [0-9]* frames" "$OUT_POSTFAIL/run.log" ||
+    fail "post-fail run lost the capture-health line"
+echo "post-processing failure: master survives, warnings printed, partials removed"
+
+echo "PASS: main() lifecycle — normal/stale-lock + post outputs, SIGKILL babysitter, double-SIGINT, live-lock refusal, postprocess opt-out + failure"

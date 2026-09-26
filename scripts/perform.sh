@@ -6,7 +6,7 @@
 # or on Ctrl+C.
 #
 # Usage: scripts/perform.sh [--audio usb|system|both] [--mixer-source NAME]
-#                           [--headless] [showsync args...]
+#                           [--headless] [--no-postprocess] [showsync args...]
 #   --audio usb     record only the mixer source (default: the Pulse default
 #                   source, i.e. the mixer USB feed)
 #   --audio system  record only the default sink monitor (system audio,
@@ -19,6 +19,8 @@
 #   --headless      run ShowSync without the editor window (engine + projector
 #                   only); skips the --editor-screen placement logic. Combine
 #                   with --autostart [SECONDS] for a fully clickless take.
+#   --no-postprocess  skip the shareable post-take outputs below (env:
+#                   PERFORM_NO_POSTPROCESS=1) — for quick throwaway takes
 #   Remaining arguments are passed through to ShowSync (setlist path, etc.).
 #
 # Video : the first landscape monitor (same pick as Keyframes fullscreen).
@@ -32,7 +34,15 @@
 #         the Behringer's Burr-Brown USB codec), else the PipeWire/Pulse
 #         default source. A configured device that is absent falls back to
 #         the default source with a warning instead of aborting.
-# Output: recordings/perform_YYYYmmdd_HHMMSS.mkv
+# Output: recordings/perform_YYYYmmdd_HHMMSS.mkv (the master take), plus —
+#         produced automatically after the master is finalized, unless
+#         --no-postprocess / PERFORM_NO_POSTPROCESS=1 —
+#           perform_*_share.mp4  full take, h264 + aac 160k, +faststart
+#                                (Messenger-compatible, ~90MB per 5min)
+#           perform_*.mp3        mixer track only (Devin's live mix)
+#         Post-processing never risks the master: it reads the finished mkv
+#         as a plain input, a failure only warns, and a further Ctrl+C
+#         aborts post-processing while leaving the master intact.
 #
 # Only one capture at a time: recordings/.perform.lock holds the pid of the
 # running ffmpeg; a second perform.sh refuses to start while it is alive
@@ -45,6 +55,9 @@
 #   PERFORM_CONF           override the scripts/perform.conf path
 #   PERFORM_PYTHON         override the python used for ShowSync/Keyframes
 #   PERFORM_VIDEO_ENCODER  skip the NVENC probe (libx264|h264_nvenc)
+#   PERFORM_POSTPROCESS_FFMPEG  override the ffmpeg used for the post-take
+#                          outputs only (the smoke test forces failures with
+#                          it; the capture ffmpeg is never affected)
 
 set -euo pipefail
 
@@ -55,7 +68,7 @@ REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 CAPTURE_FPS=30
 
 usage() {
-    sed -n '2,41p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Parse `xrandr --listmonitors` and echo "WIDTH HEIGHT XOFF YOFF" for the
@@ -309,6 +322,93 @@ detect_video_encoder() {
     fi
 }
 
+# --- post-take outputs (T179) ------------------------------------------
+# After the master mkv is finalized, cleanup() produces two shareable
+# derivatives next to it: <take>_share.mp4 (full take, h264 + aac 160k,
+# +faststart — the Messenger-compatible recipe proven on
+# perform_20260926_140641/144039, ~90MB per 5min) and <take>.mp3 (the FIRST
+# audio track — titled "mixer", Devin's live mix — lame V2). The master is
+# never at risk: it is only ever read as a finished input, any failure
+# warns and deletes the partial derivative, and a further Ctrl+C aborts
+# post-processing without touching the master or the exit path.
+
+POSTPROCESS_PID=""
+POSTPROCESS_ABORTED=0
+
+# Run one post-processing ffmpeg (stderr to $1) in the background and wait,
+# so the INT/TERM trap installed by postprocess_take can kill it mid-encode.
+# `wait` returns >128 when a trapped signal interrupts it, so loop until
+# the process is actually gone; the last wait's status is the real one.
+run_postprocess_ffmpeg() {
+    local log=$1 rc=0
+    shift
+    "${PERFORM_POSTPROCESS_FFMPEG:-ffmpeg}" -y -hide_banner -loglevel warning \
+        "$@" </dev/null 2>"$log" &
+    POSTPROCESS_PID=$!
+    while :; do
+        wait "$POSTPROCESS_PID" && rc=0 || rc=$?
+        kill -0 "$POSTPROCESS_PID" 2>/dev/null || break
+    done
+    POSTPROCESS_PID=""
+    return "$rc"
+}
+
+# Produce the shareable outputs for the finished master $1 with encoder $2.
+# Runs inside cleanup (set +e). Success prints path + size and drops the
+# stage's log; failure warns, keeps the log and removes the partial file.
+postprocess_take() {
+    local master=$1 encoder=${2:-libx264}
+    local base=${master%.mkv}
+    local share="${base}_share.mp4" mp3="${base}.mp3"
+    local -a share_video
+    case $encoder in
+        h264_nvenc)
+            share_video=(-c:v h264_nvenc -preset p6 -rc vbr
+                         -b:v 2300k -maxrate 2900k -g 60 -pix_fmt yuv420p)
+            ;;
+        *)
+            share_video=(-c:v libx264 -preset medium
+                         -b:v 2300k -maxrate 2900k -bufsize 5800k
+                         -g 60 -pix_fmt yuv420p)
+            ;;
+    esac
+    echo ""
+    echo "Post-processing shareable outputs (Ctrl+C aborts this; the master is already safe)..."
+    # Re-arm INT/TERM (cleanup blanked them): abort post-processing only.
+    trap 'POSTPROCESS_ABORTED=1
+          [[ -n $POSTPROCESS_PID ]] && kill -TERM "$POSTPROCESS_PID" 2>/dev/null' INT TERM
+    if run_postprocess_ffmpeg "$share.log" -i "$master" -map 0:v:0 -map 0:a \
+            "${share_video[@]}" -c:a aac -b:a 160k -movflags +faststart "$share" &&
+       (( ! POSTPROCESS_ABORTED )); then
+        echo "Share MP4: $share ($(du -h -- "$share" | cut -f1))"
+        rm -f "$share.log"
+    else
+        rm -f "$share"
+        if (( POSTPROCESS_ABORTED )); then
+            rm -f "$share.log"
+            echo "NOTE: post-processing aborted — master take untouched: $master"
+            trap '' INT TERM
+            return 0
+        fi
+        echo "WARNING: share mp4 failed (see $share.log) — master take unaffected: $master" >&2
+    fi
+    if run_postprocess_ffmpeg "$mp3.log" -i "$master" -map 0:a:0 -vn \
+            -c:a libmp3lame -q:a 2 "$mp3" &&
+       (( ! POSTPROCESS_ABORTED )); then
+        echo "Mixer MP3: $mp3 ($(du -h -- "$mp3" | cut -f1))"
+        rm -f "$mp3.log"
+    else
+        rm -f "$mp3"
+        if (( POSTPROCESS_ABORTED )); then
+            rm -f "$mp3.log"
+            echo "NOTE: post-processing aborted — master take untouched: $master"
+        else
+            echo "WARNING: mixer mp3 failed (see $mp3.log) — master take unaffected: $master" >&2
+        fi
+    fi
+    trap '' INT TERM
+}
+
 # Refuse to stack captures. The lock file holds the pid of the ffmpeg
 # started by the previous perform.sh; if that pid is still a live ffmpeg
 # (comm check guards against pid reuse) we refuse to start instead of
@@ -433,10 +533,15 @@ build_ffmpeg_cmd() {
 }
 
 main() {
-    local audio_mode="both" headless=0 showsync_args=()
+    local audio_mode="both" headless=0 showsync_args=() no_post=0
     local mixer_src=${PERFORM_MIXER_SOURCE:-}
+    [[ -n ${PERFORM_NO_POSTPROCESS:-} && ${PERFORM_NO_POSTPROCESS:-} != 0 ]] && no_post=1
     while (( $# )); do
         case $1 in
+            --no-postprocess)
+                no_post=1
+                shift
+                ;;
             --headless)
                 headless=1
                 showsync_args+=(--headless)
@@ -550,6 +655,7 @@ main() {
     out="$outdir/perform_$(date +%Y%m%d_%H%M%S).mkv"
     ffmpeg_pid="" showsync_pid="" keyframes_pid="" BABYSITTER_PID=""
     xrun_start="" xrun_end=""
+    video_encoder="" postprocess_enabled=$(( ! no_post ))
 
     cleanup() {
         # Absorb repeat Ctrl+C (and TERM/HUP) while finalizing: a second
@@ -629,6 +735,13 @@ main() {
             elif [[ -n $xrun_start ]]; then
                 echo "PipeWire xruns during take: unavailable (pw-top snapshot failed)"
             fi
+            # Shareable derivatives LAST, after the master's summary: the
+            # mkv is finalized and reported, so nothing below can hurt it.
+            if (( ${postprocess_enabled:-0} )); then
+                postprocess_take "$out" "${video_encoder:-libx264}"
+            else
+                echo "Post-processing skipped (--no-postprocess / PERFORM_NO_POSTPROCESS)."
+            fi
         elif [[ -n $ffmpeg_pid ]]; then
             # Only when a capture actually started — a lock refusal or a
             # failed ffmpeg launch already printed its own error.
@@ -641,6 +754,7 @@ main() {
 
     local encoder
     encoder=$(detect_video_encoder) || exit 1
+    video_encoder=$encoder   # cleanup reuses it for the share mp4
     if [[ $encoder == h264_nvenc ]]; then
         echo "Video encoder: h264_nvenc (GPU)"
     else
