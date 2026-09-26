@@ -1,4 +1,5 @@
 """Qt tests use isolated settings and engines without opening devices."""
+import math
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -63,7 +64,8 @@ def window_factory(qtbot, tmp_path):
         closed = []
         def start(setlist):
             audio = AudioEngine(setlist)
-            return audio, SimpleNamespace(error=None), lambda: (closed.append(True), audio.close())
+            clock = SimpleNamespace(error=None, transport_egress_age=lambda: math.inf)
+            return audio, clock, lambda: (closed.append(True), audio.close())
         kwargs.setdefault('start_engines', start)
         kwargs.setdefault('dialogs', Dialogs())
         kwargs.setdefault('estimator', lambda path, **kw: None)

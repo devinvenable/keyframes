@@ -1,4 +1,5 @@
 """--headless engine+projector mode and --autostart (task 143)."""
+import math
 import signal
 from types import SimpleNamespace
 
@@ -112,7 +113,8 @@ def show_factory(qtbot, tmp_path):
 
         def default_start(setlist):
             audio = AudioEngine(setlist)
-            return audio, SimpleNamespace(error=None), lambda: (closed.append(True), audio.close())
+            clock = SimpleNamespace(error=None, transport_egress_age=lambda: math.inf)
+            return audio, clock, lambda: (closed.append(True), audio.close())
 
         settings = QSettings(str(tmp_path / 'settings.ini'), QSettings.IniFormat)
         show = HeadlessShow(doc if doc is not None else document(tmp_path),
@@ -174,6 +176,46 @@ def test_stop_set_without_engines_is_a_noop(show_factory):
     show = show_factory()
     show.stop_set()
     assert show.closed_engines == []
+
+
+def test_boundary_handover_echo_does_not_restart_the_set(qtbot, show_factory, monkeypatch):
+    """A hardware thru path echoing the clock's own song-boundary Stop/Start
+    egress back onto the transport input (task 169) must not stop and restart
+    the set: the echoed Stop lands while the set is genuinely playing, so
+    state-based idempotence alone cannot break this loop."""
+    import showsync.transport as transport
+    from showsync.clock import ClockEngine
+    port = SimpleNamespace(set_callback=lambda cb: None, close_port=lambda: None)
+    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred=None: [port])
+    holder = {}
+    starts, closed = [], []
+    state = SimpleNamespace(position=Position(0, 0.0, True))
+
+    def echo_send(message):
+        # Hardware thru: our own Start/Stop egress arrives back on the input.
+        if isinstance(message, int) and message in (START, STOP):
+            holder['show'].transport_received.emit(message)
+
+    def start(setlist):
+        starts.append(True)
+        maps = tuple(song.tempo_map(1.0) for song in setlist.songs)
+        audio = SimpleNamespace(error=None, setlist=setlist, position=lambda: state.position)
+        clock = ClockEngine(maps, audio.position, echo_send)
+        holder['clock'] = clock
+        return audio, clock, lambda: closed.append(True)
+
+    show = show_factory(midi_transport=True, start=start)
+    holder['show'] = show
+    assert show.transport.handle(START) == 'started set'
+    assert starts == [True]
+    holder['clock'].step()  # set start: Start egress, echoed while playing = no-op
+    assert show.audio is not None
+    # Bar-quantized handover into song 2: the clock emits Stop then Start.
+    state.position = Position(1, 0.0, True)
+    holder['clock'].step()
+    assert closed == [], 'echoed boundary Stop stopped the playing set'
+    assert starts == [True], 'echoed boundary Start restarted the set from song 1'
+    assert show.audio is not None
 
 
 # --- Esc on the projector ---

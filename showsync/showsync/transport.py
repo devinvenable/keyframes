@@ -3,6 +3,9 @@ import logging
 
 START, CONTINUE, STOP = 0xFA, 0xFB, 0xFC
 NAMES = {START: 'Start', CONTINUE: 'Continue', STOP: 'Stop'}
+# Incoming transport this soon after our own Start/Stop egress is treated as
+# a hardware thru echo of that egress, not a performer's press.
+ECHO_WINDOW = 1.0
 
 
 class TransportControl:
@@ -13,14 +16,33 @@ class TransportControl:
     only when the set is NOT already in the requested state breaks that
     loop — an echoed Start lands while playing (no-op), and the Stop echoed
     by a pause or a set ending lands while playback is already stopped
-    (no-op). That is also why Stop only acts while genuinely playing."""
+    (no-op). That is also why Stop only acts while genuinely playing.
 
-    def __init__(self, *, is_active, is_playing, is_paused, start, resume, stop):
+    State-based idempotence has one hole: the bar-quantized song handover,
+    where the clock sends Stop then Start while the set IS genuinely
+    playing. Echoed back, that Stop stopped the set and the Start restarted
+    it from song 1 (task 169) — so incoming transport within ECHO_WINDOW of
+    our own egress is dropped via `egress_age`. The gate sits here, in
+    handle(), so it covers every open input port (task 152 listens on all
+    hardware ports, which widened the echo path — any of them can carry the
+    echo). Trade-off, accepted: a genuine performer press landing inside
+    the window right after a boundary is ignored; pressing again works."""
+
+    def __init__(self, *, is_active, is_playing, is_paused, start, resume, stop,
+                 egress_age=None):
         self.is_active, self.is_playing, self.is_paused = is_active, is_playing, is_paused
         self.start, self.resume, self.stop = start, resume, stop
+        self.egress_age = egress_age
 
     def handle(self, status):
         """Apply one transport byte; return the action taken, or None."""
+        if status in NAMES and self.egress_age is not None:
+            age = self.egress_age()
+            if age < ECHO_WINDOW:
+                logging.info('MIDI transport %s (0x%02X): suppressed as an echo of '
+                             'our own clock egress (%.3fs after Start/Stop egress)',
+                             NAMES[status], status, age)
+                return None
         action = self._action(status)
         if status in NAMES:
             logging.info('MIDI transport %s (0x%02X): %s',
