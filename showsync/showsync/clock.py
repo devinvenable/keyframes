@@ -31,9 +31,22 @@ class ClockEngine:
         self._last_target = None
         self._halt = threading.Event()
         self._thread = None
+        self._transport_stamp = None
         self.error = None
         self.dropped_ticks = 0  # Vestigial status API: indices are never dropped.
         self.priority_raised = False
+
+    def _send_transport_byte(self, byte):
+        """Send Start/Stop, stamping first: a hardware thru path can echo the
+        byte back onto our transport input while send() is still in flight."""
+        self._transport_stamp = self.now()
+        self.send(byte)
+
+    def transport_egress_age(self):
+        """Seconds since this clock last sent Start/Stop (inf before the first)."""
+        if self._transport_stamp is None:
+            return math.inf
+        return self.now() - self._transport_stamp
 
     def step(self):
         """Process current state/tick; return seconds until next work (fake-clock API)."""
@@ -44,7 +57,7 @@ class ClockEngine:
             # Pause/skip/end: nothing may ring — release sustain, then silence.
             self._flush_notes()
             if self.send_transport:
-                self.send(STOP)
+                self._send_transport_byte(STOP)
             self._active = False
         if not p.playing or p.ended:
             return .001
@@ -60,7 +73,7 @@ class ClockEngine:
         clock_time = audio_time + self.clock_offset_ms / 1000.0
         if not self._active:
             if self.send_transport:
-                self.send(START)
+                self._send_transport_byte(START)
             self._active = True
             # Resume retains the next unsent index; intentional restarts reset.
             self._startup_until = math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8)
@@ -147,7 +160,7 @@ class ClockEngine:
                     self._flush_notes()
                 finally:
                     if self.send_transport:
-                        self.send(STOP)
+                        self._send_transport_byte(STOP)
             finally:
                 self._active = False
 

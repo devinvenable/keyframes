@@ -88,6 +88,26 @@ def test_unknown_status_is_ignored():
     assert rig.actions == []
 
 
+def test_transport_inside_echo_window_is_suppressed(caplog):
+    # Song handover: the clock sends Stop then Start while the set is
+    # genuinely playing; a thru path echoes both back within milliseconds.
+    age = [0.02]
+    rig = Rig(active=True, playing=True)
+    rig.control.egress_age = lambda: age[0]
+    with caplog.at_level('INFO'):
+        assert rig.handle(STOP) is None
+        assert rig.handle(START) is None
+    assert rig.actions == []
+    assert sum('suppressed as an echo' in r.message for r in caplog.records) == 2
+
+
+def test_transport_after_echo_window_acts_normally():
+    rig = Rig(active=True, playing=True)
+    rig.control.egress_age = lambda: 1.5
+    assert rig.handle(STOP) == 'stopped set'
+    assert rig.actions == ['stop']
+
+
 class FakeMidiIn:
     def __init__(self, ports):
         self.ports = ports

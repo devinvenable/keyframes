@@ -1006,7 +1006,9 @@ class MainWindow(QMainWindow):
                                 and (p := self.audio.position()).playing and not p.ended),
             is_paused=lambda: (self.audio is not None
                                and not (p := self.audio.position()).playing and not p.ended),
-            start=self.play, resume=self.pause, stop=self.stop)
+            start=self.play, resume=self.pause, stop=self.stop,
+            egress_age=lambda: (self.clock.transport_egress_age()
+                                if self.clock is not None else math.inf))
         self.midi_input = connect_transport(
             self, self.transport, self.devices.midi if self.devices else None)
 
