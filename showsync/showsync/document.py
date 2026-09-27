@@ -10,7 +10,7 @@ import io
 import os
 from pathlib import Path
 
-from .setlist import (SUFFIXES, VIDEO_SUFFIXES, Setlist, SetlistError, Song, mapping, number,
+from .setlist import (SUFFIXES, VIDEO_SUFFIXES, MIDI_SUFFIXES, Setlist, SetlistError, Song, mapping, number,
                       parse_song, position, song_context, string, timing_metadata)
 from .tempomap import TempoEvent
 
@@ -189,6 +189,13 @@ class Document:
                 return row, message
         return None
 
+    def set_midi(self, row, path):
+        """Set an optional reference; missing MIDI must never gate playback."""
+        midi = Path(path).expanduser().resolve() if path is not None else None
+        if midi is not None and midi.suffix.lower() not in MIDI_SUFFIXES:
+            raise ValueError('MIDI file must be a .mid or .midi file')
+        row.midi = midi
+
     def setlist(self):
         blocked = self.first_problem()
         if blocked:
@@ -234,6 +241,11 @@ class Document:
                     if current_file != row.file:
                         entry['file'] = self._portable(row.file, root)
                 self._set_number(entry, "bpm", row.bpm)
+                if row.midi is None:
+                    entry.pop('midi', None)
+                elif ('midi' not in entry or
+                      (root / str(entry['midi'])).resolve() != row.midi):
+                    entry['midi'] = self._portable(row.midi, root)
                 if row.video is None:
                     entry.pop('video', None)
                 elif ('video' not in entry or

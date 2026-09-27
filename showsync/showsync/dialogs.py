@@ -42,6 +42,12 @@ class Dialogs:
             self.parent, 'Open Set', '', 'Setlists (*.yaml *.yml);;All files (*)')
         return Path(name) if name else None
 
+    def midi_file(self, current):
+        name, _ = QFileDialog.getOpenFileName(
+            self.parent, 'MIDI file', str(current.parent),
+            'MIDI files (*.mid *.midi)')
+        return Path(name) if name else None
+
     def bundle_path(self, directory, stem):
         name, _ = QFileDialog.getSaveFileName(
             self.parent, 'Export Show Bundle', str(Path(directory) / f'{stem}-bundle.zip'),

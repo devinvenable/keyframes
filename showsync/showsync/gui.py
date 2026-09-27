@@ -19,8 +19,8 @@ from .document import Document
 from .identity import application_arguments, configure_identity
 from .tempomap import TempoEvent
 
-FIELDS = ('name', 'file', 'bpm', 'offset', 'trim', 'ramp', 'start', 'dur')
-HEADERS = ('Song', 'File', 'BPM', 'Offset (s)', 'Trim (s)', 'End BPM', 'Ramp start (s)', 'Ramp duration (s)')
+FIELDS = ('name', 'file', 'bpm', 'offset', 'trim', 'ramp', 'start', 'dur', 'midi')
+HEADERS = ('Song', 'File', 'BPM', 'Offset (s)', 'Trim (s)', 'End BPM', 'Ramp start (s)', 'Ramp duration (s)', 'MIDI file')
 EMPTY_HINT = 'Drop audio or video files here, or choose Add Songs to build your set.'
 CUSTOM_TEMPO = 'Custom tempo map — edit in YAML'
 
@@ -67,7 +67,7 @@ class SongModel(QAbstractTableModel):
 
     def flags(self, index):
         flags = super().flags(index)
-        if index.isValid() and index.column() != 1:
+        if index.isValid() and FIELDS[index.column()] not in ('file', 'midi'):
             if not (index.column() >= 5 and self.rows[index.row()].custom_tempo):
                 flags |= Qt.ItemIsEditable
         return flags
@@ -76,6 +76,12 @@ class SongModel(QAbstractTableModel):
         if not index.isValid():
             return None
         row, col = self.rows[index.row()], index.column()
+        if FIELDS[col] == 'midi':
+            if role == Qt.ToolTipRole:
+                return str(row.midi) if row.midi else 'No MIDI file'
+            if role in (Qt.DisplayRole, Qt.EditRole):
+                return row.midi.name if row.midi else ''
+            return None
         if role == Qt.ToolTipRole:
             if col >= 5 and row.custom_tempo:
                 return CUSTOM_TEMPO
@@ -367,7 +373,7 @@ class MainWindow(QMainWindow):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        for col, width in enumerate((210, 220, 120, 90, 90, 90, 120, 140)):
+        for col, width in enumerate((210, 220, 120, 90, 90, 90, 120, 140, 180)):
             self.table.setColumnWidth(col, width)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.selectionModel().currentChanged.connect(self.show_row_problem)
@@ -380,6 +386,16 @@ class MainWindow(QMainWindow):
         review.addStretch()
         layout.addLayout(review)
         layout.addWidget(self.table, 1)
+        midi = QHBoxLayout()
+        midi.addWidget(QLabel('MIDI file'))
+        self.midi_entry = QLineEdit()
+        self.midi_entry.setReadOnly(True)
+        self.midi_entry.setPlaceholderText('No MIDI file')
+        self.midi_entry.setAccessibleName('MIDI file')
+        midi.addWidget(self.midi_entry, 1)
+        self.midi_browse_button = self.button('Browse…', self.browse_midi, midi)
+        self.midi_clear_button = self.button('Clear', lambda: self.set_midi_path(None), midi)
+        layout.addLayout(midi)
         layout.addWidget(QLabel('Drop one file on a row to replace it; drop below the rows to append songs.'))
         layout.addWidget(QLabel('Double-click a cell to edit. Changes save automatically.'))
         self.stack.addWidget(self.editor)
@@ -737,6 +753,32 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.notice(f'File dialog unavailable: {exc}')
 
+    def browse_midi(self):
+        index = self.table.currentIndex().row()
+        if self.audio is not None or index < 0:
+            return
+        row = self.document.rows[index]
+        try:
+            path = self.dialogs.midi_file(row.midi or row.file)
+            if path is not None:
+                self.set_midi_path(path)
+        except Exception as exc:
+            self.notice(f'File dialog unavailable: {exc}')
+
+    def set_midi_path(self, path):
+        index = self.table.currentIndex().row()
+        if self.audio is not None or index < 0:
+            return False
+        row = self.document.rows[index]
+        try:
+            self.document.set_midi(row, path)
+        except ValueError as exc:
+            self.notice(str(exc))
+            return False
+        self.changed()
+        self.model.refresh()
+        return True
+
     def replace_path(self, index, path):
         if self.audio is not None:
             self.notice('Return to the editor to replace a song’s file.')
@@ -887,6 +929,13 @@ class MainWindow(QMainWindow):
 
     def show_row_problem(self, *args):
         index = self.table.currentIndex().row()
+        selected = 0 <= index < len(self.document.rows)
+        midi = self.document.rows[index].midi if selected else None
+        self.midi_entry.setText(midi.name if midi else '')
+        self.midi_entry.setToolTip(str(midi) if midi else '')
+        self.midi_entry.setEnabled(self.audio is None and selected)
+        self.midi_browse_button.setEnabled(self.audio is None and selected)
+        self.midi_clear_button.setEnabled(self.audio is None and selected and midi is not None)
         self.replace_button.setEnabled(self.audio is None and index >= 0)
         self.align_button.setEnabled(self.audio is None and index >= 0)
         show_detected = show_keep = False
