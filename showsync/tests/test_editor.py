@@ -40,7 +40,7 @@ def test_legacy_restart_is_inert_and_roundtrips_without_checkbox(window_factory,
     doc.save()
     assert target.read_text() == text
     w = window_factory(doc)
-    assert w.model.columnCount() == 8
+    assert w.model.columnCount() == 9
     assert not hasattr(doc.rows[0], 'restart')
     assert not hasattr(doc.setlist().songs[0], 'restart')
     assert not hasattr(load_setlist(target).songs[0], 'restart')
