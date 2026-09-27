@@ -223,6 +223,33 @@ A short runnable five-codec demo is `tests/fixtures/smoke.yaml`. Optional
 reduce garbage-collector pauses; measure on the target machine before relying
 on it. It does not provide real-time scheduling guarantees.
 
+### Per-song MIDI files
+
+Select a song and use **MIDI file → Browse…** to add a `.mid` or `.midi` file.
+Its events follow the song tempo, including ramps; embedded MIDI tempos are
+ignored. **Loop** repeats the phrase until the song ends. The output dropdown
+chooses a separate synth for file events; blank uses the clock output. Clock and
+Start/Stop still go to the clock output. Missing file outputs warn and fall back
+to that output. **Clear** removes the file and its options.
+
+The original `midi: parts/keys.mid` form still plays once on the clock output.
+For looping or a separate output, use a mapping:
+
+```yaml
+midi: {file: parts/arp.mid, loop: true, port: 'MIDIPLUS TBOX 2x2 Midi In 2'}
+```
+
+The default loop length is the last wire event's beat rounded up to a four-beat
+bar, with a minimum of one bar. An event exactly on a bar boundary does not add
+another bar. MIDI meta events and trailing silence do not extend the loop.
+Add `bars: 8` or `beats: 30` (positive numbers, mutually exclusive) to override
+the length, including intended trailing silence. Events beyond an explicit
+length are omitted; events exactly at its boundary play before the next loop.
+Each repeat follows the absolute song beat grid, even through tempo ramps.
+Sustain and notes are released at loop boundaries and on pause, skip, or end.
+Port values accept an exact name or zero-based index. Editor saves and show
+bundles preserve these options; bundled MIDI paths are relocated with the audio.
+
 ### Video playback
 
 Add an MP4, M4V, MPG, MPEG, or MOV as a song to play its embedded audio as the

@@ -224,3 +224,39 @@ def test_trim_shifts_tempo_events_with_the_timeline(tmp_path):
     for t in (0, 5, 8, 15, 28, 40):
         assert ours.B(t) == pytest.approx(theirs.B(t), abs=1e-12)
         assert ours.bpm_at(t) == theirs.bpm_at(t)
+
+
+@pytest.mark.parametrize('midi, loop, beats, port', [
+    ('part.mid', False, None, None),
+    ({'file': 'part.mid', 'loop': True, 'bars': 3, 'port': 'Synth'}, True, 12, 'Synth'),
+    ({'file': 'part.mid', 'loop': True, 'beats': 7.5, 'port': 0}, True, 7.5, 0),
+])
+def test_midi_forms_preserve_order_roundtrip(tmp_path, midi, loop, beats, port):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120, midi=midi))
+    save_song_order(path, [0])
+    preserved = path.read_text()
+    save_song_order(path, [0])
+    assert path.read_text() == preserved
+    song = load_setlist(path).songs[0]
+    assert song.midi == tmp_path / 'part.mid'
+    assert (song.midi_loop, song.midi_beats, song.midi_port) == (loop, beats, port)
+
+
+@pytest.mark.parametrize('options, message', [
+    ({'loop': 'yes'}, 'midi.loop'),
+    ({'beats': 0}, 'midi.beats'),
+    ({'bars': -1}, 'midi.bars'),
+    ({'beats': float('inf')}, 'midi.beats'),
+    ({'beats': True}, 'midi.beats'),
+    ({'beats': 4, 'bars': 1}, 'choose beats or bars'),
+    ({'port': -1}, 'midi.port'),
+    ({'port': True}, 'midi.port'),
+    ({'port': ''}, 'midi.port'),
+    ({'unknown': 1}, 'unknown fields'),
+])
+def test_invalid_midi_options_have_context(tmp_path, options, message):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120,
+                               midi=dict(file='part.mid', **options)))
+    with pytest.raises(SetlistError, match=message) as exc:
+        load_setlist(path)
+    assert 'song 1 (Song)' in str(exc.value)

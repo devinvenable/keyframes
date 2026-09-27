@@ -33,6 +33,9 @@ class Song:
     video: Path | None = None  # separate silent visuals, overriding embedded video
     mute: bool = False
     trim: float = 0.0  # playback starts here (seconds); the file is untouched
+    midi_loop: bool = False
+    midi_beats: float | None = None
+    midi_port: str | int | None = None
 
     @property
     def video_source(self):
@@ -127,6 +130,26 @@ def parse_song(row, root, *, require_bpm=True):
     # A missing/unreadable .mid never gates the show: existence is checked at
     # engine start (warn and play without it), so only the reference is strict.
     midi = row.get("midi")
+    midi_loop, midi_beats, midi_port = False, None, None
+    if isinstance(midi, dict):
+        options = mapping(midi, {'file', 'loop', 'beats', 'bars', 'port'}, 'midi')
+        midi_loop = options.get('loop', False)
+        if not isinstance(midi_loop, bool):
+            raise ValueError('midi.loop must be a boolean')
+        if 'beats' in options and 'bars' in options:
+            raise ValueError('midi: choose beats or bars, not both')
+        for key, scale in (('beats', 1), ('bars', 4)):
+            if key in options:
+                midi_beats = number(options[key], f'midi.{key}', positive=True) * scale
+                if not math.isfinite(midi_beats):
+                    raise ValueError('midi loop length must be finite')
+        midi_port = options.get('port')
+        if midi_port is not None:
+            if isinstance(midi_port, str):
+                string(midi_port, 'midi.port')
+            elif isinstance(midi_port, bool) or not isinstance(midi_port, int) or midi_port < 0:
+                raise ValueError('midi.port must be an exact name or nonnegative index')
+        midi = string(options.get('file'), 'midi.file')
     if midi is not None:
         midi = (root / string(midi, "midi")).resolve()
         if midi.suffix.lower() not in MIDI_SUFFIXES:
@@ -144,7 +167,8 @@ def parse_song(row, root, *, require_bpm=True):
         except ValueError as exc:
             raise ValueError(f"tempo[{j}].{exc}") from exc
     return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset,
-                midi=midi, video=video, mute=mute, trim=trim)
+                midi=midi, video=video, mute=mute, trim=trim,
+                midi_loop=midi_loop, midi_beats=midi_beats, midi_port=midi_port)
 
 
 def timing_metadata(row):

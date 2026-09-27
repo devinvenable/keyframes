@@ -7,6 +7,7 @@ playback follows ramps and stays locked to the audio frame counter for free.
 """
 from dataclasses import dataclass
 import logging
+import math
 
 LOG = logging.getLogger(__name__)
 
@@ -15,6 +16,13 @@ LOG = logging.getLogger(__name__)
 class MidiEvent:
     beat: float
     data: tuple  # complete wire message, ready for send_message
+
+
+@dataclass(frozen=True)
+class MidiPlayback:
+    events: tuple = ()
+    loop_beats: float | None = None
+    port: str | int | None = None
 
 
 def load_midi_events(path):
@@ -68,3 +76,15 @@ class MidiEventsView:
     def __getitem__(self, index):
         midi = self._engine._layout.setlist.songs[index].midi
         return self._by_path.get(midi, ()) if midi is not None else ()
+
+    def playback(self, index, layout=None):
+        # Use the position's layout snapshot so events and options move together.
+        song = (layout or self._engine._layout).setlist.songs[index]
+        events = self._by_path.get(song.midi, ())
+        length = None
+        if song.midi_loop and events:
+            # ShowSync bars are four quarter-note beats. Meta/trailing silence
+            # is ignored; an explicit length can extend or trim the phrase.
+            length = song.midi_beats or max(4, math.ceil(events[-1].beat / 4) * 4)
+            events = tuple(event for event in events if event.beat <= length)
+        return MidiPlayback(events, length, song.midi_port)

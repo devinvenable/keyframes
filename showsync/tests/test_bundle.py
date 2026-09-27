@@ -310,3 +310,23 @@ def test_cli_import(tmp_path, capsys):
         main(['--import-bundle', str(zip_path), str(dest), 'extra'])
     with pytest.raises(SystemExit):
         main([str(tmp_path / 'show.yaml'), '--import-bundle', str(zip_path)])
+
+
+def test_extended_midi_bundle_keeps_options_and_rewrites_file(tmp_path):
+    audio = make_audio(tmp_path / 'media', 'song.wav', b'audio')
+    midi = tmp_path / 'media' / 'song.mid'
+    midi.write_bytes(b'MIDI')
+    path = write_setlist(tmp_path / 'show.yaml', f'''songs:
+  - name: Song
+    file: {audio}
+    bpm: 120
+    midi: {{file: {midi}, loop: true, bars: 2, port: 'Synth'}} # loop notes
+''')
+    bundle = tmp_path / 'show.zip'
+    export_bundle(path, bundle)
+    home = extract(bundle, tmp_path / 'imported')
+    song = load_setlist(home / 'show.yaml').songs[0]
+    assert song.midi == home / 'song.mid'
+    assert song.midi.read_bytes() == b'MIDI'
+    assert (song.midi_loop, song.midi_beats, song.midi_port) == (True, 8, 'Synth')
+    assert '# loop notes' in (home / 'show.yaml').read_text()

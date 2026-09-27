@@ -86,14 +86,19 @@ def export_bundle(setlist_path, zip_path):
             # export either: pack it when present, warn and travel the
             # reference untouched when not.
             if row.get("midi") is not None:
-                midi = (root / string(row.get("midi"), "midi")).resolve()
+                midi_options = row['midi']
+                reference = midi_options.get('file') if isinstance(midi_options, dict) else midi_options
+                midi = (root / string(reference, "midi")).resolve()
                 if midi.is_file():
                     name = archived.get(midi)
                     if name is None:
                         name = _free_name(midi.name, taken)
                         taken.add(name.casefold())
                         archived[midi] = name
-                    row["midi"] = name
+                    if isinstance(midi_options, dict):
+                        midi_options['file'] = name
+                    else:
+                        row["midi"] = name
                 else:
                     LOG.warning('%s: midi file does not exist: %s — bundled without it',
                                 context, midi)

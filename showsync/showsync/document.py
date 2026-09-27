@@ -49,6 +49,9 @@ class Row:
     video: Path | None = None
     mute: bool = False
     trim: float = 0.0
+    midi_loop: bool = False
+    midi_beats: float | None = None
+    midi_port: str | int | None = None
 
     def problem(self):
         if self.file_error:
@@ -68,7 +71,8 @@ class Row:
 
     def song(self):
         return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset,
-                    self.midi, self.video, self.mute, self.trim)
+                    self.midi, self.video, self.mute, self.trim,
+                    self.midi_loop, self.midi_beats, self.midi_port)
 
     @property
     def custom_tempo(self):
@@ -195,6 +199,8 @@ class Document:
         if midi is not None and midi.suffix.lower() not in MIDI_SUFFIXES:
             raise ValueError('MIDI file must be a .mid or .midi file')
         row.midi = midi
+        if midi is None:
+            row.midi_loop, row.midi_beats, row.midi_port = False, None, None
 
     def setlist(self):
         blocked = self.first_problem()
@@ -243,9 +249,29 @@ class Document:
                 self._set_number(entry, "bpm", row.bpm)
                 if row.midi is None:
                     entry.pop('midi', None)
-                elif ('midi' not in entry or
-                      (root / str(entry['midi'])).resolve() != row.midi):
-                    entry['midi'] = self._portable(row.midi, root)
+                else:
+                    saved = entry.get('midi')
+                    extended = (isinstance(saved, dict) or row.midi_loop or
+                                row.midi_beats is not None or row.midi_port is not None)
+                    if extended:
+                        if not isinstance(saved, dict):
+                            saved = CommentedMap(file=saved or self._portable(row.midi, root))
+                            entry['midi'] = saved
+                        if (root / str(saved['file'])).resolve() != row.midi:
+                            saved['file'] = self._portable(row.midi, root)
+                        if row.midi_loop or 'loop' in saved:
+                            saved['loop'] = row.midi_loop
+                        if row.midi_port is not None or 'port' in saved:
+                            saved['port'] = row.midi_port
+                        if row.midi_beats is None:
+                            saved.pop('beats', None)
+                            saved.pop('bars', None)
+                        elif 'bars' in saved:
+                            self._set_number(saved, 'bars', row.midi_beats / 4)
+                        else:
+                            self._set_number(saved, 'beats', row.midi_beats)
+                    elif saved is None or (root / str(saved)).resolve() != row.midi:
+                        entry['midi'] = self._portable(row.midi, root)
                 if row.video is None:
                     entry.pop('video', None)
                 elif ('video' not in entry or

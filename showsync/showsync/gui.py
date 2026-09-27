@@ -9,7 +9,7 @@ from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QSettings, 
 from PySide6.QtGui import QAction, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QDoubleSpinBox,
-    QHeaderView, QHBoxLayout, QLabel,
+    QHeaderView, QHBoxLayout, QLabel, QCheckBox, QComboBox,
     QLineEdit, QListWidget, QMainWindow, QMessageBox, QProgressBar, QPushButton,
     QStackedWidget, QStyledItemDelegate, QTableView, QVBoxLayout, QWidget,
 )
@@ -395,6 +395,22 @@ class MainWindow(QMainWindow):
         midi.addWidget(self.midi_entry, 1)
         self.midi_browse_button = self.button('Browse…', self.browse_midi, midi)
         self.midi_clear_button = self.button('Clear', lambda: self.set_midi_path(None), midi)
+        self.midi_loop = QCheckBox('Loop')
+        self.midi_loop.setToolTip('Repeat on the beat grid until the song ends (four-beat bars).')
+        midi.addWidget(self.midi_loop)
+        self.midi_port = QComboBox()
+        self.midi_port.setAccessibleName('MIDI file output')
+        self.midi_port.setToolTip('MIDI file output; blank uses the clock port')
+        self.midi_port.addItem('', None)
+        from .devices import midi_outputs
+        try:
+            for port in midi_outputs():
+                self.midi_port.addItem(port, port)
+        except Exception:
+            pass
+        midi.addWidget(self.midi_port)
+        self.midi_loop.toggled.connect(self.set_midi_options)
+        self.midi_port.currentIndexChanged.connect(self.set_midi_options)
         layout.addLayout(midi)
         layout.addWidget(QLabel('Drop one file on a row to replace it; drop below the rows to append songs.'))
         layout.addWidget(QLabel('Double-click a cell to edit. Changes save automatically.'))
@@ -779,6 +795,17 @@ class MainWindow(QMainWindow):
         self.model.refresh()
         return True
 
+    def set_midi_options(self, *args):
+        index = self.table.currentIndex().row()
+        if self.audio is not None or index < 0:
+            return
+        row = self.document.rows[index]
+        if row.midi is None:
+            return
+        row.midi_loop = self.midi_loop.isChecked()
+        row.midi_port = self.midi_port.currentData()
+        self.changed()
+
     def replace_path(self, index, path):
         if self.audio is not None:
             self.notice('Return to the editor to replace a song’s file.')
@@ -936,6 +963,21 @@ class MainWindow(QMainWindow):
         self.midi_entry.setEnabled(self.audio is None and selected)
         self.midi_browse_button.setEnabled(self.audio is None and selected)
         self.midi_clear_button.setEnabled(self.audio is None and selected and midi is not None)
+        row = self.document.rows[index] if selected else None
+        self.midi_loop.blockSignals(True)
+        self.midi_port.blockSignals(True)
+        self.midi_loop.setChecked(bool(row and row.midi_loop))
+        port = row.midi_port if row else None
+        port_index = self.midi_port.findData(port)
+        if port_index < 0:
+            # Preserve disconnected names and YAML index selections on edits.
+            self.midi_port.addItem(str(port), port)
+            port_index = self.midi_port.count() - 1
+        self.midi_port.setCurrentIndex(port_index)
+        self.midi_loop.blockSignals(False)
+        self.midi_port.blockSignals(False)
+        self.midi_loop.setEnabled(self.audio is None and midi is not None)
+        self.midi_port.setEnabled(self.audio is None and midi is not None)
         self.replace_button.setEnabled(self.audio is None and index >= 0)
         self.align_button.setEnabled(self.audio is None and index >= 0)
         show_detected = show_keep = False
@@ -1002,6 +1044,7 @@ class MainWindow(QMainWindow):
         if self.devices is not None:
             self.midi_status.setText(f'MIDI: {self.devices.midi_name or "No output (audio only)"}')
         self.baseline = list(self.document.rows)
+        self.show_row_problem()
         self.populate_queue()
         self.stack.setCurrentWidget(self.playback)
         self.video_window.start(self.audio)

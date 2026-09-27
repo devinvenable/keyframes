@@ -205,3 +205,151 @@ def test_events_view_follows_reorders():
     assert view[0] == EVENTS and view[1] == ()
     layout.setlist = Setlist('t', (b, a))
     assert view[0] == () and view[1] == EVENTS
+
+
+def looping_view(events=EVENTS, **options):
+    from types import SimpleNamespace
+    song = Song('Loop', FIXTURES / 'tone.wav', 120, midi=Path('/loop.mid'),
+                midi_loop=True, **options)
+    engine = SimpleNamespace(_layout=SimpleNamespace(setlist=Setlist('Show', (song,))))
+    return MidiEventsView(engine, {song.midi: events})
+
+
+@pytest.mark.parametrize('last, length', [(0, 4), (3.5, 4), (4, 4), (4.01, 8)])
+@pytest.mark.parametrize('ramp', [(), (E(.5, 180, 8),)])
+def test_loop_restarts_on_absolute_beats_for_four_iterations(last, length, ramp):
+    events = (MidiEvent(0, (0x90, 60, 100)), MidiEvent(last, (0x80, 60, 0)))
+    tempo = TempoMap(120, ramp)
+    fake = Fake([tempo], events=looping_view(events))
+    fake.run_until(tempo.T(length * 3 + .1))
+    starts = [t for t, data in fake.sent() if data == events[0].data]
+    assert starts == pytest.approx([tempo.T(i * length) for i in range(4)], abs=1e-9)
+    # At an exact bar boundary the outgoing note-off precedes the next on.
+    if last == length:
+        at_cut = [data for t, data in fake.sent() if abs(t - tempo.T(length)) < 1e-9]
+        assert at_cut == [events[1].data, (0xB0, 64, 0), (0xB0, 123, 0), events[0].data]
+
+
+@pytest.mark.parametrize('length', [2, 12])
+def test_explicit_loop_length_trims_or_extends_phrase(length):
+    tempo = TempoMap(120, [E(.5, 180, 6)])
+    fake = Fake([tempo], events=looping_view(midi_beats=length))
+    fake.run_until(tempo.T(3 * length + .1))
+    starts = [t for t, data in fake.sent() if data == EVENTS[0].data]
+    assert starts == pytest.approx([tempo.T(i * length) for i in range(4)], abs=1e-9)
+    if length == 2:
+        assert not any(data == EVENTS[2].data for _, data in fake.sent())
+
+
+@pytest.mark.parametrize('action', ['pause', 'skip', 'end', 'close'])
+def test_mid_loop_cleanup_and_resume(action):
+    fake = Fake([TempoMap(120)], events=looping_view())
+    fake.run_until(2.2)  # inside second iteration
+    before = len(fake.messages)
+    if action == 'close':
+        fake.engine.close()
+    else:
+        fake.p = replace(fake.p, playing=action != 'pause', ended=action == 'end',
+                         epoch=1 if action == 'skip' else 0,
+                         song_time=0 if action == 'skip' else fake.p.song_time)
+        fake.engine.step()
+    assert [m for _, m in fake.messages[before:before + 3]] == [
+        (0xB0, 64, 0), (0xB0, 123, 0), STOP]
+    if action == 'pause':
+        before = len(fake.sent())
+        fake.p = replace(fake.p, playing=True)
+        fake.run_until(2.6)
+        assert [m for _, m in fake.sent()[before:]] == [EVENTS[1].data]
+    elif action == 'skip':
+        assert fake.sent()[-1][1] == EVENTS[0].data
+
+
+@pytest.mark.parametrize('selection', ['Missing synth', 99])
+def test_unavailable_file_output_falls_back_to_clock(selection, monkeypatch, caplog):
+    import sys
+    from types import SimpleNamespace
+    class Output:
+        def get_ports(self):
+            return ['Present synth']
+    monkeypatch.setitem(sys.modules, 'rtmidi', SimpleNamespace(MidiOut=Output))
+    fake = Fake([TempoMap(120)], events=looping_view(midi_port=selection))
+    fake.run_until(.1)
+    fake.engine.close()
+    assert fake.sent()[0][1] == EVENTS[0].data
+    assert [data for _, data in fake.sent()[-2:]] == [(0xB0, 64, 0), (0xB0, 123, 0)]
+    assert 'using clock port' in caplog.text
+    assert str(selection) in caplog.text
+
+
+@pytest.mark.parametrize('selection', ['Synth B', 1])
+def test_extra_port_lifecycle_and_writes_are_owned_by_clock_thread(selection, monkeypatch):
+    import sys
+    import threading
+    from types import SimpleNamespace
+    calls = []
+    class Output:
+        def __init__(self):
+            calls.append(('create', threading.get_ident(), None))
+        def get_ports(self):
+            return ['Synth A', 'Synth B']
+        def open_port(self, index):
+            calls.append(('open', threading.get_ident(), index))
+        def send_message(self, data):
+            calls.append(('send', threading.get_ident(), data))
+        def close_port(self):
+            calls.append(('close', threading.get_ident(), None))
+    monkeypatch.setitem(sys.modules, 'rtmidi', SimpleNamespace(MidiOut=Output))
+    fake = Fake([TempoMap(120)], events=looping_view(midi_port=selection))
+    def sleep(dt):
+        fake.advance(dt)
+        if fake.time > .1:
+            fake.engine._halt.set()
+    fake.engine.sleep = sleep
+    fake.engine.now = lambda: (fake.advance(.0001) or fake.time)
+    fake.engine.start()
+    fake.engine._thread.join(3)
+    fake.engine.close()
+    assert fake.engine.error is None
+    assert calls[0][0] == 'create' and calls[-1][0] == 'close'
+    assert {tid for _, tid, _ in calls} == {fake.engine._thread.ident}
+    assert fake.engine._thread.ident != threading.get_ident()
+    assert next(data for op, _, data in calls if op == 'open') == 1
+    sent = [data for op, _, data in calls if op == 'send']
+    assert sent == [EVENTS[0].data, (0xB0, 64, 0), (0xB0, 123, 0)]
+    assert all(isinstance(data, int) for _, data in fake.messages)
+
+
+def test_port_switch_flushes_old_destination_before_closing(monkeypatch):
+    from types import SimpleNamespace
+    traffic = []
+    def open_port(selection):
+        traffic.append((selection, 'open'))
+        return SimpleNamespace(send_message=lambda data: traffic.append((selection, data)),
+                               close_port=lambda: traffic.append((selection, 'close')))
+    monkeypatch.setattr('showsync.clock.open_midi_port', open_port)
+    view = looping_view(midi_port='First')
+    first = view._engine._layout.setlist.songs[0]
+    second = replace(first, midi_port='Second')
+    view._engine._layout.setlist = Setlist('Show', (first, second))
+    fake = Fake([TempoMap(120)] * 2, events=view)
+    fake.run_until(2.2)
+    before = len(traffic)
+    fake.p = Position(1, 0, True, epoch=1)
+    fake.engine.step()
+    assert traffic[before:] == [('First', (0xB0, 64, 0)), ('First', (0xB0, 123, 0)),
+                                ('First', 'close'), ('Second', 'open'),
+                                ('Second', EVENTS[0].data)]
+    fake.engine.close()
+
+
+def test_loop_options_follow_position_snapshot_and_reorder():
+    from types import SimpleNamespace
+    view = looping_view(midi_beats=8, midi_port='Synth')
+    first = view._engine._layout.setlist.songs[0]
+    second = replace(first, midi_loop=False, midi_port=0)
+    snapshot = SimpleNamespace(setlist=Setlist('Show', (first, second)))
+    view._engine._layout = SimpleNamespace(setlist=Setlist('Show', (second, first)))
+    assert view.playback(0, snapshot).loop_beats == 8
+    assert view.playback(0, snapshot).port == 'Synth'
+    assert view.playback(0).loop_beats is None
+    assert view.playback(0).port == 0

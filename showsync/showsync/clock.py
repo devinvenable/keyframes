@@ -1,5 +1,6 @@
 """Absolute beat-index MIDI scheduling against an injected audio position."""
 import math
+import logging
 import threading
 import time
 
@@ -7,6 +8,7 @@ from .priority import raise_thread_priority
 from .audio import RATE
 
 CLOCK, START, STOP = 0xF8, 0xFA, 0xFC
+LOG = logging.getLogger(__name__)
 
 
 class ClockEngine:
@@ -22,6 +24,10 @@ class ClockEngine:
         self.events = events
         self._song_events = ()
         self._cursor = 0
+        self._loop_beats = None
+        self._iteration = 0
+        self._event_port = None
+        self._event_send = send
         self._channels = set()
         self._key = None
         self._active = False
@@ -64,7 +70,23 @@ class ClockEngine:
         if reset:
             self._tick = 0
             self._last_sent_time = self._last_target = None
-            self._song_events = self.events[p.song_index] if self.events is not None else ()
+            self._song_events = ()
+            self._loop_beats = None
+            self._iteration = 0
+            self._close_event_port()
+            if hasattr(self.events, 'playback'):
+                playback = self.events.playback(p.song_index, p.layout)
+                self._song_events = playback.events
+                self._loop_beats = playback.loop_beats if playback.events else None
+                if playback.events and playback.port is not None:
+                    try:
+                        self._event_port = open_midi_port(playback.port)
+                        self._event_send = self._event_port.send_message
+                    except Exception as exc:
+                        LOG.warning('MIDI file output %r unavailable (%s) — using clock port',
+                                    playback.port, exc)
+            elif self.events is not None:
+                self._song_events = self.events[p.song_index]
             self._cursor = 0
         # Position carries the same immutable layout as its audio frame.
         tempo = p.layout.maps[p.song_index] if p.layout is not None else self.maps[p.song_index]
@@ -80,16 +102,26 @@ class ClockEngine:
         self._key = key
         # File events share the clock's deadlines; cursor state survives a
         # pause (resume replays nothing) and resets with the tick index.
-        while self._cursor < len(self._song_events):
-            event = self._song_events[self._cursor]
-            if tempo.T(event.beat) - clock_time > 1e-9:
+        while True:
+            offset = self._iteration * (self._loop_beats or 0)
+            if self._cursor < len(self._song_events):
+                event = self._song_events[self._cursor]
+                event_due = tempo.T(offset + event.beat) - clock_time
+            elif self._loop_beats is not None:
+                event_due = tempo.T((self._iteration + 1) * self._loop_beats) - clock_time
+            else:
+                event_due = math.inf
+            if event_due > 1e-9:
                 break
-            self._send_event(event.data)
-            self._cursor += 1
-        if self._cursor < len(self._song_events):
-            event_due = tempo.T(self._song_events[self._cursor].beat) - clock_time
-        else:
-            event_due = math.inf
+            if self._cursor < len(self._song_events):
+                self._send_event(event.data)
+                self._cursor += 1
+            else:
+                # Release the outgoing phrase before its beat-zero notes.
+                # Integer iteration * length avoids accumulating timing error.
+                self._flush_notes()
+                self._iteration += 1
+                self._cursor = 0
         if p.layout is not None and p.song_index + 1 < len(p.layout.starts):
             boundary = p.layout.starts[p.song_index + 1]
             span = (boundary - p.layout.starts[p.song_index]) / RATE
@@ -121,7 +153,7 @@ class ClockEngine:
         return max(0, min(remaining, event_due))
 
     def _send_event(self, data):
-        self.send(data)
+        self._event_send(data)
         status = data[0] & 0xF0
         if status == 0x90 and len(data) > 2 and data[2] > 0:
             self._channels.add(data[0] & 0x0F)
@@ -131,9 +163,17 @@ class ClockEngine:
     def _flush_notes(self):
         # Sustain off before All Notes Off: CC123 cannot silence pedal-held notes.
         for channel in sorted(self._channels):
-            self.send((0xB0 | channel, 64, 0))
-            self.send((0xB0 | channel, 123, 0))
+            self._event_send((0xB0 | channel, 64, 0))
+            self._event_send((0xB0 | channel, 123, 0))
         self._channels.clear()
+
+    def _close_event_port(self):
+        if self._event_port is not None:
+            try:
+                self._event_port.close_port()
+            finally:
+                self._event_port = None
+                self._event_send = self.send
 
     def _run(self):
         self.priority_raised = raise_thread_priority()
@@ -151,7 +191,10 @@ class ClockEngine:
         except Exception as exc:
             self.error = f'MIDI clock failed: {exc}'
         finally:
-            self._stop()
+            try:
+                self._stop()
+            finally:
+                self._close_event_port()
 
     def _stop(self):
         if self._active:
@@ -175,7 +218,10 @@ class ClockEngine:
             if self._thread.is_alive():
                 raise RuntimeError('MIDI sender did not stop within 5 seconds')
         else:
-            self._stop()
+            try:
+                self._stop()
+            finally:
+                self._close_event_port()
 
 
 def open_midi_port(selection=None):

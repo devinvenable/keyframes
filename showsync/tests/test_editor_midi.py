@@ -128,3 +128,53 @@ def test_windows_portable_paths():
     root = PureWindowsPath('C:/Show/media')
     assert Document._portable(PureWindowsPath('C:/Show/media/parts/song.mid'), root) == 'parts/song.mid'
     assert Document._portable(PureWindowsPath('D:/parts/song.mid'), root) == str(PureWindowsPath('D:/parts/song.mid'))
+
+
+@pytest.mark.parametrize('length', ['bars: 3', 'beats: 7.5'])
+def test_extended_midi_editor_roundtrip_and_controls(length, tmp_path, window_factory, qtbot, monkeypatch):
+    monkeypatch.setattr('showsync.devices.midi_outputs', lambda: ['Synth A', 'Synth B'])
+    path = tmp_path / 'show.yaml'
+    original = f'''title: Show
+songs:
+  - name: Song
+    file: {TONE}
+    bpm: 120
+    midi: {{file: "./old.mid", loop: true, {length}, port: 'Disconnected'}} # keep MIDI
+'''
+    path.write_text(original)
+    doc = Document.load(path)
+    doc.save()
+    assert path.read_text() == original
+    w = window_factory(doc)
+    w.table.selectRow(0)
+    assert w.midi_loop.isChecked()
+    assert w.midi_port.currentData() == 'Disconnected'
+    assert w.midi_port.findText('Synth B') >= 0
+    qtbot.mouseClick(w.midi_loop, Qt.LeftButton)
+    w.midi_port.setCurrentIndex(w.midi_port.findData('Synth B'))
+    assert w.set_midi_path(tmp_path / 'replacement.mid')
+    reopened = Document.load(path)
+    row = reopened.rows[0]
+    song = reopened.setlist().songs[0]
+    assert row.midi == tmp_path / 'replacement.mid'
+    assert (song.midi_loop, song.midi_port) == (False, 'Synth B')
+    assert song.midi_beats == (12 if length.startswith('bars') else 7.5)
+    assert '# keep MIDI' in path.read_text() and length in path.read_text()
+    w.midi_port.setCurrentIndex(0)
+    assert Document.load(path).rows[0].midi_port is None
+    qtbot.mouseClick(w.midi_clear_button, Qt.LeftButton)
+    assert 'midi:' not in path.read_text()
+    assert not w.midi_loop.isEnabled() and not w.midi_port.isEnabled()
+
+
+def test_plain_midi_promotes_to_mapping_on_option_edit(tmp_path, window_factory, qtbot, monkeypatch):
+    monkeypatch.setattr('showsync.devices.midi_outputs', lambda: ['Synth'])
+    doc = Document(tmp_path / 'show.yaml', rows=[Row('Song', TONE, 120, midi=tmp_path / 'part.mid')])
+    w = window_factory(doc)
+    w.table.selectRow(0)
+    qtbot.mouseClick(w.midi_loop, Qt.LeftButton)
+    w.midi_port.setCurrentIndex(1)
+    song = Document.load(doc.path).setlist().songs[0]
+    assert song.midi_loop and song.midi_port == 'Synth'
+    w.play()
+    assert not w.midi_loop.isEnabled() and not w.midi_port.isEnabled()
