@@ -44,3 +44,6 @@ songs/
 /images/
 /mapping.json
 recordings/
+generated/
+keyframes/retired/
+keyframes/mapping.json.bak-*
