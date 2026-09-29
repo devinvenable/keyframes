@@ -106,6 +106,88 @@ PROMPTS = [
     "copper-bodied ant machine, both magnified so their surfaces show "
     "microscopic wormy ridges like machined skin, a tiny human eye set "
     "into the mantis's head staring at the lens. " + NO_TEXT,
+
+    # === batch 2 (indexes 13-24, task 191) — new compositions ===
+    # --- aerial dogfights ---
+    STYLE + "Aerial dogfight high above a burning battlefield: a chrome "
+    "dragonfly interceptor banking hard, wings a blur of transparent alloy, "
+    "chased by three wasp fighter machines spitting glowing rounds, contrails "
+    "and flak bursts scattered across a smoke-stained sky, wrecked winged "
+    "machines tumbling toward the ground far below, year 3050 air war. "
+    + NO_TEXT,
+
+    STYLE + "Vertigo-inducing aerial shot looking straight down through a "
+    "swirling dogfight of hundreds of winged insect machines — dragonflies, "
+    "hornets and flying beetles spiraling in a vortex of glinting metal, "
+    "tracer lines threading the swarm, the cratered battlefield miles "
+    "below them like a scorched map, futuristic 2050 warfare. " + NO_TEXT,
+
+    STYLE + "Close aerial shot at the moment of a mid-air collision: a "
+    "titanium hornet fighter raking its barbed legs across the fuselage of "
+    "a locust bomber machine, torn armor petals peeling back, hydraulic "
+    "fluid streaming like blood in the slipstream, other winged machines "
+    "dueling out of focus behind them. " + NO_TEXT,
+
+    # --- night battles lit by tracer fire ---
+    STYLE + "Night battle wide shot: a plain lit only by arcs of glowing "
+    "tracer fire crisscrossing the dark, silhouetting thousands of "
+    "mechanical ants and beetles advancing in waves, muzzle flashes "
+    "strobing off wet chrome carapaces, a burning mantis war machine "
+    "lighting one flank like a bonfire, year 3050 night warfare. " + NO_TEXT,
+
+    STYLE + "Night scene in a ruined trench line: a mechanical praying "
+    "mantis sentry lit from below by the green glow of its own plasma "
+    "torch, tracer streams passing overhead, robotic ants with lamp-like "
+    "eyes filing past in the dark, rain glittering in the weapon light, "
+    "futuristic insect army at night. " + NO_TEXT,
+
+    STYLE + "Night aerial bombardment: wasp machines diving out of a black "
+    "sky marked by searchlight beams and streams of tracer fire, their "
+    "steel abdomens releasing glowing bomblets over a mound-city of "
+    "mechanical termites, explosions blooming across the dark hive slopes, "
+    "year 2050 technology. " + NO_TEXT,
+
+    # --- close-ups of a single hybrid machine ---
+    STYLE + "Portrait-style close-up of a single battle-scarred grasshopper "
+    "war machine standing alone in drifting smoke: dented chrome armor, "
+    "one antenna sheared off — and grafted where its forelimbs meet the "
+    "thorax, a pair of anatomically perfect human hands, fingers slowly "
+    "flexing, wormy cable bundles pulsing under its jaw like tendons. "
+    + NO_TEXT,
+
+    STYLE + "Tight close-up of a wounded beetle machine dragging itself "
+    "from a crater at dawn: half its face-plate torn away to reveal a "
+    "realistic human face beneath, eyes open and calm, machined mandibles "
+    "still working around it, oily worm-like tubes trailing from its "
+    "cracked abdomen into the mud, hallucinatory biomechanical detail. "
+    + NO_TEXT,
+
+    STYLE + "Studio-sharp close-up of a lone assassin-bug machine perched "
+    "on a heap of spent shell casings: its raised piercing proboscis is a "
+    "gleaming surgical needle, its folded forelegs end in small human "
+    "thumbs, and along its polished thorax a row of tiny human ears lies "
+    "flush with the metal, magnified microscopic surface texture. " + NO_TEXT,
+
+    # --- collapsed hive interiors ---
+    STYLE + "Interior of a collapsed hive-fortress: shafts of dusty light "
+    "falling through a caved-in ceiling of interlocked beetle-shell armor, "
+    "broken hexagonal galleries stretching into darkness, dead mechanical "
+    "workers hanging from the walls, a rescue column of ant machines "
+    "tunneling through the rubble with glowing cutting jaws. " + NO_TEXT,
+
+    STYLE + "Deep inside a ruined termite-mound city: a vast interior "
+    "cavern where the queen machine lies toppled — a house-sized wormlike "
+    "abdomen of segmented chrome, split open and spilling rows of unborn "
+    "larva machines, among them pale anatomically human limbs tangled in "
+    "the machinery, worker machines swarming over the wreck in the gloom. "
+    + NO_TEXT,
+
+    STYLE + "Claustrophobic tunnel shot inside a collapsed hive: the "
+    "camera low in a crushed gallery as mechanical larvae worm through "
+    "gaps in the fallen structure toward the lens, their wet-looking "
+    "segmented bodies magnified and microscopic in texture, one dragging "
+    "a severed chrome mantis arm, sparks dripping from ruptured conduits "
+    "above. " + NO_TEXT,
 ]
 
 GRADE = ("hue=s=0,curves=master='0/0.04 0.25/0.22 0.5/0.52 0.75/0.8 1/0.97',"
