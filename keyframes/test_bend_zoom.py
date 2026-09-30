@@ -128,18 +128,26 @@ def test_bend_zoom_persists_across_note_off_clear():
 
 # --- rendering ---------------------------------------------------------------
 
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+
+
 @pytest.mark.parametrize('display_mode', ['fill', 'fit'])
 def test_pan_shifts_zoom_window_across_overflow(display_mode):
+    # Left half red, right half blue: at zoom 2.0 the visible window is half
+    # the frame, so full pan shows a single colour and center shows both.
     surface = pygame.Surface((100, 100))
+    surface.fill(RED, (0, 0, 50, 100))
+    surface.fill(BLUE, (50, 0, 50, 100))
     target = (100, 100)
-    # zoom 2.0 -> 200x200 zoomed, 100px horizontal overflow
     center = zoom_surface_to_screen(surface, target, 2.0, display_mode, 0.0)
     left = zoom_surface_to_screen(surface, target, 2.0, display_mode, -1.0)
     right = zoom_surface_to_screen(surface, target, 2.0, display_mode, 1.0)
     assert center.get_size() == left.get_size() == right.get_size() == target
-    assert center.get_offset() == (50, 50)
-    assert left.get_offset() == (0, 50)
-    assert right.get_offset() == (100, 50)
+    assert center.get_at((10, 50))[:3] == RED
+    assert center.get_at((90, 50))[:3] == BLUE
+    assert left.get_at((10, 50))[:3] == left.get_at((90, 50))[:3] == RED
+    assert right.get_at((10, 50))[:3] == right.get_at((90, 50))[:3] == BLUE
 
 
 @pytest.mark.parametrize('display_mode', ['fill', 'fit'])
