@@ -89,6 +89,9 @@ MAX_PAN_FRACTION = 0.40
 # The KeyStep's mod strip sends nothing when the finger lifts, so pan cannot
 # spring back on its own. After this much CC1 silence an off-center pan eases
 # home over PAN_RECENTER_SECONDS; any new CC1 cancels the ease and takes over.
+# Devin feel-tested and prefers the pan to STAY where he put it, so the
+# auto-recenter is off; flip PAN_AUTO_RECENTER to re-enable the ease.
+PAN_AUTO_RECENTER = False
 PAN_RECENTER_DELAY = 0.4
 PAN_RECENTER_SECONDS = 0.25
 
@@ -2018,7 +2021,8 @@ def main():
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()
-        update_pan_recenter(state, now)
+        if PAN_AUTO_RECENTER:
+            update_pan_recenter(state, now)
         cur_active = state['note_active']
         note_started = cur_active is not None and cur_active != prev_active
         if note_started:
