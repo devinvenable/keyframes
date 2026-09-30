@@ -578,10 +578,12 @@ class VideoPlayer:
     grab()-skipping the frames that will never be shown. Streams that don't
     report a frame rate fall back to one decode per call."""
 
-    def __init__(self, path, target_size, loop=False, clock=time.monotonic):
+    def __init__(self, path, target_size, loop=False, clock=time.monotonic,
+                 display_mode='fill'):
         self.path = path
         self.target_size = target_size
         self.loop = loop
+        self.display_mode = display_mode
         self.clock = clock
         self.cap = open_video_capture(path)
         fps = self.cap.get(cv2.CAP_PROP_FPS)
@@ -637,21 +639,33 @@ class VideoPlayer:
             return self.last_surface
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # Crop-to-fill: scale to cover target, then center-crop
         th, tw = self.target_size[1], self.target_size[0]
         fh, fw = frame.shape[:2]
-        src_ratio = fw / fh
-        tgt_ratio = tw / th
-        if src_ratio > tgt_ratio:
-            new_h = th
-            new_w = int(fw * th / fh)
+        if self.display_mode == 'fit':
+            # Fit: scale to sit inside target, centered on black bars
+            scale = min(tw / fw, th / fh)
+            new_w = max(1, int(round(fw * scale)))
+            new_h = max(1, int(round(fh * scale)))
+            frame = cv2.resize(frame, (new_w, new_h))
+            canvas = np.zeros((th, tw, 3), dtype=frame.dtype)
+            x_off = (tw - new_w) // 2
+            y_off = (th - new_h) // 2
+            canvas[y_off:y_off+new_h, x_off:x_off+new_w] = frame
+            frame = canvas
         else:
-            new_w = tw
-            new_h = int(fh * tw / fw)
-        frame = cv2.resize(frame, (new_w, new_h))
-        x_off = (new_w - tw) // 2
-        y_off = (new_h - th) // 2
-        frame = frame[y_off:y_off+th, x_off:x_off+tw]
+            # Crop-to-fill: scale to cover target, then center-crop
+            src_ratio = fw / fh
+            tgt_ratio = tw / th
+            if src_ratio > tgt_ratio:
+                new_h = th
+                new_w = int(fw * th / fh)
+            else:
+                new_w = tw
+                new_h = int(fh * tw / fw)
+            frame = cv2.resize(frame, (new_w, new_h))
+            x_off = (new_w - tw) // 2
+            y_off = (new_h - th) // 2
+            frame = frame[y_off:y_off+th, x_off:x_off+tw]
         surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
         self.last_surface = surface
         return surface
@@ -693,9 +707,29 @@ def crop_to_fill(surface, target_size):
     return cropped
 
 
-def zoom_surface_to_screen(surface, target_size, zoom_scale):
-    """Scale a surface to fill the target area, optionally enlarging from center."""
-    fitted = crop_to_fill(surface, target_size)
+def fit_to_screen(surface, target_size):
+    """Scale surface to fit entirely inside target_size, preserving aspect ratio.
+    The result is a target_size surface with the media centered on black
+    letterbox/pillarbox bars."""
+    sw, sh = surface.get_size()
+    tw, th = target_size
+    scale = min(tw / sw, th / sh)
+    new_w = max(1, int(round(sw * scale)))
+    new_h = max(1, int(round(sh * scale)))
+    scaled = pygame.transform.smoothscale(surface, (new_w, new_h))
+    result = pygame.Surface(target_size)
+    result.blit(scaled, ((tw - new_w) // 2, (th - new_h) // 2))
+    return result
+
+
+def zoom_surface_to_screen(surface, target_size, zoom_scale, display_mode='fill'):
+    """Scale a surface to the target area, optionally enlarging from center.
+    In 'fit' mode the zoom enlarges the letterboxed frame, so the media may
+    overflow into its own bars."""
+    if display_mode == 'fit':
+        fitted = fit_to_screen(surface, target_size)
+    else:
+        fitted = crop_to_fill(surface, target_size)
     if zoom_scale <= 1.0:
         return fitted
 
@@ -709,7 +743,8 @@ def zoom_surface_to_screen(surface, target_size, zoom_scale):
     return zoomed.subsurface((x_offset, y_offset, target_size[0], target_size[1]))
 
 
-def draw_performance_frame(screen, current_state, target_size, now=None):
+def draw_performance_frame(screen, current_state, target_size, now=None,
+                           display_mode='fill'):
     """Draw the media selected by MIDI.
 
     A same-note repeat of a still shows its colour-inverted (negative) copy; a
@@ -720,7 +755,8 @@ def draw_performance_frame(screen, current_state, target_size, now=None):
         if frame_surface:
             screen.blit(
                 zoom_surface_to_screen(
-                    frame_surface, target_size, current_state['zoom_scale']),
+                    frame_surface, target_size, current_state['zoom_scale'],
+                    display_mode),
                 (0, 0)
             )
         else:
@@ -730,7 +766,7 @@ def draw_performance_frame(screen, current_state, target_size, now=None):
         if current_state.get('inverted') and current_state.get('surface_media'):
             surface = inverted_surface(current_state['surface_media'])
         scaled = zoom_surface_to_screen(
-            surface, target_size, current_state['zoom_scale'])
+            surface, target_size, current_state['zoom_scale'], display_mode)
         screen.blit(scaled, (0, 0))
     else:
         screen.fill((0, 0, 0))
@@ -740,7 +776,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                           current_state, channel=None, clock_tracker=None,
                           min_note_beats=None, zoom_ring_enabled=False,
                           note_hit_counts=None, assign_callback=None,
-                          latch_mode=True):
+                          latch_mode=True, display_mode='fill'):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
@@ -803,7 +839,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             if media and media['type'] == 'video':
                 current_state['zoom_scale'] = 1.0
                 current_state['video_player'] = VideoPlayer(
-                    media['path'], target_size, loop=media.get('loop', False))
+                    media['path'], target_size, loop=media.get('loop', False),
+                    display_mode=display_mode)
                 current_state['surface'] = None
                 current_state['surface_media'] = None
                 current_state['note_active'] = note
@@ -1563,6 +1600,10 @@ def main():
                              "note grow slightly larger before wrapping to normal size")
     parser.add_argument('--windowed', '-w', action='store_true',
                         help="Run in a window instead of fullscreen")
+    parser.add_argument('--display-mode', choices=('fill', 'fit'), default='fill',
+                        help="How media is scaled to the screen: 'fill' scales to "
+                             "cover and center-crops (default); 'fit' shows the "
+                             "entire media with black letterbox/pillarbox bars")
     parser.add_argument('--packaging-smoke-test', action='store_true',
                         help=argparse.SUPPRESS)
     parser.add_argument('--size', type=str, default='1280x720', metavar='WxH|PRESET',
@@ -1830,14 +1871,14 @@ def main():
                                       note_to_media, target_size, state, midi_channel,
                                       clock_tracker, min_note_beats, args.zoom_ring,
                                       note_hit_counts, assign_if_selected,
-                                      latch_enabled)
+                                      latch_enabled, args.display_mode)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel,
                                           clock_tracker, min_note_beats, args.zoom_ring,
                                           note_hit_counts, assign_if_selected,
-                                          latch_enabled)
+                                          latch_enabled, args.display_mode)
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()
@@ -1881,7 +1922,8 @@ def main():
             draw_drop_flash(screen, grid_cells, grid_scroll, drop_flash, now)
             draw_grid_preview(screen, grid_cells, grid_scroll, grid_preview)
         else:
-            draw_performance_frame(screen, state, target_size, now)
+            draw_performance_frame(screen, state, target_size, now,
+                                   args.display_mode)
 
         if now < latch_notice_until:
             notice_font = pygame.font.SysFont(None, 36)
