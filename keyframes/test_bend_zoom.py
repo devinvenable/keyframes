@@ -1,6 +1,7 @@
-"""Headless coverage for pitch-bend live zoom and mod-wheel pan (task 199)."""
+"""Headless coverage for pitch-bend live zoom and mod-wheel pan (tasks 199/201)."""
 import os
 import queue
+import time
 
 os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
 os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
@@ -12,11 +13,14 @@ import pytest
 import main
 from main import (
     MAX_PITCH_BEND_ZOOM,
+    PAN_RECENTER_DELAY,
+    PAN_RECENTER_SECONDS,
     effective_zoom_scale,
     mod_wheel_pan,
     pitch_bend_zoom_scale,
     process_midi_messages,
     render_still,
+    update_pan_recenter,
     zoom_surface_to_screen,
 )
 
@@ -71,10 +75,16 @@ def test_pitch_bend_maps_continuously_to_max_zoom():
     assert pitch_bend_zoom_scale(100) < pitch_bend_zoom_scale(101)
 
 
-def test_mod_wheel_pan_rest_is_centered_full_is_right_edge():
-    assert mod_wheel_pan(0) == 0.0
+def test_mod_wheel_pan_is_bipolar_around_64():
+    assert mod_wheel_pan(64) == 0.0
+    assert mod_wheel_pan(0) == -1.0
     assert mod_wheel_pan(127) == 1.0
-    assert 0.0 < mod_wheel_pan(64) < 1.0
+    assert -1.0 < mod_wheel_pan(32) < 0.0
+    assert 0.0 < mod_wheel_pan(96) < 1.0
+    # Monotonic across the whole strip, out-of-range values clamped.
+    assert mod_wheel_pan(63) < mod_wheel_pan(64) < mod_wheel_pan(65)
+    assert mod_wheel_pan(-5) == -1.0
+    assert mod_wheel_pan(200) == 1.0
 
 
 # --- message handling --------------------------------------------------------
@@ -89,8 +99,12 @@ def test_pitchwheel_message_sets_bend_zoom():
 def test_mod_wheel_message_sets_pan_other_ccs_ignored():
     state = feed(make_state(), mido.Message('control_change', control=1, value=127))
     assert state['pan'] == 1.0
-    state = feed(state, mido.Message('control_change', control=7, value=0))
+    state = feed(state, mido.Message('control_change', control=7, value=64))
     assert state['pan'] == 1.0  # CC7 (volume) must not touch pan
+    state = feed(state, mido.Message('control_change', control=1, value=0))
+    assert state['pan'] == -1.0
+    state = feed(state, mido.Message('control_change', control=1, value=64))
+    assert state['pan'] == 0.0
 
 
 def test_bend_and_pan_respect_channel_filter():
@@ -126,39 +140,130 @@ def test_bend_zoom_persists_across_note_off_clear():
     assert state['pan'] == 0.5
 
 
+# --- auto-recenter -----------------------------------------------------------
+
+def test_recenter_waits_out_the_silence_delay_then_eases():
+    state = make_state(pan=1.0, pan_cc_time=100.0)
+    # Within the silence window: hold position, no ease.
+    update_pan_recenter(state, 100.0 + PAN_RECENTER_DELAY * 0.5)
+    assert state['pan'] == 1.0
+    assert state.get('pan_ease') is None
+    # Past the window: ease starts from the held pan.
+    t0 = 100.0 + PAN_RECENTER_DELAY + 0.1
+    update_pan_recenter(state, t0)
+    assert state['pan_ease'] is not None
+    assert state['pan'] == 1.0
+    # Gradual: strictly between endpoints mid-ease, still decreasing later.
+    update_pan_recenter(state, t0 + PAN_RECENTER_SECONDS * 0.5)
+    mid = state['pan']
+    assert 0.0 < mid < 1.0
+    update_pan_recenter(state, t0 + PAN_RECENTER_SECONDS * 0.8)
+    assert 0.0 < state['pan'] < mid
+    # Done: snapped exactly home, ease cleared.
+    update_pan_recenter(state, t0 + PAN_RECENTER_SECONDS + 0.01)
+    assert state['pan'] == 0.0
+    assert state['pan_ease'] is None
+
+
+def test_recenter_works_from_the_left_too():
+    state = make_state(pan=-1.0, pan_cc_time=0.0)
+    update_pan_recenter(state, PAN_RECENTER_DELAY + 1.0)
+    update_pan_recenter(state, PAN_RECENTER_DELAY + 1.0 + PAN_RECENTER_SECONDS * 0.5)
+    assert -1.0 < state['pan'] < 0.0
+    update_pan_recenter(state, PAN_RECENTER_DELAY + 1.0 + PAN_RECENTER_SECONDS + 0.01)
+    assert state['pan'] == 0.0
+
+
+def test_centered_pan_never_starts_an_ease():
+    state = make_state(pan=0.0, pan_cc_time=None)
+    update_pan_recenter(state, 1000.0)
+    assert state['pan'] == 0.0
+    assert state.get('pan_ease') is None
+
+
+def test_new_cc_cancels_recenter_ease_and_restarts_the_clock():
+    state = make_state(pan=1.0, pan_cc_time=0.0)
+    update_pan_recenter(state, PAN_RECENTER_DELAY + 1.0)
+    update_pan_recenter(state, PAN_RECENTER_DELAY + 1.0 + PAN_RECENTER_SECONDS * 0.5)
+    assert state['pan_ease'] is not None
+    # A live CC1 mid-glide takes over immediately...
+    state = feed(state, mido.Message('control_change', control=1, value=0))
+    assert state['pan'] == -1.0
+    assert state['pan_ease'] is None
+    # ...and resets the silence clock, so the very next frame holds position.
+    update_pan_recenter(state, time.monotonic())
+    assert state['pan'] == -1.0
+    assert state['pan_ease'] is None
+
+
 # --- rendering ---------------------------------------------------------------
 
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
 
 
-@pytest.mark.parametrize('display_mode', ['fill', 'fit'])
-def test_pan_shifts_zoom_window_across_overflow(display_mode):
-    # Left half red, right half blue: at zoom 2.0 the visible window is half
-    # the frame, so full pan shows a single colour and center shows both.
+def half_red_half_blue():
     surface = pygame.Surface((100, 100))
     surface.fill(RED, (0, 0, 50, 100))
     surface.fill(BLUE, (50, 0, 50, 100))
-    target = (100, 100)
-    center = zoom_surface_to_screen(surface, target, 2.0, display_mode, 0.0)
-    left = zoom_surface_to_screen(surface, target, 2.0, display_mode, -1.0)
-    right = zoom_surface_to_screen(surface, target, 2.0, display_mode, 1.0)
-    assert center.get_size() == left.get_size() == right.get_size() == target
-    assert center.get_at((10, 50))[:3] == RED
-    assert center.get_at((90, 50))[:3] == BLUE
-    assert left.get_at((10, 50))[:3] == left.get_at((90, 50))[:3] == RED
-    assert right.get_at((10, 50))[:3] == right.get_at((90, 50))[:3] == BLUE
+    return surface
 
 
 @pytest.mark.parametrize('display_mode', ['fill', 'fit'])
-def test_pan_is_noop_without_zoom(display_mode):
-    surface = pygame.Surface((80, 60))
-    plain = zoom_surface_to_screen(surface, (100, 100), 1.0, display_mode, 0.0)
-    panned = zoom_surface_to_screen(surface, (100, 100), 1.0, display_mode, 1.0)
-    assert plain.get_size() == panned.get_size() == (100, 100)
-    # No overflow to pan across: identical pixels either way.
-    assert (pygame.surfarray.array3d(plain)
-            == pygame.surfarray.array3d(panned)).all()
+def test_pan_slides_frame_at_zoom_one(display_mode):
+    # At zoom 1.0 the frame itself slides — MAX_PAN_FRACTION (40%) of the
+    # viewport at full deflection — revealing black at the vacated edge.
+    surface = half_red_half_blue()
+    target = (100, 100)
+    center = zoom_surface_to_screen(surface, target, 1.0, display_mode, 0.0)
+    right = zoom_surface_to_screen(surface, target, 1.0, display_mode, 1.0)
+    left = zoom_surface_to_screen(surface, target, 1.0, display_mode, -1.0)
+    assert center.get_size() == right.get_size() == left.get_size() == target
+    assert center.get_at((10, 50))[:3] == RED
+    assert center.get_at((90, 50))[:3] == BLUE
+    # Frame slid right 40px: black gap, then red starting at x=40.
+    assert right.get_at((20, 50))[:3] == (0, 0, 0)
+    assert right.get_at((60, 50))[:3] == RED
+    assert right.get_at((96, 50))[:3] == BLUE
+    # Frame slid left 40px: content starts at src x=40, black after x=60.
+    assert left.get_at((5, 50))[:3] == RED
+    assert left.get_at((30, 50))[:3] == BLUE
+    assert left.get_at((80, 50))[:3] == (0, 0, 0)
+
+
+def test_pan_clamps_beyond_full_deflection():
+    surface = half_red_half_blue()
+    target = (100, 100)
+    full = zoom_surface_to_screen(surface, target, 1.0, 'fill', 1.0)
+    over = zoom_surface_to_screen(surface, target, 1.0, 'fill', 5.0)
+    assert (pygame.surfarray.array3d(full)
+            == pygame.surfarray.array3d(over)).all()
+    full = zoom_surface_to_screen(surface, target, 1.0, 'fill', -1.0)
+    over = zoom_surface_to_screen(surface, target, 1.0, 'fill', -5.0)
+    assert (pygame.surfarray.array3d(full)
+            == pygame.surfarray.array3d(over)).all()
+
+
+@pytest.mark.parametrize('display_mode', ['fill', 'fit'])
+def test_pan_composes_with_zoom(display_mode):
+    # At zoom 2.0 the slide is still 40% of the VIEWPORT, so the source
+    # window (half the frame wide) shifts by 20 source px. Sliding the frame
+    # right reveals content to its left (red side) and vice versa.
+    surface = half_red_half_blue()
+    target = (100, 100)
+    center = zoom_surface_to_screen(surface, target, 2.0, display_mode, 0.0)
+    right = zoom_surface_to_screen(surface, target, 2.0, display_mode, 1.0)
+    left = zoom_surface_to_screen(surface, target, 2.0, display_mode, -1.0)
+    assert center.get_at((10, 50))[:3] == RED
+    assert center.get_at((90, 50))[:3] == BLUE
+    # window src 5..55: red until out x=90
+    assert right.get_at((10, 50))[:3] == RED
+    assert right.get_at((80, 50))[:3] == RED
+    assert right.get_at((96, 50))[:3] == BLUE
+    # window src 45..95: red only until out x=10
+    assert left.get_at((4, 50))[:3] == RED
+    assert left.get_at((50, 50))[:3] == BLUE
+    assert left.get_at((95, 50))[:3] == BLUE
 
 
 def test_fit_mode_zoom_overflows_into_bars_with_bend():

@@ -82,6 +82,15 @@ LATCH_NOTICE_SECONDS = 1.5
 # center and below is 1.0 (no zoom). Composes multiplicatively with the ring.
 MAX_PITCH_BEND_ZOOM = 4.0
 MOD_WHEEL_CC = 1
+# Mod-wheel pan: full wheel deflection slides the displayed frame sideways by
+# this fraction of the viewport width, at any zoom, revealing background at
+# the vacated edge.
+MAX_PAN_FRACTION = 0.40
+# The KeyStep's mod strip sends nothing when the finger lifts, so pan cannot
+# spring back on its own. After this much CC1 silence an off-center pan eases
+# home over PAN_RECENTER_SECONDS; any new CC1 cancels the ease and takes over.
+PAN_RECENTER_DELAY = 0.4
+PAN_RECENTER_SECONDS = 0.25
 
 SIZE_PRESETS = {
     'hd': (1920, 1080),
@@ -704,12 +713,43 @@ def pitch_bend_zoom_scale(pitch, max_zoom=MAX_PITCH_BEND_ZOOM):
 def mod_wheel_pan(value):
     """Map a mod-wheel CC1 value (0..127) to a horizontal pan in -1.0..1.0.
 
-    The renderer's pan contract is bipolar (-1 = left edge, 0 = centered,
-    +1 = right edge), but the wheel currently maps unipolar: 0 (rest) is
-    centered and 127 sweeps to the right edge. This is the ONE place that
-    choice lives — switching to bipolar-around-64 after feel-testing means
-    changing only this function."""
-    return max(0, min(value, 127)) / 127.0
+    Bipolar around 64: 64 is centered, 0 is full left shift, 127 full right.
+    The halves are normalized separately so both extremes reach exactly ±1.0
+    despite the range being asymmetric around 64. This is the ONE place the
+    wheel-to-pan mapping lives — changing the feel means changing only this
+    function."""
+    v = max(0, min(value, 127))
+    if v >= 64:
+        return (v - 64) / 63.0
+    return (v - 64) / 64.0
+
+
+def update_pan_recenter(current_state, now):
+    """Ease an off-center pan back to 0 after CC1 goes silent.
+
+    Called once per frame. The KeyStep's mod strip stops sending the moment
+    the finger lifts (no spring, no release message), so after
+    PAN_RECENTER_DELAY seconds without a CC1 the pan glides home over
+    PAN_RECENTER_SECONDS using smoothstep — a drift, not a jump. Any new CC1
+    clears 'pan_ease' in process_midi_messages, cancelling the ease mid-glide.
+    Accepted trade-off: an off-center framing cannot be held."""
+    pan = current_state.get('pan', 0.0)
+    if pan == 0.0:
+        current_state['pan_ease'] = None
+        return
+    ease = current_state.get('pan_ease')
+    if ease is None:
+        last_cc = current_state.get('pan_cc_time')
+        if last_cc is None or now - last_cc >= PAN_RECENTER_DELAY:
+            current_state['pan_ease'] = {'start': now, 'from': pan}
+        return
+    t = (now - ease['start']) / PAN_RECENTER_SECONDS
+    if t >= 1.0:
+        current_state['pan'] = 0.0
+        current_state['pan_ease'] = None
+        return
+    s = t * t * (3.0 - 2.0 * t)
+    current_state['pan'] = ease['from'] * (1.0 - s)
 
 
 def crop_to_fill(surface, target_size):
@@ -754,15 +794,18 @@ def zoom_surface_to_screen(surface, target_size, zoom_scale, display_mode='fill'
     In 'fit' mode the zoom enlarges the letterboxed frame, so the media may
     overflow into its own bars.
 
-    ``pan`` shifts the zoom window horizontally across the scaled overflow:
-    -1.0 = left edge, 0.0 = centered, 1.0 = right edge. At zoom <= 1.0 there
-    is no overflow, so pan is a no-op (in fit mode nothing ever leaves the
-    frame un-zoomed)."""
+    ``pan`` (-1.0..1.0) slides the whole displayed frame sideways by up to
+    MAX_PAN_FRACTION of the viewport width — at ANY zoom, including 1.0 —
+    with black background showing at the vacated edge. Positive pan slides
+    the frame right. Composes with zoom: the slide is measured in viewport
+    pixels, so the gesture feels the same zoomed in or out."""
     if display_mode == 'fit':
         fitted = fit_to_screen(surface, target_size)
     else:
         fitted = crop_to_fill(surface, target_size)
-    if zoom_scale <= 1.0:
+    pan = max(-1.0, min(pan, 1.0))
+    zoom_scale = max(1.0, zoom_scale)
+    if zoom_scale == 1.0 and pan == 0.0:
         return fitted
 
     # Zoom by cropping the visible window out of the fitted frame and scaling
@@ -770,17 +813,31 @@ def zoom_surface_to_screen(surface, target_size, zoom_scale, display_mode='fill'
     # cropping. Same center-anchored result, but the smoothscale output is one
     # target-size surface instead of zoom^2 times that — at 4x on 1080p that's
     # the difference between ~8ms and ~136ms per bend change, i.e. between a
-    # smooth pitch-bend gesture and a slideshow.
+    # smooth pitch-bend gesture and a slideshow. Pan only ever moves the crop
+    # origin (and the blit position where the frame leaves the viewport) —
+    # never the amount scaled.
+    tw, th = target_size
     fw, fh = fitted.get_size()
     win_w = max(1, int(round(fw / zoom_scale)))
     win_h = max(1, int(round(fh / zoom_scale)))
-    overflow_x = fw - win_w
-    pan = max(-1.0, min(pan, 1.0))
-    x_offset = int(round(overflow_x * (1.0 + pan) / 2.0))
-    x_offset = max(0, min(x_offset, overflow_x))
+    # Sliding the frame right by shift_out viewport pixels is the same as
+    # sliding the source window left by the equivalent source pixels.
+    shift_out = pan * MAX_PAN_FRACTION * tw
+    shift_src = shift_out * win_w / tw
+    x0 = (fw - win_w) / 2.0 - shift_src
     y_offset = (fh - win_h) // 2
-    window = fitted.subsurface((x_offset, y_offset, win_w, win_h))
-    return pygame.transform.smoothscale(window, target_size)
+    visible_x0 = max(0.0, x0)
+    visible_x1 = min(float(fw), x0 + win_w)
+    result = pygame.Surface(target_size)  # black where the frame slid away
+    if visible_x1 > visible_x0:
+        src_x = int(round(visible_x0))
+        src_w = max(1, min(fw - src_x, int(round(visible_x1 - visible_x0))))
+        window = fitted.subsurface((src_x, y_offset, src_w, win_h))
+        scale = tw / win_w
+        out_x = int(round((visible_x0 - x0) * scale))
+        out_w = max(1, int(round(src_w * scale)))
+        result.blit(pygame.transform.smoothscale(window, (out_w, th)), (out_x, 0))
+    return result
 
 
 def effective_zoom_scale(current_state):
@@ -876,6 +933,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
         if msg.type == 'control_change' and msg.control == MOD_WHEEL_CC:
             if channel is None or msg.channel == channel:
                 current_state['pan'] = mod_wheel_pan(msg.value)
+                current_state['pan_cc_time'] = now
+                current_state['pan_ease'] = None  # live wheel overrides recenter
             continue
 
         if not hasattr(msg, 'note'):
@@ -1765,7 +1824,7 @@ def main():
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
              'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0,
-             'bend_zoom': 1.0, 'pan': 0.0,
+             'bend_zoom': 1.0, 'pan': 0.0, 'pan_cc_time': None, 'pan_ease': None,
              'inverted': False, 'surface_media': None, 'last_note': None}
     note_hit_counts = {}
     latch_enabled = not args.no_latch
@@ -1959,6 +2018,7 @@ def main():
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()
+        update_pan_recenter(state, now)
         cur_active = state['note_active']
         note_started = cur_active is not None and cur_active != prev_active
         if note_started:
