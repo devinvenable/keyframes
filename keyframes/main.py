@@ -78,6 +78,10 @@ DEFAULT_BPM = 120
 ZOOM_RING_SIZE = 16
 ZOOM_RING_STEP = 0.03
 LATCH_NOTICE_SECONDS = 1.5
+# Pitch bend fully up (pitch 8191) zooms the displayed media to this scale;
+# center and below is 1.0 (no zoom). Composes multiplicatively with the ring.
+MAX_PITCH_BEND_ZOOM = 4.0
+MOD_WHEEL_CC = 1
 
 SIZE_PRESETS = {
     'hd': (1920, 1080),
@@ -686,6 +690,28 @@ def get_zoom_ring_scale(note, note_hit_counts, enabled):
     return 1.0 + (hit_index * ZOOM_RING_STEP)
 
 
+def pitch_bend_zoom_scale(pitch, max_zoom=MAX_PITCH_BEND_ZOOM):
+    """Map a pitchwheel value (-8192..8191) to a live zoom scale.
+
+    Center and below (pitch <= 0, where a sprung wheel rests) is 1.0; upward
+    bend maps continuously to 1.0..``max_zoom`` so releasing the bend returns
+    the media to normal size. No quantization — every message applies."""
+    if pitch <= 0:
+        return 1.0
+    return 1.0 + (min(pitch, 8191) / 8191.0) * (max_zoom - 1.0)
+
+
+def mod_wheel_pan(value):
+    """Map a mod-wheel CC1 value (0..127) to a horizontal pan in -1.0..1.0.
+
+    The renderer's pan contract is bipolar (-1 = left edge, 0 = centered,
+    +1 = right edge), but the wheel currently maps unipolar: 0 (rest) is
+    centered and 127 sweeps to the right edge. This is the ONE place that
+    choice lives — switching to bipolar-around-64 after feel-testing means
+    changing only this function."""
+    return max(0, min(value, 127)) / 127.0
+
+
 def crop_to_fill(surface, target_size):
     """Scale surface to cover target_size, cropping edges to preserve aspect ratio."""
     sw, sh = surface.get_size()
@@ -722,10 +748,16 @@ def fit_to_screen(surface, target_size):
     return result
 
 
-def zoom_surface_to_screen(surface, target_size, zoom_scale, display_mode='fill'):
+def zoom_surface_to_screen(surface, target_size, zoom_scale, display_mode='fill',
+                           pan=0.0):
     """Scale a surface to the target area, optionally enlarging from center.
     In 'fit' mode the zoom enlarges the letterboxed frame, so the media may
-    overflow into its own bars."""
+    overflow into its own bars.
+
+    ``pan`` shifts the zoom window horizontally across the scaled overflow:
+    -1.0 = left edge, 0.0 = centered, 1.0 = right edge. At zoom <= 1.0 there
+    is no overflow, so pan is a no-op (in fit mode nothing ever leaves the
+    frame un-zoomed)."""
     if display_mode == 'fit':
         fitted = fit_to_screen(surface, target_size)
     else:
@@ -738,9 +770,33 @@ def zoom_surface_to_screen(surface, target_size, zoom_scale, display_mode='fill'
         max(1, int(round(target_size[1] * zoom_scale))),
     )
     zoomed = pygame.transform.smoothscale(fitted, zoomed_size)
-    x_offset = (zoomed_size[0] - target_size[0]) // 2
+    overflow_x = zoomed_size[0] - target_size[0]
+    pan = max(-1.0, min(pan, 1.0))
+    x_offset = int(round(overflow_x * (1.0 + pan) / 2.0))
+    x_offset = max(0, min(x_offset, overflow_x))
     y_offset = (zoomed_size[1] - target_size[1]) // 2
     return zoomed.subsurface((x_offset, y_offset, target_size[0], target_size[1]))
+
+
+def effective_zoom_scale(current_state):
+    """The zoom-ring scale composed (multiplied) with the live pitch bend."""
+    return current_state['zoom_scale'] * current_state.get('bend_zoom', 1.0)
+
+
+def render_still(current_state, surface, target_size, zoom, display_mode, pan):
+    """zoom_surface_to_screen for a latched still, cached until inputs change.
+
+    Stills redraw every frame so bend/pan apply live, but a 4x smoothscale of
+    a screen-sized surface is far too slow to repeat 60x/s when nothing moved.
+    One-entry cache keyed on everything that affects the pixels; any bend, pan,
+    ring, resize, invert, or mode change re-renders once and then holds."""
+    key = (id(surface), target_size, zoom, display_mode, pan)
+    cached = current_state.get('still_render')
+    if cached and cached[0] == key:
+        return cached[1]
+    scaled = zoom_surface_to_screen(surface, target_size, zoom, display_mode, pan)
+    current_state['still_render'] = (key, scaled)
+    return scaled
 
 
 def draw_performance_frame(screen, current_state, target_size, now=None,
@@ -749,14 +805,16 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
 
     A same-note repeat of a still shows its colour-inverted (negative) copy; a
     different note shows the image normally. Video is unaffected (it restarts on
-    retrigger, which already reads well)."""
+    retrigger, which already reads well). Pitch-bend zoom and mod-wheel pan
+    apply live to whatever is on screen — stills, videos, and gif loops."""
+    zoom = effective_zoom_scale(current_state)
+    pan = current_state.get('pan', 0.0)
     if current_state['video_player']:
         frame_surface = current_state['video_player'].get_frame()
         if frame_surface:
             screen.blit(
                 zoom_surface_to_screen(
-                    frame_surface, target_size, current_state['zoom_scale'],
-                    display_mode),
+                    frame_surface, target_size, zoom, display_mode, pan),
                 (0, 0)
             )
         else:
@@ -765,8 +823,8 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
         surface = current_state['surface']
         if current_state.get('inverted') and current_state.get('surface_media'):
             surface = inverted_surface(current_state['surface_media'])
-        scaled = zoom_surface_to_screen(
-            surface, target_size, current_state['zoom_scale'], display_mode)
+        scaled = render_still(current_state, surface, target_size, zoom,
+                              display_mode, pan)
         screen.blit(scaled, (0, 0))
     else:
         screen.fill((0, 0, 0))
@@ -800,6 +858,19 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
         # Handle MIDI clock regardless of channel filter
         if msg.type == 'clock' and clock_tracker:
             clock_tracker.tick()
+            continue
+
+        # Live performance controls: pitch bend zooms the displayed media,
+        # mod wheel (CC1) pans across the zoomed overflow. Channel-filtered
+        # like notes; applied on every message, unquantized, so a sprung
+        # wheel's release glides the media back to normal.
+        if msg.type == 'pitchwheel':
+            if channel is None or msg.channel == channel:
+                current_state['bend_zoom'] = pitch_bend_zoom_scale(msg.pitch)
+            continue
+        if msg.type == 'control_change' and msg.control == MOD_WHEEL_CC:
+            if channel is None or msg.channel == channel:
+                current_state['pan'] = mod_wheel_pan(msg.value)
             continue
 
         if not hasattr(msg, 'note'):
@@ -1689,6 +1760,7 @@ def main():
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
              'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0,
+             'bend_zoom': 1.0, 'pan': 0.0,
              'inverted': False, 'surface_media': None, 'last_note': None}
     note_hit_counts = {}
     latch_enabled = not args.no_latch
