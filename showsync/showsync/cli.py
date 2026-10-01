@@ -47,7 +47,15 @@ def main(argv=None):
     parser.add_argument('--import-bundle', nargs='+', metavar=('ZIP', 'DEST'),
                         help='unpack a show bundle ZIP into DEST '
                              '(default: a folder named after the zip, beside it) and exit')
+    parser.add_argument('--keyframes', metavar='DIR',
+                        help='with --export-bundle: pack this Keyframes app folder '
+                             "(mapping.json + the media it maps) into the bundle's "
+                             'keyframes/ subtree; with --import-bundle: install the '
+                             "bundle's Keyframes set into DIR (keeps the old manifest "
+                             'as mapping.json.bak — run while Keyframes is closed)')
     args = parser.parse_args(argv)
+    if args.keyframes and not (args.import_bundle or args.export_bundle):
+        parser.error('--keyframes only makes sense with --export-bundle or --import-bundle')
     if args.import_bundle:
         if len(args.import_bundle) > 2:
             parser.error('--import-bundle takes ZIP and at most one DEST')
@@ -55,22 +63,26 @@ def main(argv=None):
             parser.error('--import-bundle cannot be combined with a setlist or --export-bundle')
         logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
         try:
-            setlist = import_bundle(*args.import_bundle)
+            setlist = import_bundle(*args.import_bundle, keyframes_dir=args.keyframes)
         except BundleError as exc:
             logging.error('%s', exc)
             return 1
         print(f'Extracted to {setlist.parent} — open {setlist}')
+        if args.keyframes:
+            print(f'Keyframes set installed into {args.keyframes}')
         return 0
     if args.export_bundle:
         if not args.setlist:
             parser.error('--export-bundle needs a setlist argument')
         logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
         try:
-            manifest = export_bundle(args.setlist, args.export_bundle)
+            manifest = export_bundle(args.setlist, args.export_bundle,
+                                     keyframes_dir=args.keyframes)
         except BundleError as exc:
             logging.error('%s', exc)
             return 1
-        print(f'Wrote {args.export_bundle} ({len(manifest)} songs)')
+        print(f'Wrote {args.export_bundle} ({len(manifest)} songs'
+              f'{" + keyframes set" if args.keyframes else ""})')
         return 0
     if args.clock_offset is not None and (not math.isfinite(args.clock_offset) or
                                           not -250 <= args.clock_offset <= 250):

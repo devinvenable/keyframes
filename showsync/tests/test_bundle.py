@@ -312,6 +312,161 @@ def test_cli_import(tmp_path, capsys):
         main([str(tmp_path / 'show.yaml'), '--import-bundle', str(zip_path)])
 
 
+def make_keyframes(tmp_path, name='rig', mapping=None, files=()):
+    """Build a Keyframes app folder: images/ pool + mapping.json manifest."""
+    import json
+    folder = tmp_path / name
+    (folder / 'images').mkdir(parents=True)
+    for filename in files:
+        (folder / 'images' / filename).write_bytes(b'media:' + filename.encode())
+    if mapping is not None:
+        (folder / 'mapping.json').write_text(json.dumps(mapping), encoding='utf-8')
+    return folder
+
+
+def test_keyframes_export_packs_only_mapped_media(tmp_path):
+    """Mapped files travel under keyframes/; the unmapped pool stays home."""
+    import json
+    rig = make_keyframes(tmp_path, mapping={'60': 'kick.png', '62': 'clip.mp4'},
+                         files=('kick.png', 'clip.mp4', 'dormant.png'))
+    first = make_audio(tmp_path / 'src', 'song.wav')
+    setlist = write_setlist(tmp_path / 'set.yaml',
+                            f'songs:\n  - name: Song\n    file: {first}\n    bpm: 120\n')
+    export_bundle(setlist, tmp_path / 'set.zip', keyframes_dir=rig)
+    with zipfile.ZipFile(tmp_path / 'set.zip') as archive:
+        assert sorted(archive.namelist()) == [
+            'keyframes/images/clip.mp4', 'keyframes/images/kick.png',
+            'keyframes/mapping.json', 'set.yaml', 'song.wav']
+        packed = json.loads(archive.read('keyframes/mapping.json'))
+    assert packed == {'60': 'kick.png', '62': 'clip.mp4'}
+
+
+def test_keyframes_export_drops_missing_mapped_files_with_warning(tmp_path, caplog):
+    """A mapped-but-absent file warns and is left out, like launch reconcile."""
+    import json
+    rig = make_keyframes(tmp_path, mapping={'60': 'kick.png', '61': 'gone.png'},
+                         files=('kick.png',))
+    first = make_audio(tmp_path / 'src', 'song.wav')
+    setlist = write_setlist(tmp_path / 'set.yaml',
+                            f'songs:\n  - name: Song\n    file: {first}\n    bpm: 120\n')
+    with caplog.at_level('WARNING'):
+        export_bundle(setlist, tmp_path / 'set.zip', keyframes_dir=rig)
+    assert 'gone.png' in caplog.text
+    with zipfile.ZipFile(tmp_path / 'set.zip') as archive:
+        assert json.loads(archive.read('keyframes/mapping.json')) == {'60': 'kick.png'}
+
+
+def test_keyframes_export_refuses_bad_folders(tmp_path):
+    first = make_audio(tmp_path / 'src', 'song.wav')
+    setlist = write_setlist(tmp_path / 'set.yaml',
+                            f'songs:\n  - name: Song\n    file: {first}\n    bpm: 120\n')
+    no_manifest = make_keyframes(tmp_path, name='bare', files=('kick.png',))
+    with pytest.raises(BundleError, match='no mapping.json'):
+        export_bundle(setlist, tmp_path / 'set.zip', keyframes_dir=no_manifest)
+    empty = make_keyframes(tmp_path, name='empty', mapping={'60': 'gone.png'})
+    with pytest.raises(BundleError, match='nothing to pack'):
+        export_bundle(setlist, tmp_path / 'set.zip', keyframes_dir=empty)
+    evil = make_keyframes(tmp_path, name='evil', mapping={'60': '../escape.png'})
+    with pytest.raises(BundleError, match='unsafe media name'):
+        export_bundle(setlist, tmp_path / 'set.zip', keyframes_dir=evil)
+    assert not (tmp_path / 'set.zip').exists()
+
+
+def test_keyframes_export_accepts_mapping_json_path(tmp_path):
+    rig = make_keyframes(tmp_path, mapping={'60': 'kick.png'}, files=('kick.png',))
+    first = make_audio(tmp_path / 'src', 'song.wav')
+    setlist = write_setlist(tmp_path / 'set.yaml',
+                            f'songs:\n  - name: Song\n    file: {first}\n    bpm: 120\n')
+    export_bundle(setlist, tmp_path / 'set.zip', keyframes_dir=rig / 'mapping.json')
+    with zipfile.ZipFile(tmp_path / 'set.zip') as archive:
+        assert 'keyframes/images/kick.png' in archive.namelist()
+
+
+def test_keyframes_round_trip_installs_the_set(tmp_path):
+    """Import with a target dir restores media + manifest, mapping written last."""
+    import json
+    rig = make_keyframes(tmp_path, mapping={'60': 'kick.png', '62': 'clip.mp4'},
+                         files=('kick.png', 'clip.mp4', 'dormant.png'))
+    zip_path = make_bundle(tmp_path)
+    bundle = tmp_path / 'full.zip'
+    export_bundle(tmp_path / 'show.yaml', bundle, keyframes_dir=rig)
+    target = make_keyframes(tmp_path, name='other-rig', mapping={'40': 'old.png'},
+                            files=('old.png',))
+    setlist = import_bundle(bundle, tmp_path / 'landed', keyframes_dir=target)
+    assert setlist.is_file()
+    # The show folder keeps its own copy of the set, like any bundle content.
+    assert (setlist.parent / 'keyframes' / 'images' / 'kick.png').is_file()
+    installed = json.loads((target / 'mapping.json').read_text())
+    assert installed == {'60': 'kick.png', '62': 'clip.mp4'}
+    assert (target / 'images' / 'kick.png').read_bytes() == b'media:kick.png'
+    assert (target / 'images' / 'clip.mp4').read_bytes() == b'media:clip.mp4'
+    # The old manifest survives one undo deep; old media is never deleted.
+    assert json.loads((target / 'mapping.json.bak').read_text()) == {'40': 'old.png'}
+    assert (target / 'images' / 'old.png').is_file()
+    # Manifest newer than every installed file, so Keyframes' launch reconcile
+    # keeps these note assignments instead of reseeding "new" media.
+    manifest_mtime = (target / 'mapping.json').stat().st_mtime
+    for media in (target / 'images').iterdir():
+        assert media.stat().st_mtime <= manifest_mtime
+    assert zip_path.exists()  # unrelated v1 bundle untouched
+
+
+def test_keyframes_install_into_fresh_folder(tmp_path):
+    import json
+    rig = make_keyframes(tmp_path, mapping={'60': 'kick.png'}, files=('kick.png',))
+    make_audio(tmp_path / 'src', 'song.wav')
+    setlist = write_setlist(tmp_path / 'set.yaml',
+                            f"songs:\n  - name: Song\n    file: {tmp_path / 'src' / 'song.wav'}\n    bpm: 120\n")
+    bundle = tmp_path / 'set.zip'
+    export_bundle(setlist, bundle, keyframes_dir=rig)
+    target = tmp_path / 'brand-new'
+    import_bundle(bundle, tmp_path / 'landed', keyframes_dir=target)
+    assert json.loads((target / 'mapping.json').read_text()) == {'60': 'kick.png'}
+    assert not (target / 'mapping.json.bak').exists()
+
+
+def test_import_refuses_keyframes_request_on_v1_bundle(tmp_path):
+    """Asking to install keyframes from a bundle that has none fails up front."""
+    zip_path = make_bundle(tmp_path)
+    target = tmp_path / 'rig'
+    with pytest.raises(BundleError, match='no Keyframes set'):
+        import_bundle(zip_path, tmp_path / 'landed', keyframes_dir=target)
+    assert not (tmp_path / 'landed').exists()
+    assert not target.exists()
+
+
+def test_v2_bundle_imports_without_keyframes_flag(tmp_path):
+    """A keyframes-carrying bundle still imports as a plain show (set travels inert)."""
+    rig = make_keyframes(tmp_path, mapping={'60': 'kick.png'}, files=('kick.png',))
+    make_audio(tmp_path / 'src', 'song.wav')
+    setlist = write_setlist(tmp_path / 'set.yaml',
+                            f"songs:\n  - name: Song\n    file: {tmp_path / 'src' / 'song.wav'}\n    bpm: 120\n")
+    bundle = tmp_path / 'set.zip'
+    export_bundle(setlist, bundle, keyframes_dir=rig)
+    extracted = import_bundle(bundle, tmp_path / 'landed')
+    assert extracted.is_file()
+    assert (extracted.parent / 'keyframes' / 'mapping.json').is_file()
+
+
+def test_cli_keyframes_flag(tmp_path, capsys):
+    from showsync.cli import main
+    rig = make_keyframes(tmp_path, mapping={'60': 'kick.png'}, files=('kick.png',))
+    file = make_audio(tmp_path / 'audio', 'song.wav')
+    setlist = write_setlist(tmp_path / 'set.yaml',
+                            f'songs:\n  - name: Song\n    file: {file}\n    bpm: 120\n')
+    out = tmp_path / 'set.zip'
+    assert main([str(setlist), '--export-bundle', str(out), '--keyframes', str(rig)]) == 0
+    assert 'keyframes set' in capsys.readouterr().out
+    assert 'keyframes/images/kick.png' in zipfile.ZipFile(out).namelist()
+    target = tmp_path / 'new-rig'
+    assert main(['--import-bundle', str(out), str(tmp_path / 'landed'),
+                 '--keyframes', str(target)]) == 0
+    assert str(target) in capsys.readouterr().out
+    assert (target / 'mapping.json').is_file()
+    with pytest.raises(SystemExit):
+        main([str(setlist), '--keyframes', str(rig)])
+
+
 def test_extended_midi_bundle_keeps_options_and_rewrites_file(tmp_path):
     audio = make_audio(tmp_path / 'media', 'song.wav', b'audio')
     midi = tmp_path / 'media' / 'song.mid'

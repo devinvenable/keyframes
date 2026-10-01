@@ -7,8 +7,14 @@ each referenced audio file beside it. Machine state (device choices, clock
 offset) lives in state.json and deliberately stays home. Import unzips into a
 fresh folder (never clobbering an existing show) and hands back the setlist
 path; the relative paths inside resolve as written.
+
+A bundle can optionally carry a Keyframes set — the sibling app's mapping.json
+plus only the media files that manifest actually maps (the images/ pool may
+hold dormant unmapped files; those stay home). It travels under a keyframes/
+subtree in the zip, and import can install it into a Keyframes app folder.
 """
 import io
+import json
 import logging
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -19,25 +25,103 @@ from .setlist import mapping, string
 
 LOG = logging.getLogger(__name__)
 SIZE_WARNING_BYTES = 1024 ** 3
+KEYFRAMES_DIR = 'keyframes'
+KEYFRAMES_MAPPING = f'{KEYFRAMES_DIR}/mapping.json'
+KEYFRAMES_IMAGES = f'{KEYFRAMES_DIR}/images'
 
 
 class BundleError(ValueError):
     pass
 
 
-def export_bundle(setlist_path, zip_path):
+class _Keyframes:
+    """A Keyframes set ready to pack: manifest JSON text + (name, source) media."""
+    def __init__(self, manifest, media):
+        self.manifest = manifest
+        self.media = media
+
+
+def _read_keyframes_mapping(path):
+    """Read a Keyframes mapping.json: {int note: str filename}, leniently.
+
+    Mirrors Keyframes' own load_mapping(): malformed entries are skipped, not
+    fatal — but a missing or non-dict file is an error here, because packing
+    was explicitly requested.
+    """
+    raw = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(raw, dict):
+        raise ValueError(f'{path}: mapping.json must hold a JSON object')
+    mapping = {}
+    for note, filename in raw.items():
+        try:
+            note_int = int(note)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(filename, str):
+            mapping[note_int] = filename
+    return mapping
+
+
+def _collect_keyframes(keyframes_dir):
+    """Gather a Keyframes app folder's mapped media for packing.
+
+    Only files mapping.json actually references travel — the images/ pool may
+    hold dormant unmapped media, and the mapping contract (sparse, 1:1) makes
+    the manifest, not the folder, the set's definition. Entries whose file is
+    missing are dropped with a warning, matching Keyframes' own reconcile
+    behavior on launch. The packed manifest is rewritten to hold only the
+    entries that travel.
+    """
+    keyframes_dir = Path(keyframes_dir).expanduser().resolve()
+    if keyframes_dir.name == 'mapping.json' and keyframes_dir.is_file():
+        keyframes_dir = keyframes_dir.parent
+    mapping_path = keyframes_dir / 'mapping.json'
+    if not mapping_path.is_file():
+        raise ValueError(f'not a Keyframes folder (no mapping.json): {keyframes_dir}')
+    images_dir = keyframes_dir / 'images'
+    mapping = _read_keyframes_mapping(mapping_path)
+    packed, media, seen = {}, [], set()
+    for note in sorted(mapping):
+        name = mapping[note]
+        # Mapping names are plain filenames inside images/; anything that
+        # could escape the keyframes/images/ subtree on extraction refuses
+        # the export rather than travel.
+        if ('/' in name or '\\' in name or name in ('.', '..') or not name):
+            raise ValueError(f'{mapping_path}: unsafe media name: {name!r}')
+        source = images_dir / name
+        if not source.is_file():
+            LOG.warning('%s: note %d maps missing file %s — left out of the bundle',
+                        mapping_path, note, name)
+            continue
+        packed[str(note)] = name
+        if name not in seen:
+            seen.add(name)
+            media.append((name, source))
+    if not packed:
+        raise ValueError(f'{mapping_path}: no mapped media files exist — nothing to pack')
+    manifest = json.dumps(packed, indent=2) + '\n'
+    return _Keyframes(manifest, media)
+
+
+def export_bundle(setlist_path, zip_path, keyframes_dir=None):
     """Write the bundle zip; returns the archived audio names in song order.
 
     The YAML travels through ruamel round-trip mode, so hand-written comments
     and styles arrive on the other machine intact. Rows are otherwise kept as
     loose as the editor keeps them (no BPM yet is fine) — only the audio files
     must exist, because they are the bundle's payload.
+
+    keyframes_dir, when given, names a Keyframes app folder (holding
+    mapping.json and images/); its mapped media and manifest are packed under
+    keyframes/ in the zip.
     """
     from ruamel.yaml import YAML, YAMLError
     setlist_path = Path(setlist_path).expanduser().resolve()
     zip_path = Path(zip_path).expanduser().resolve()
     context = str(setlist_path)
     try:
+        keyframes = (_collect_keyframes(keyframes_dir)
+                     if keyframes_dir is not None else None)
         editor = YAML()
         editor.preserve_quotes = True
         editor.indent(mapping=2, sequence=4, offset=2)
@@ -104,6 +188,8 @@ def export_bundle(setlist_path, zip_path):
                                 context, midi)
         context = str(setlist_path)
         size = sum(source.stat().st_size for source in archived)
+        if keyframes is not None:
+            size += sum(source.stat().st_size for _, source in keyframes.media)
         if size >= SIZE_WARNING_BYTES:
             LOG.warning('%s: bundle media exceeds 1 GB (%.2f GiB); export will continue',
                         context, size / 1024 ** 3)
@@ -116,6 +202,10 @@ def export_bundle(setlist_path, zip_path):
                 archive.writestr(setlist_path.name, buffer.getvalue())
                 for source, name in archived.items():
                     archive.write(source, name)
+                if keyframes is not None:
+                    archive.writestr(KEYFRAMES_MAPPING, keyframes.manifest)
+                    for name, source in keyframes.media:
+                        archive.write(source, f'{KEYFRAMES_IMAGES}/{name}')
             os.replace(replacement, zip_path)
         finally:
             replacement.unlink(missing_ok=True)
@@ -124,7 +214,7 @@ def export_bundle(setlist_path, zip_path):
         raise BundleError(f"{context}: {exc}") from exc
 
 
-def import_bundle(zip_path, dest_dir=None):
+def import_bundle(zip_path, dest_dir=None, keyframes_dir=None):
     """Unpack a show bundle zip; returns the extracted setlist path.
 
     A show bundle holds exactly one top-level setlist YAML (the shape
@@ -134,6 +224,10 @@ def import_bundle(zip_path, dest_dir=None):
     Existing show folders are never overwritten: when dest_dir already holds
     files, extraction lands in a fresh sibling (name-2, name-3, …).
     dest_dir defaults to a folder named after the zip, beside it.
+
+    keyframes_dir, when given, additionally installs the bundle's Keyframes
+    set (keyframes/ subtree) into that app folder — run while Keyframes is
+    closed. Bundles without a Keyframes set refuse the request up front.
     """
     zip_path = Path(zip_path).expanduser().resolve()
     if dest_dir is None:
@@ -152,6 +246,9 @@ def import_bundle(zip_path, dest_dir=None):
             if len(setlists) != 1:
                 raise ValueError('not a show bundle: expected exactly one '
                                  f'top-level setlist YAML, found {len(setlists)}')
+            if keyframes_dir is not None and KEYFRAMES_MAPPING not in names:
+                raise ValueError('bundle holds no Keyframes set '
+                                 f'(no {KEYFRAMES_MAPPING})')
             dest = _free_dir(dest_dir)
             dest.mkdir(parents=True, exist_ok=True)
             for name in names:
@@ -161,9 +258,37 @@ def import_bundle(zip_path, dest_dir=None):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with archive.open(name) as member, open(target, 'wb') as out:
                     shutil.copyfileobj(member, out)
+            if keyframes_dir is not None:
+                _install_keyframes(dest / KEYFRAMES_DIR, keyframes_dir)
             return dest / setlists[0]
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         raise BundleError(f'{zip_path}: {exc}') from exc
+
+
+def _install_keyframes(source_dir, keyframes_dir):
+    """Copy an extracted keyframes/ subtree into a Keyframes app folder.
+
+    Media lands first and mapping.json is written last (atomically), so the
+    manifest's mtime is newer than every installed file — Keyframes' launch
+    reconcile then keeps the installed note assignments instead of treating
+    the media as new arrivals to reseed. An existing manifest is kept as
+    mapping.json.bak: installing replaces the rig's current set by design,
+    but never beyond one undo.
+    """
+    keyframes_dir = Path(keyframes_dir).expanduser().resolve()
+    images_dir = keyframes_dir / 'images'
+    images_dir.mkdir(parents=True, exist_ok=True)
+    source_images = source_dir / 'images'
+    if source_images.is_dir():
+        for source in sorted(source_images.iterdir()):
+            if source.is_file():
+                shutil.copy2(source, images_dir / source.name)
+    mapping_path = keyframes_dir / 'mapping.json'
+    if mapping_path.is_file():
+        shutil.copy2(mapping_path, keyframes_dir / 'mapping.json.bak')
+    tmp = keyframes_dir / 'mapping.json.tmp'
+    shutil.copy(source_dir / 'mapping.json', tmp)
+    os.replace(tmp, mapping_path)
 
 
 def _free_dir(path):
