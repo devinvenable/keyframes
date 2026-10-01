@@ -2,16 +2,22 @@
 # perform.sh — one-command performance capture.
 #
 # Records the performance monitor (screen video + audio) and launches
-# ShowSync and Keyframes. Recording stops cleanly when Keyframes exits (Esc)
+# ShowSync and Keyframes (or Keyframes alone with --keyframes-only).
+# Recording stops cleanly when Keyframes exits (Esc)
 # or on Ctrl+C.
 #
-# Usage: scripts/perform.sh [--audio usb|system|both] [--mixer-source NAME]
+# Usage: scripts/perform.sh [--keyframes-only] [--audio usb|system|both] [--mixer-source NAME]
 #                           [--headless] [--no-postprocess] [showsync args...]
+#   --keyframes-only  launch only fullscreen Keyframes, driven directly by
+#                   MIDI (e.g. Arturia KeyStep); no ShowSync. Defaults to
+#                   --audio usb: the input-only Behringer carries the live
+#                   mix, with no ShowSync backing tracks on the system sink.
+#                   Shortcut: scripts/keyframes-take.sh [capture options]
 #   --audio usb     record only the mixer source (default: the Pulse default
 #                   source, i.e. the mixer USB feed)
 #   --audio system  record only the default sink monitor (system audio,
 #                   i.e. the ShowSync backing tracks)
-#   --audio both    record BOTH as two separate audio tracks (default) so
+#   --audio both    record BOTH as two separate audio tracks (ShowSync default) so
 #                   takes can be rebalanced later
 #   --mixer-source NAME  record this pactl source as the mixer track instead
 #                   of the configured/default source (env: PERFORM_MIXER_SOURCE);
@@ -22,6 +28,8 @@
 #   --no-postprocess  skip the shareable post-take outputs below (env:
 #                   PERFORM_NO_POSTPROCESS=1) — for quick throwaway takes
 #   Remaining arguments are passed through to ShowSync (setlist path, etc.).
+#   In --keyframes-only mode, ShowSync arguments (including --headless) are
+#   rejected; --audio overrides the default regardless of argument order.
 #
 # Video : the first landscape monitor (same pick as Keyframes fullscreen).
 # Editor: the ShowSync editor opens on a different monitor (via
@@ -68,7 +76,7 @@ REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 CAPTURE_FPS=30
 
 usage() {
-    sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Parse `xrandr --listmonitors` and echo "WIDTH HEIGHT XOFF YOFF" for the
@@ -533,11 +541,15 @@ build_ffmpeg_cmd() {
 }
 
 main() {
-    local audio_mode="both" headless=0 showsync_args=() no_post=0
+    local audio_mode="both" audio_explicit=0 keyframes_only=0 headless=0 showsync_args=() no_post=0
     local mixer_src=${PERFORM_MIXER_SOURCE:-}
     [[ -n ${PERFORM_NO_POSTPROCESS:-} && ${PERFORM_NO_POSTPROCESS:-} != 0 ]] && no_post=1
     while (( $# )); do
         case $1 in
+            --keyframes-only)
+                keyframes_only=1
+                shift
+                ;;
             --no-postprocess)
                 no_post=1
                 shift
@@ -550,10 +562,12 @@ main() {
             --audio)
                 [[ -n ${2:-} ]] || { echo "ERROR: --audio needs usb|system|both" >&2; exit 1; }
                 audio_mode=$2
+                audio_explicit=1
                 shift 2
                 ;;
             --audio=*)
                 audio_mode=${1#--audio=}
+                audio_explicit=1
                 shift
                 ;;
             --mixer-source)
@@ -575,6 +589,15 @@ main() {
                 ;;
         esac
     done
+    if (( keyframes_only )); then
+        if (( ${#showsync_args[@]} )); then
+            echo "ERROR: --keyframes-only does not accept ShowSync arguments: ${showsync_args[*]}" >&2
+            exit 1
+        fi
+        if (( ! audio_explicit )); then
+            audio_mode=usb
+        fi
+    fi
     case $audio_mode in usb|system|both) ;; *)
         echo "ERROR: --audio must be usb, system or both (got '$audio_mode')" >&2
         exit 1
@@ -600,7 +623,9 @@ main() {
     # always-on-top Keyframes would cover it. Respect an explicit
     # --editor-screen in the pass-through args.
     local editor_screen=""
-    if (( headless )); then
+    if (( keyframes_only )); then
+        echo "Mode: Keyframes only (direct MIDI; no ShowSync)"
+    elif (( headless )); then
         echo "Editor screen: none (headless — projector only)"
     elif [[ " ${showsync_args[*]-} " == *" --editor-screen"* ]]; then
         echo "Editor screen: set by caller"
@@ -615,7 +640,7 @@ main() {
     fi
 
     # Hands-free start: the KeyStep's hardware Play/Stop drive the set.
-    if [[ " ${showsync_args[*]-} " != *" --midi-transport"* ]]; then
+    if (( ! keyframes_only )) && [[ " ${showsync_args[*]-} " != *" --midi-transport"* ]]; then
         showsync_args+=(--midi-transport)
     fi
 
@@ -807,9 +832,11 @@ main() {
         echo "NOTE: pw-top unavailable — no PipeWire xrun stats for this take."
     fi
 
-    echo "Starting ShowSync..."
-    "$python" "$REPO_ROOT/showsync/main.py" ${showsync_args[@]+"${showsync_args[@]}"} &
-    showsync_pid=$!
+    if (( ! keyframes_only )); then
+        echo "Starting ShowSync..."
+        "$python" "$REPO_ROOT/showsync/main.py" ${showsync_args[@]+"${showsync_args[@]}"} &
+        showsync_pid=$!
+    fi
 
     echo "Starting Keyframes (Esc in Keyframes ends the take)..."
     # nice: Keyframes' video decode threads must never outbid ShowSync's

@@ -8,6 +8,8 @@
 # (PERFORM_PYTHON/PERFORM_OUTDIR hooks) to verify lifecycle robustness:
 # normal exit, stale-lock removal, live-lock refusal, SIGKILL of the script
 # (babysitter must still finalize ffmpeg), and rapid double Ctrl+C.
+# Also checks Keyframes-only launch, USB default, audio overrides, and
+# rejection of ShowSync arguments before capture starts.
 # Requires: Xvfb, ffmpeg/ffprobe, a PulseAudio/PipeWire default source (for
 # the `-f pulse -i default` leg).
 #
@@ -56,6 +58,16 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# ShowSync-only arguments must fail before display/device checks or capture.
+for args in '--headless' '--editor-screen HDMI-0' '--midi-transport' 'set list.json'; do
+    if env -u DISPLAY bash "$HERE/keyframes-take.sh" "$args" >"$TMPDIR/args.log" 2>&1; then
+        fail "Keyframes-only accepted ShowSync argument: $args"
+    fi
+    grep -q 'ERROR: --keyframes-only does not accept ShowSync arguments:' "$TMPDIR/args.log" ||
+        fail "Keyframes-only did not reject ShowSync argument before startup: $args"
+done
+echo "Keyframes-only: ShowSync arguments rejected before capture"
 
 # 0. pick_editor_screen unit checks against canned xrandr --listmonitors
 #    bodies (no display needed). Capture monitor is DP-1 at +1080+0.
@@ -323,6 +335,7 @@ cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
 # Stand-in for ShowSync/Keyframes: keyframes exits after STUB_KEYFRAMES_SLEEP
 # seconds (simulating Esc ending the take); everything else sleeps until killed.
+printf '%s\n' "$*" >> "$PERFORM_OUTDIR/apps.log"
 case ${1:-} in
     *keyframes*) exec sleep "${STUB_KEYFRAMES_SLEEP:-300}" ;;
     *)           exec sleep 300 ;;
@@ -332,6 +345,8 @@ chmod +x "$STUB"
 
 RUN_PID=""
 DUMMY_FFMPEG=""
+PERFORM_ENTRY="$HERE/perform.sh"
+PERFORM_ARGS=(--audio usb)
 
 # Launch perform.sh main in its own session (own process group, like a real
 # terminal foreground job, so `kill -INT -- -$RUN_PID` simulates Ctrl+C).
@@ -349,7 +364,7 @@ launch_perform() {
         python3 -c 'import signal, os, sys
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 os.execvp(sys.argv[1], sys.argv[1:])' \
-        bash "$HERE/perform.sh" --audio usb >"$outdir/run.log" 2>&1 &
+        bash "$PERFORM_ENTRY" "${PERFORM_ARGS[@]}" >"$outdir/run.log" 2>&1 &
     RUN_PID=$!
 }
 
@@ -368,11 +383,12 @@ not_running() { ! kill -0 "$1" 2>/dev/null; }
 file_gone()   { [[ ! -e $1 ]]; }
 file_there()  { [[ -e $1 ]]; }
 
-# A take is only good if ffmpeg finalized it: 1 video + 1 audio (usb mode)
+# A take is only good if ffmpeg finalized it: 1 video + expected audio count
 # and a numeric nonzero container duration — an aborted ffmpeg (no mkv
 # trailer) reports duration N/A.
 assert_valid_mkv() {
     local outdir=$1 label=$2 file streams video_count audio_count duration
+    local expected_audio=${3:-1}
     file=$(compgen -G "$outdir/perform_*.mkv" | head -n1) ||
         fail "$label: no recording file in $outdir"
     [[ -s $file ]] || fail "$label: recording is empty"
@@ -381,7 +397,8 @@ assert_valid_mkv() {
     video_count=$(grep -c '^video$' <<<"$streams" || true)
     audio_count=$(grep -c '^audio$' <<<"$streams" || true)
     [[ $video_count == 1 ]] || fail "$label: expected 1 video stream, got $video_count"
-    [[ $audio_count == 1 ]] || fail "$label: expected 1 audio stream, got $audio_count"
+    [[ $audio_count == "$expected_audio" ]] ||
+        fail "$label: expected $expected_audio audio stream(s), got $audio_count"
     duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$file")
     [[ $duration =~ ^[0-9]+(\.[0-9]+)?$ ]] ||
         fail "$label: non-numeric duration '$duration' — mkv trailer missing?"
@@ -408,6 +425,8 @@ grep -q "Capture health: [0-9]* frames" "$OUT_NORMAL/run.log" ||
     { cat "$OUT_NORMAL/run.log" >&2; fail "normal run summary lacks the capture-health line"; }
 file_gone "$OUT_NORMAL/.perform.lock" || fail "normal run left the lock behind"
 assert_valid_mkv "$OUT_NORMAL" "normal+stale-lock"
+grep -q '/showsync/main.py .*--midi-transport' "$OUT_NORMAL/apps.log" ||
+    fail "normal mode did not launch ShowSync with MIDI transport"
 
 # 4a-post. The shareable post-take outputs must exist by default with the
 #          expected streams (usb mode: mp4 = 1 video + 1 aac audio; mp3 =
@@ -433,6 +452,61 @@ grep -q "Mixer MP3: .*\.mp3" "$OUT_NORMAL/run.log" ||
 compgen -G "$OUT_NORMAL/*_share.mp4.log" >/dev/null &&
     fail "post: successful share encode left its log behind"
 echo "post-take outputs: _share.mp4 + .mp3 streams and summary lines OK"
+
+# 4a-keyframes. The wrapper must launch only Keyframes and finalize capture
+# when it exits (Esc), using USB by default. Explicit audio works before or
+# after --keyframes-only, in either --audio syntax. Keep postprocessing on
+# for the default wrapper case to verify its full one-command output path.
+for audio in usb both system; do
+    OUT_KEYFRAMES="$TMPDIR/run_keyframes_$audio"
+    mkdir -p "$OUT_KEYFRAMES"
+    expected_audio=1
+    case $audio in
+        usb)
+            PERFORM_ENTRY="$HERE/keyframes-take.sh"
+            PERFORM_ARGS=()
+            ;;
+        both)
+            PERFORM_ENTRY="$HERE/perform.sh"
+            PERFORM_ARGS=(--audio both --keyframes-only --no-postprocess)
+            # There may be no sink monitor on a minimal test machine.
+            if system_audio_source >/dev/null; then expected_audio=2; fi
+            ;;
+        system)
+            system_audio_source >/dev/null || continue
+            PERFORM_ENTRY="$HERE/keyframes-take.sh"
+            PERFORM_ARGS=(--audio=system --no-postprocess)
+            ;;
+    esac
+    launch_perform "$OUT_KEYFRAMES" STUB_KEYFRAMES_SLEEP=3
+    wait_for 300 not_running "$RUN_PID" ||
+        { cat "$OUT_KEYFRAMES/run.log" >&2; fail "Keyframes-only $audio run did not finish"; }
+    wait "$RUN_PID" ||
+        { cat "$OUT_KEYFRAMES/run.log" >&2; fail "Keyframes-only $audio run exited nonzero"; }
+    RUN_PID=""
+    [[ $(cat "$OUT_KEYFRAMES/apps.log") == "$REPO_ROOT/keyframes/main.py" ]] ||
+        fail "Keyframes-only $audio launched unexpected apps/arguments: $(cat "$OUT_KEYFRAMES/apps.log")"
+    if grep -Eq 'Editor screen:|ShowSync editor|Starting ShowSync' "$OUT_KEYFRAMES/run.log"; then
+        fail "Keyframes-only $audio still ran ShowSync startup/placement logic"
+    fi
+    recorded_audio=$audio
+    [[ $audio == both && $expected_audio == 1 ]] && recorded_audio=usb
+    grep -q "(audio: $recorded_audio)" "$OUT_KEYFRAMES/run.log" ||
+        fail "Keyframes-only did not select expected audio: $recorded_audio"
+    file_gone "$OUT_KEYFRAMES/.perform.lock" || fail "Keyframes-only left the capture lock"
+    assert_valid_mkv "$OUT_KEYFRAMES" "Keyframes-only $audio" "$expected_audio"
+    grep -q 'Capture health: [0-9]* frames' "$OUT_KEYFRAMES/run.log" ||
+        fail "Keyframes-only summary lacks capture health"
+    if [[ $audio == usb ]]; then
+        grep -q 'Share MP4: .*_share\.mp4' "$OUT_KEYFRAMES/run.log" ||
+            fail "Keyframes-only did not produce the share MP4"
+        grep -q 'Mixer MP3: .*\.mp3' "$OUT_KEYFRAMES/run.log" ||
+            fail "Keyframes-only did not produce the mixer MP3"
+    fi
+done
+PERFORM_ENTRY="$HERE/perform.sh"
+PERFORM_ARGS=(--audio usb)
+echo "Keyframes-only: wrapper, launch isolation, default/explicit audio and postprocessing OK"
 
 # 4b. SIGKILL the script mid-capture: no trap runs, so only the babysitter
 #     can save the take — ffmpeg must be gone within ~5s, the mkv must be
