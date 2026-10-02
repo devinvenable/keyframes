@@ -59,6 +59,8 @@ class MarkerWriter:
         self._lock = threading.Lock()
         self._halt = threading.Event()
         self._thread = None
+        self._audio = None
+        self._ended = False
 
     @classmethod
     def from_env(cls, setlist_path=None, environ=os.environ):
@@ -101,6 +103,7 @@ class MarkerWriter:
 
     def watch(self, audio):
         """Record set_start now and song/pause/end events as they play."""
+        self._audio = audio
         layout = audio.position().layout
         setlist = layout.setlist
         self.emit('set_start',
@@ -123,6 +126,7 @@ class MarkerWriter:
                 return
             now = time.time()
             if pos.ended:
+                self._ended = True
                 self.emit('set_end')
                 return
             if pos.playing and (pos.song_index, pos.epoch) != (last_index, last_epoch):
@@ -146,6 +150,15 @@ class MarkerWriter:
             self._thread.join(timeout=2)
             self._thread = None
         if not self._file.closed:
+            # The set can end and close the engines between two polls (the
+            # headless runner quits on ended) — don't lose the set_end mark.
+            if not self._ended and self._audio is not None:
+                try:
+                    if self._audio.position().ended:
+                        self._ended = True
+                        self.emit('set_end')
+                except Exception:
+                    pass
             self.emit('set_stop')
             with self._lock:
                 self._file.close()

@@ -49,6 +49,12 @@ cleanup() {
     if [[ -n ${DUMMY_FFMPEG:-} ]]; then
         kill "$DUMMY_FFMPEG" 2>/dev/null || true
     fi
+    if [[ -n ${SHOWSYNC_RUN_PID:-} ]] && kill -0 "$SHOWSYNC_RUN_PID" 2>/dev/null; then
+        kill -TERM "$SHOWSYNC_RUN_PID" 2>/dev/null || true
+    fi
+    if [[ -n ${NULL_SINK_MODULE:-} ]]; then
+        pactl unload-module "$NULL_SINK_MODULE" 2>/dev/null || true
+    fi
     pkill -KILL -f "$TMPDIR/stub-python" 2>/dev/null || true
     if [[ -n $XVFB_PID ]]; then
         kill "$XVFB_PID" 2>/dev/null || true
@@ -325,6 +331,135 @@ echo "Live capture health: ${efps}fps, $gaps gaps >100ms, max ${maxgap}ms"
 echo "PASS: ${w}x${h} capture ($encoder), 1 video + $audio_count audio, duration ${duration}s"
 
 ###############################################################################
+# 3m. Marker timing, end to end with the REAL ShowSync: two distinct tones
+#     play through a private null sink while ffmpeg records that sink's
+#     monitor (the exact perform.sh capture command). The sidecar's
+#     song_start t_rec values must land on the audible tone onsets in the
+#     recording within 150ms (the beat-snapping budget is ~100ms; the
+#     margin absorbs silencedetect's window). This is the only check that
+#     ties the whole chain together: rec_epoch stamping, the env handoff,
+#     and ShowSync's position-poll boundary math against real audio.
+###############################################################################
+
+MARKER_PYTHON=${PERFORM_PYTHON:-"$REPO_ROOT/venv/bin/python"}
+SHOWSYNC_RUN_PID=""
+NULL_SINK_MODULE=""
+if [[ -x $MARKER_PYTHON ]] && "$MARKER_PYTHON" -c 'import PySide6, sounddevice' \
+        2>/dev/null && pactl info >/dev/null 2>&1; then
+    NULL_SINK_MODULE=$(pactl load-module module-null-sink sink_name=perform_marker_test \
+        sink_properties=device.description=perform_marker_test) ||
+        fail "marker timing: could not load a null sink"
+    # A silent 2s lead-in makes tone A rise out of RECORDED silence (the
+    # playback stream opens only ~0.25s before the first song — too little
+    # for silencedetect). Tone A is 1.2s of 440Hz at 120bpm, bar-quantized
+    # to a 2s boundary, so tone B (880Hz, with a tempo ramp to exercise
+    # serialization) becomes audible exactly 2.0s after tone A.
+    ffmpeg -hide_banner -loglevel error -f lavfi \
+        -i "anullsrc=r=44100:cl=stereo:d=2" "$TMPDIR/marker_lead.wav" </dev/null ||
+        fail "marker timing: could not build the lead-in"
+    ffmpeg -hide_banner -loglevel error -f lavfi -i "sine=frequency=440:duration=1.2" \
+        -af volume=0.8 "$TMPDIR/marker_song1.wav" </dev/null ||
+        fail "marker timing: could not build tone 1"
+    ffmpeg -hide_banner -loglevel error -f lavfi -i "sine=frequency=880:duration=2" \
+        -af volume=0.8 "$TMPDIR/marker_song2.wav" </dev/null ||
+        fail "marker timing: could not build tone 2"
+    cat > "$TMPDIR/marker_set.yaml" <<EOF
+title: "Marker timing"
+audio_root: .
+songs:
+  - name: "Lead-in"
+    file: marker_lead.wav
+    bpm: 120
+  - name: "Tone A"
+    file: marker_song1.wav
+    bpm: 120
+  - name: "Tone B"
+    file: marker_song2.wav
+    bpm: 120
+    tempo:
+      - at: 1
+        bpm: 140
+        ramp: 0.5
+EOF
+    out="$TMPDIR/marker_take.mkv"
+    markers="${out%.mkv}.markers"
+    build_ffmpeg_cmd "$out" "$w" "$h" "$x" "$y" system perform_marker_test.monitor "$encoder"
+    rec_epoch=$(date +%s.%N)
+    "${FFMPEG_ARGS[@]}" </dev/null 2>"$out.log" &
+    FFMPEG_PID=$!
+    sleep 1
+    kill -0 "$FFMPEG_PID" 2>/dev/null ||
+        { cat "$out.log" >&2; fail "marker timing: capture ffmpeg died"; }
+    marker_append recording_start "\"video\":$(json_str "$out"),\"mode\":\"showsync\",\"audio\":\"system\",\"set_file\":$(json_str "$TMPDIR/marker_set.yaml")" "$rec_epoch"
+    # PIPEWIRE_NODE targets the null sink through PortAudio's ALSA->pipewire
+    # route (PULSE_SINK covers a pulse-backend PortAudio); nothing reaches
+    # the real speakers. XDG_CONFIG_HOME keeps this run's QSettings
+    # (last-setlist memory, window placement) out of the user's real config.
+    PIPEWIRE_NODE=perform_marker_test PULSE_SINK=perform_marker_test \
+        XDG_CONFIG_HOME="$TMPDIR/xdg" \
+        SHOWSYNC_MARKERS="$markers" SHOWSYNC_MARKERS_EPOCH="$rec_epoch" \
+        "$MARKER_PYTHON" "$REPO_ROOT/showsync/main.py" "$TMPDIR/marker_set.yaml" \
+        --headless --autostart 0 >"$TMPDIR/marker_showsync.log" 2>&1 &
+    SHOWSYNC_RUN_PID=$!
+    # The 4s set plus startup should finish well inside 60s; the projector
+    # window opens on the Xvfb display, never the real screen.
+    for _ in {1..600}; do
+        kill -0 "$SHOWSYNC_RUN_PID" 2>/dev/null || break
+        sleep 0.1
+    done
+    if kill -0 "$SHOWSYNC_RUN_PID" 2>/dev/null; then
+        kill -TERM "$SHOWSYNC_RUN_PID" 2>/dev/null || true
+        cat "$TMPDIR/marker_showsync.log" >&2
+        fail "marker timing: ShowSync did not finish its 4s set in 60s"
+    fi
+    wait "$SHOWSYNC_RUN_PID" ||
+        { cat "$TMPDIR/marker_showsync.log" >&2
+          fail "marker timing: ShowSync exited nonzero"; }
+    SHOWSYNC_RUN_PID=""
+    sleep 0.5   # let the monitor capture drain past the final tone
+    marker_append recording_stop
+    kill -INT "$FFMPEG_PID"
+    for _ in {1..100}; do
+        kill -0 "$FFMPEG_PID" 2>/dev/null || break
+        sleep 0.1
+    done
+    kill -0 "$FFMPEG_PID" 2>/dev/null && fail "marker timing: ffmpeg hung on SIGINT"
+    wait "$FFMPEG_PID" 2>/dev/null || true
+    FFMPEG_PID=""
+    pactl unload-module "$NULL_SINK_MODULE" 2>/dev/null || true
+    NULL_SINK_MODULE=""
+
+    # Audible onsets: each tone rises out of silence, so silencedetect's
+    # silence_end timestamps are the ground truth the markers must match.
+    onsets=$(ffmpeg -hide_banner -i "$out" -map 0:a:0 \
+                 -af silencedetect=n=-40dB:d=0.3 -f null - </dev/null 2>&1 |
+             sed -n 's/.*silence_end: \([0-9.]*\).*/\1/p')
+    [[ -n $onsets ]] || fail "marker timing: no tone onsets found in the recording"
+    python3 - "$markers" <<EOF || fail "marker timing: markers do not match the audio"
+import json, sys
+records = [json.loads(line) for line in open(sys.argv[1])]
+events = [r['event'] for r in records]
+onsets = [float(v) for v in """$onsets""".split()]
+assert events[0] == 'recording_start', events
+assert 'set_start' in events and 'set_end' in events, events
+assert events[-1] == 'recording_stop', events
+starts = [r for r in records if r['event'] == 'song_start']
+assert [s['name'] for s in starts] == ['Lead-in', 'Tone A', 'Tone B'], starts
+assert starts[2]['tempo'] == [{'at': 1, 'bpm': 140, 'ramp': 0.5}], starts[2]
+gap = starts[2]['t_rec'] - starts[1]['t_rec']
+assert abs(gap - 2.0) < 0.05, f'song gap {gap:.3f}s, expected 2.0s (bar-quantized)'
+# The first two onsets are the tones; stream teardown can add a final blip.
+assert len(onsets) >= 2, f'expected 2 tone onsets, silencedetect found {onsets}'
+deltas = [m['t_rec'] - onset for m, onset in zip(starts[1:], onsets[:2])]
+print(f'marker-vs-audio deltas: {[f"{d*1000:+.0f}ms" for d in deltas]}')
+assert all(abs(d) <= 0.15 for d in deltas), f'marker/audio offsets too large: {deltas}'
+EOF
+    echo "marker timing: song_start markers match audible onsets (<=150ms)"
+else
+    echo "NOTE: marker timing skipped (needs $MARKER_PYTHON with PySide6+sounddevice and pactl)"
+fi
+
+###############################################################################
 # 4. main() lifecycle tests. perform.sh runs end-to-end with stub apps
 #    (PERFORM_PYTHON) into an isolated outdir (PERFORM_OUTDIR), forced to
 #    libx264 so the NVENC probe is skipped, in --audio usb mode.
@@ -336,6 +471,10 @@ cat > "$STUB" <<'EOF'
 # Stand-in for ShowSync/Keyframes: keyframes exits after STUB_KEYFRAMES_SLEEP
 # seconds (simulating Esc ending the take); everything else sleeps until killed.
 printf '%s\n' "$*" >> "$PERFORM_OUTDIR/apps.log"
+if [[ -n ${SHOWSYNC_MARKERS:-} ]]; then
+    printf 'SHOWSYNC_MARKERS=%s SHOWSYNC_MARKERS_EPOCH=%s\n' \
+        "$SHOWSYNC_MARKERS" "${SHOWSYNC_MARKERS_EPOCH:-}" >> "$PERFORM_OUTDIR/env.log"
+fi
 case ${1:-} in
     *keyframes*) exec sleep "${STUB_KEYFRAMES_SLEEP:-300}" ;;
     *)           exec sleep 300 ;;
@@ -428,6 +567,33 @@ assert_valid_mkv "$OUT_NORMAL" "normal+stale-lock"
 grep -q '/showsync/main.py .*--midi-transport' "$OUT_NORMAL/apps.log" ||
     fail "normal mode did not launch ShowSync with MIDI transport"
 
+# 4a-markers. Every take gets a <take>.markers sidecar: recording_start
+#     (with video path, mode, set file) and recording_stop, valid JSON
+#     Lines with increasing t_rec — and ShowSync must have been launched
+#     with SHOWSYNC_MARKERS pointing at that same sidecar plus a numeric
+#     recording epoch, so its song markers share the take's t_rec timeline.
+markers_file=$(compgen -G "$OUT_NORMAL/perform_*.markers" | head -n1) ||
+    fail "markers: no .markers sidecar in $OUT_NORMAL"
+grep -q "Take markers: .*\.markers" "$OUT_NORMAL/run.log" ||
+    fail "markers: summary lacks the Take markers line"
+python3 - "$markers_file" <<'EOF' || fail "markers: sidecar content invalid"
+import json, sys
+records = [json.loads(line) for line in open(sys.argv[1])]
+events = [r['event'] for r in records]
+assert events[0] == 'recording_start', events
+assert events[-1] == 'recording_stop', events
+start, stop = records[0], records[-1]
+assert start['mode'] == 'showsync' and start['audio'] == 'usb', start
+assert start['video'].endswith('.mkv'), start
+assert abs(start['t_rec']) < 0.2, start
+assert stop['t_rec'] > start['t_rec'], (start, stop)
+assert all(isinstance(r['epoch'], float) for r in records)
+EOF
+grep -q "SHOWSYNC_MARKERS=$markers_file SHOWSYNC_MARKERS_EPOCH=[0-9]" \
+    "$OUT_NORMAL/env.log" ||
+    fail "markers: ShowSync was not given the sidecar + epoch env (env.log: $(cat "$OUT_NORMAL/env.log" 2>/dev/null))"
+echo "take markers: sidecar + ShowSync env OK"
+
 # 4a-post. The shareable post-take outputs must exist by default with the
 #          expected streams (usb mode: mp4 = 1 video + 1 aac audio; mp3 =
 #          1 mp3 audio, no video) and be reported with paths in the log.
@@ -495,6 +661,16 @@ for audio in usb both system; do
         fail "Keyframes-only did not select expected audio: $recorded_audio"
     file_gone "$OUT_KEYFRAMES/.perform.lock" || fail "Keyframes-only left the capture lock"
     assert_valid_mkv "$OUT_KEYFRAMES" "Keyframes-only $audio" "$expected_audio"
+    # Markers exist without ShowSync too: recording start/stop only, and no
+    # marker env leaks to Keyframes (nothing would consume it).
+    markers_file=$(compgen -G "$OUT_KEYFRAMES/perform_*.markers" | head -n1) ||
+        fail "Keyframes-only $audio: no .markers sidecar"
+    grep -q '"event":"recording_start".*"mode":"keyframes-only"' "$markers_file" ||
+        fail "Keyframes-only $audio: sidecar lacks a keyframes-only recording_start"
+    grep -q '"event":"recording_stop"' "$markers_file" ||
+        fail "Keyframes-only $audio: sidecar lacks recording_stop"
+    [[ -e $OUT_KEYFRAMES/env.log ]] &&
+        fail "Keyframes-only $audio exported SHOWSYNC_MARKERS to its apps"
     grep -q 'Capture health: [0-9]* frames' "$OUT_KEYFRAMES/run.log" ||
         fail "Keyframes-only summary lacks capture health"
     if [[ $audio == usb ]]; then

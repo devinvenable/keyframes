@@ -322,15 +322,17 @@ json_str() {
     printf '"%s"' "${s//\"/\\\"}"
 }
 
-# Append one marker record to $markers: marker_append EVENT [extra fields].
-# The extra fields are a pre-rendered JSON fragment ('"key":"value",...').
+# Append one marker record to $markers: marker_append EVENT [extra fields] [AT].
+# The extra fields are a pre-rendered JSON fragment ('"key":"value",...');
+# AT (epoch seconds) overrides the event's wall time — recording_start uses
+# rec_epoch itself so its t_rec is exactly 0, not the post-launch check delay.
 # No-op until the take started (rec_epoch set); never fails the caller.
 marker_append() {
-    local event=$1 extra=${2:-} stamp
+    local event=$1 extra=${2:-} at=${3:-} stamp
     [[ -n ${markers:-} && -n ${rec_epoch:-} ]] || return 0
     # Only the arithmetic goes through awk: a -v assignment would reprocess
     # the backslash escapes json_str put into $extra.
-    stamp=$(awk -v now="$(date +%s.%N)" -v rec="$rec_epoch" \
+    stamp=$(awk -v now="${at:-$(date +%s.%N)}" -v rec="$rec_epoch" \
         'BEGIN { printf "\"epoch\":%.3f,\"t_rec\":%.3f", now, now - rec }') || return 0
     printf '{"event":"%s",%s%s%s}\n' "$event" "$stamp" "${extra:+,}" "$extra" \
         >> "$markers" 2>/dev/null || true
@@ -874,7 +876,8 @@ main() {
         fi
     done
     marker_append recording_start \
-        "\"video\":$(json_str "$out"),\"mode\":$(json_str "$mode_label"),\"audio\":$(json_str "$audio_mode"),\"set_file\":$(json_str "$set_file")"
+        "\"video\":$(json_str "$out"),\"mode\":$(json_str "$mode_label"),\"audio\":$(json_str "$audio_mode"),\"set_file\":$(json_str "$set_file")" \
+        "$rec_epoch"
     echo "Take markers: $markers"
 
     # Baseline PipeWire xrun counters; cleanup prints the take's delta.
