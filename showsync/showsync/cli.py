@@ -12,6 +12,7 @@ from .document import Document
 from .devices import Devices
 from .gui import main_loop
 from .headless import headless_loop
+from .markers import MarkerWriter
 from .midifile import MidiEventsView, load_setlist_events
 from .setlist import SetlistError
 
@@ -134,7 +135,22 @@ def main(argv=None):
         except Exception:
             close(audio, clock, midi)
             raise
-        return audio, clock, lambda: close(audio, clock, midi)
+        # Take markers (perform.sh exports SHOWSYNC_MARKERS*): optional, and
+        # never allowed to stop a show that just started.
+        markers = None
+        try:
+            markers = MarkerWriter.from_env(setlist_path=path)
+            if markers is not None:
+                markers.watch(audio)
+        except Exception as exc:
+            logging.warning('take markers disabled: %s', exc)
+            markers = None
+
+        def stop():
+            if markers is not None:
+                markers.close()
+            close(audio, clock, midi)
+        return audio, clock, stop
 
     def close(audio, clock, midi):
         nonlocal frozen
