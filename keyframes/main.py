@@ -3,6 +3,7 @@ import ctypes
 import json
 import os
 import queue
+import random
 import shutil
 import sys
 import threading
@@ -39,6 +40,10 @@ IMAGES_DIR = str(APP_DIR / 'images')
 # folder so it survives restarts and can be hand-edited.  Absent until the first
 # launch (or the Media Manager) seeds it.
 MAPPING_PATH = str(APP_DIR / 'mapping.json')
+# Scene settings live in their OWN file, not mapping.json: save_mapping()
+# rewrites mapping.json from the note->filename dict alone, so any config
+# block stored there would be silently dropped on the first reconcile.
+SCENES_CONFIG_PATH = str(APP_DIR / 'scenes.json')
 
 IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.bmp')
 # .gif is a video here: cv2's ffmpeg backend decodes GIFs frame-by-frame, so
@@ -864,6 +869,198 @@ def render_still(current_state, surface, target_size, zoom, display_mode, pan):
     return scaled
 
 
+# --- Scenes: reusable templated playback sequences ---------------------------
+
+# Chance that any media-triggering note-on hands presentation to a scene.
+DEFAULT_SCENE_PROBABILITY = 0.05
+# Seconds a four-bar-sweep bar takes to fade to white once its successor lands.
+SCENE_FADE_SECONDS = 1.0
+
+
+def load_scenes_config(path=None):
+    """Read scenes.json, tolerating a missing or malformed file.
+
+    Returns ``{'enabled': bool, 'probability': float}`` with defaults filled
+    in, so callers never need to re-validate. Out-of-range probabilities and
+    wrong-typed values fall back to the defaults rather than erroring — a
+    hand-edit typo must not brick startup, matching load_mapping()."""
+    if path is None:
+        path = SCENES_CONFIG_PATH
+    config = {'enabled': True, 'probability': DEFAULT_SCENE_PROBABILITY}
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            raw = json.load(fh)
+    except (FileNotFoundError, ValueError, OSError):
+        return config
+    if not isinstance(raw, dict):
+        return config
+    if isinstance(raw.get('enabled'), bool):
+        config['enabled'] = raw['enabled']
+    probability = raw.get('probability')
+    if (isinstance(probability, (int, float)) and not isinstance(probability, bool)
+            and 0.0 <= probability <= 1.0):
+        config['probability'] = float(probability)
+    return config
+
+
+def media_still_surface(media):
+    """A representative still surface for any media: images as-is, videos by
+    their current-position/first frame. Scenes present stills only in v1, so a
+    video trigger contributes one frame rather than full playback. Returns
+    None if a video can't be decoded (the scene then simply doesn't start)."""
+    if media['type'] == 'image':
+        return media['surface']
+    cap = open_video_capture(media['path'])
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        return None
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    return pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+
+
+class Scene:
+    """Base class for scenes — pre-configured, reusable playback templates
+    that occasionally take over presentation from the normal full-screen view.
+
+    Lifecycle: constructed on the activating trigger with that media's still
+    surface; ``advance()`` on every later media-triggering note-on (Keyframes
+    is note-driven, so a "beat" is a trigger, not clock time); ``render()``
+    each frame while active; ``done()`` True once finished, after which the
+    main loop drops it and normal full-screen behavior resumes. Scene state
+    stays out of the main render path except via the single
+    ``current_state['active_scene']`` hook."""
+
+    name = 'scene'
+
+    def __init__(self, image, now):
+        self.image = image
+        self.activated_at = now
+
+    def advance(self, media, now):
+        """React to the next note-on trigger while active."""
+
+    def render(self, screen, target_size, now):
+        raise NotImplementedError
+
+    def done(self, now):
+        return False
+
+
+# name -> Scene subclass; activation picks randomly among registered scenes.
+SCENE_REGISTRY = {}
+
+
+def register_scene(cls):
+    SCENE_REGISTRY[cls.name] = cls
+    return cls
+
+
+def scene_bar_rect(index, target_size, num_bars=4):
+    """Rect (x, y, w, h) of one full-height vertical bar.
+
+    The last bar absorbs the division remainder so the bars always tile the
+    full screen width with no uncovered right edge."""
+    tw, th = target_size
+    base = tw // num_bars
+    x = index * base
+    w = base if index < num_bars - 1 else tw - x
+    return x, 0, w, th
+
+
+@register_scene
+class FourBarSweepScene(Scene):
+    """The same image steps across 4 full-height vertical bars, one per beat.
+
+    Activation shows the activating note's image in bar 1; each following
+    trigger places it in the next bar and starts the previous bar's ~1s fade
+    to white (fades keep running across later steps). Each bar shows a center
+    crop-to-fill of the image at the bar's aspect — cropped, never squeezed.
+    The trigger after bar 4 starts the final fade; the scene is done when
+    that last fade completes."""
+
+    name = 'four-bar-sweep'
+    NUM_BARS = 4
+    FADE_SECONDS = SCENE_FADE_SECONDS
+
+    def __init__(self, image, now):
+        super().__init__(image, now)
+        self.bars_placed = 1
+        self.fade_starts = {}  # bar index -> monotonic time its fade began
+        self.finishing = False
+        self._bar_cache = {}  # (w, h) -> center-cropped bar surface
+
+    def advance(self, media, now):
+        if self.finishing:
+            return
+        if self.bars_placed < self.NUM_BARS:
+            self.fade_starts[self.bars_placed - 1] = now
+            self.bars_placed += 1
+        else:
+            self.fade_starts[self.NUM_BARS - 1] = now
+            self.finishing = True
+
+    def done(self, now):
+        return (self.finishing
+                and now - self.fade_starts[self.NUM_BARS - 1] >= self.FADE_SECONDS)
+
+    def bar_surface(self, size):
+        """The image center-cropped-to-fill at one bar's size, cached: every
+        bar shows the SAME image, so one crop serves all equal-width bars."""
+        cached = self._bar_cache.get(size)
+        if cached is None:
+            cached = crop_to_fill(self.image, size)
+            self._bar_cache[size] = cached
+        return cached
+
+    def fade_strength(self, index, now):
+        """0.0 (full image) .. 1.0 (solid white) for one bar's fade."""
+        start = self.fade_starts.get(index)
+        if start is None:
+            return 0.0
+        return min(max((now - start) / self.FADE_SECONDS, 0.0), 1.0)
+
+    def render(self, screen, target_size, now):
+        screen.fill((0, 0, 0))
+        for i in range(self.bars_placed):
+            x, y, w, h = scene_bar_rect(i, target_size, self.NUM_BARS)
+            screen.blit(self.bar_surface((w, h)), (x, y))
+            strength = self.fade_strength(i, now)
+            if strength > 0.0:
+                overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+                overlay.fill((255, 255, 255, int(round(255 * strength))))
+                screen.blit(overlay, (x, y))
+
+
+def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None):
+    """Advance the active scene, or roll the activation dice for a new one.
+
+    Called on every media-triggering note-on. While a scene is active each
+    trigger is one beat; an active scene always runs to completion (config
+    can't cancel it mid-flight). With no scene active, a roll under the
+    configured probability activates a randomly chosen registered scene on
+    this trigger's media. Normal state keeps updating underneath either way,
+    so when the scene ends the screen resumes with the latest trigger."""
+    scene = current_state.get('active_scene')
+    if scene is not None:
+        scene.advance(media, now)
+        if scene.done(now):
+            current_state['active_scene'] = None
+        return
+    if not scenes_config or not scenes_config.get('enabled', True):
+        return
+    if not SCENE_REGISTRY:
+        return
+    roll = (rng if rng is not None else random.random)()
+    if roll >= scenes_config.get('probability', DEFAULT_SCENE_PROBABILITY):
+        return
+    still = media_still_surface(media)
+    if still is None:
+        return
+    scene_cls = SCENE_REGISTRY[random.choice(sorted(SCENE_REGISTRY))]
+    current_state['active_scene'] = scene_cls(still, now)
+
+
 def draw_performance_frame(screen, current_state, target_size, now=None,
                            display_mode='fill'):
     """Draw the media selected by MIDI.
@@ -871,7 +1068,20 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
     A same-note repeat of a still shows its colour-inverted (negative) copy; a
     different note shows the image normally. Video is unaffected (it restarts on
     retrigger, which already reads well). Pitch-bend zoom and mod-wheel pan
-    apply live to whatever is on screen — stills, videos, and gif loops."""
+    apply live to whatever is on screen — stills, videos, and gif loops.
+
+    An active scene takes over the whole frame (the narrow active_scene hook);
+    once it reports done it is dropped here and the normal path resumes with
+    whatever the latest triggers left in current_state."""
+    scene = current_state.get('active_scene')
+    if scene is not None:
+        if now is None:
+            now = time.monotonic()
+        if scene.done(now):
+            current_state['active_scene'] = None
+        else:
+            scene.render(screen, target_size, now)
+            return
     zoom = effective_zoom_scale(current_state)
     pan = current_state.get('pan', 0.0)
     if current_state['video_player']:
@@ -899,7 +1109,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                           current_state, channel=None, clock_tracker=None,
                           min_note_beats=None, zoom_ring_enabled=False,
                           note_hit_counts=None, assign_callback=None,
-                          latch_mode=True, display_mode='fill'):
+                          latch_mode=True, display_mode='fill',
+                          scenes_config=None):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
@@ -991,6 +1202,11 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                 current_state['surface_media'] = media
                 current_state['note_active'] = note
                 current_state['note_on_time'] = now
+
+            # Scenes: a media-triggering note-on is one "beat" — it advances
+            # an active scene, or rolls the low-probability activation gate.
+            if media:
+                update_scene_on_trigger(current_state, media, now, scenes_config)
 
         elif (is_note_off and not latch_mode
               and note == current_state['note_active']):
@@ -1828,7 +2044,14 @@ def main():
     state = {'surface': None, 'video_player': None, 'note_active': None,
              'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0,
              'bend_zoom': 1.0, 'pan': 0.0, 'pan_cc_time': None, 'pan_ease': None,
-             'inverted': False, 'surface_media': None, 'last_note': None}
+             'inverted': False, 'surface_media': None, 'last_note': None,
+             'active_scene': None}
+    scenes_config = load_scenes_config()
+    if scenes_config['enabled']:
+        print(f"Scenes enabled: {scenes_config['probability']:.0%} chance per "
+              f"trigger ({', '.join(sorted(SCENE_REGISTRY))}) — see scenes.json")
+    else:
+        print("Scenes disabled (scenes.json)")
     note_hit_counts = {}
     latch_enabled = not args.no_latch
     latch_notice_until = 0
@@ -2010,14 +2233,16 @@ def main():
                                       note_to_media, target_size, state, midi_channel,
                                       clock_tracker, min_note_beats, args.zoom_ring,
                                       note_hit_counts, assign_if_selected,
-                                      latch_enabled, args.display_mode)
+                                      latch_enabled, args.display_mode,
+                                      scenes_config)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel,
                                           clock_tracker, min_note_beats, args.zoom_ring,
                                           note_hit_counts, assign_if_selected,
-                                          latch_enabled, args.display_mode)
+                                          latch_enabled, args.display_mode,
+                                          scenes_config)
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()

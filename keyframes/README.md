@@ -171,6 +171,39 @@ dropped files are copies, so your original is the backup. The change is saved to
 success; an unsupported file type or a drop that misses every cell flashes red
 and is ignored (nothing copied or deleted).
 
+## Scenes
+
+Scenes are pre-configured, reusable playback templates that occasionally take
+over presentation of the triggered media instead of the normal full-screen
+flash. On any media-triggering note-on there is a small random chance (5% by
+default) that a scene activates; once active it runs to completion, then
+disappears and normal full-screen behavior resumes with the latest trigger.
+
+**Four-bar sweep** (the first scene): the screen divides into 4 full-height
+vertical bars and the image from the note that activated the scene steps
+across them — the *same* image, one bar per beat, where a "beat" is simply
+the next note-on trigger (no MIDI clock needed). Each bar shows a center
+crop-to-fill of the image at the bar's aspect ratio (cropped, never
+squeezed). When a bar's successor appears, the previous bar fades to white
+over ~1 second; the trigger after the fourth bar starts the final fade, and
+the scene ends when it completes.
+
+Simplifications in this first version: if a *video* note activates a scene,
+its first frame is used as the scene's still (a video triggered *during* a
+scene only advances the beat — per design, the activating image is the one
+that steps across the bars, so no per-trigger frame is shown). Scene config
+lives in `scenes.json` beside `mapping.json` (it can't live inside
+`mapping.json`, which is rewritten as a pure note→file manifest):
+
+```json
+{"enabled": true, "probability": 0.05}
+```
+
+Both keys are optional; a missing or malformed file means scenes are enabled
+at the 5% default. New scenes subclass `Scene` in `main.py` and register with
+`@register_scene` — activation picks randomly among registered scenes, and
+the main loop only ever sees the one `active_scene` hook.
+
 ## Media folder
 
 Drop any images or videos into the `images/` directory — any filenames, any order. Supported formats:
