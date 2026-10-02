@@ -42,7 +42,11 @@
 #         the Behringer's Burr-Brown USB codec), else the PipeWire/Pulse
 #         default source. A configured device that is absent falls back to
 #         the default source with a warning instead of aborting.
-# Output: recordings/perform_YYYYmmdd_HHMMSS.mkv (the master take), plus —
+# Output: recordings/perform_YYYYmmdd_HHMMSS.mkv (the master take), with a
+#         <take>.markers sidecar (JSON Lines) stamping recording start/stop
+#         and — via ShowSync — each song start with its name, bpm and tempo
+#         ramp events, all with t_rec offsets relative to the recorded
+#         video's t=0 so cuts can be snapped to beats; plus —
 #         produced automatically after the master is finalized, unless
 #         --no-postprocess / PERFORM_NO_POSTPROCESS=1 —
 #           perform_*_share.mp4  full take, h264 + aac 160k, +faststart
@@ -301,6 +305,37 @@ report_capture_health() {
         echo "WARNING: capture dropped frames — ${efps} fps effective vs" \
              "${CAPTURE_FPS} nominal. Check CPU load during the take ($file.log)."
     fi
+}
+
+# --- take markers (T209) -------------------------------------------------
+# <take>.markers is a JSON Lines sidecar: perform.sh stamps recording_start/
+# recording_stop here, and ShowSync (via SHOWSYNC_MARKERS[_EPOCH], exported
+# only to its process) appends set/song/tempo events on the same t_rec
+# timeline — seconds since the recording's t=0 — so an editor can snap cuts
+# to beats without re-deriving the grid from the audio (the
+# perform_20260930_222936 demo edit had to recover it by onset analysis).
+
+# JSON string value for $1: backslash and double-quote escaped (enough for
+# the paths/names we emit; none carry control characters).
+json_str() {
+    local s=${1//\\/\\\\}
+    printf '"%s"' "${s//\"/\\\"}"
+}
+
+# Append one marker record to $markers: marker_append EVENT [extra fields] [AT].
+# The extra fields are a pre-rendered JSON fragment ('"key":"value",...');
+# AT (epoch seconds) overrides the event's wall time — recording_start uses
+# rec_epoch itself so its t_rec is exactly 0, not the post-launch check delay.
+# No-op until the take started (rec_epoch set); never fails the caller.
+marker_append() {
+    local event=$1 extra=${2:-} at=${3:-} stamp
+    [[ -n ${markers:-} && -n ${rec_epoch:-} ]] || return 0
+    # Only the arithmetic goes through awk: a -v assignment would reprocess
+    # the backslash escapes json_str put into $extra.
+    stamp=$(awk -v now="${at:-$(date +%s.%N)}" -v rec="$rec_epoch" \
+        'BEGIN { printf "\"epoch\":%.3f,\"t_rec\":%.3f", now, now - rec }') || return 0
+    printf '{"event":"%s",%s%s%s}\n' "$event" "$stamp" "${extra:+,}" "$extra" \
+        >> "$markers" 2>/dev/null || true
 }
 
 # Echo the video encoder to use: h264_nvenc when the GPU can actually open
@@ -678,6 +713,7 @@ main() {
     # already gone and `set -u` would abort cleanup mid-shutdown.
     lockfile="$outdir/.perform.lock"
     out="$outdir/perform_$(date +%Y%m%d_%H%M%S).mkv"
+    markers="${out%.mkv}.markers" rec_epoch=""
     ffmpeg_pid="" showsync_pid="" keyframes_pid="" BABYSITTER_PID=""
     xrun_start="" xrun_end=""
     video_encoder="" postprocess_enabled=$(( ! no_post ))
@@ -727,6 +763,8 @@ main() {
                 wait "$pid" 2>/dev/null || true
             fi
         done
+        # After the apps are gone, so ShowSync's set_stop lands first.
+        marker_append recording_stop
         # Release the lock only if it still names our ffmpeg — never delete
         # a newer session's lock. The babysitter has nothing left to do.
         if [[ -n $ffmpeg_pid && $(head -n1 "$lockfile" 2>/dev/null) == "$ffmpeg_pid" ]]; then
@@ -744,6 +782,7 @@ main() {
             echo ""
             echo "Recording saved: $out"
             [[ -n $dur ]] && echo "Duration: ${dur%.*}s"
+            [[ -s ${markers:-} ]] && echo "Take markers: $markers"
             report_capture_health "$out"
             # PipeWire xrun delta over the take: tells graph-level dropouts
             # (nodes losing cycles) apart from ShowSync-level underruns
@@ -805,6 +844,10 @@ main() {
     # Ctrl+C (delivered to the foreground group) never reaches it raw —
     # cleanup's single SIGINT is the only stop signal it ever sees — and a
     # terminal close (SIGHUP) cannot kill it mid-write.
+    # The recording's t=0 for all take markers: stamped at the spawn, a few
+    # tens of ms before x11grab captures its first frame (verified within
+    # the ~100ms beat-snapping budget by the smoke test's marker check).
+    rec_epoch=$(date +%s.%N)
     setsid ${recorder_prefix[@]+"${recorder_prefix[@]}"} "${FFMPEG_ARGS[@]}" \
         </dev/null 2>"$out.log" &
     ffmpeg_pid=$!
@@ -816,11 +859,26 @@ main() {
     if ! kill -0 "$ffmpeg_pid" 2>/dev/null; then
         wait "$ffmpeg_pid" || true
         rm -f "$lockfile"
-        ffmpeg_pid=""
+        ffmpeg_pid="" rec_epoch=""   # no take: no markers either
         echo "ERROR: ffmpeg failed to start — see $out.log" >&2
         tail -n 5 "$out.log" >&2 || true
         exit 1
     fi
+
+    # Take markers: the capture is live, so stamp its t=0 and identity. The
+    # set file is the first YAML among the pass-through ShowSync args.
+    local set_file="" arg mode_label="showsync"
+    (( keyframes_only )) && mode_label="keyframes-only"
+    for arg in ${showsync_args[@]+"${showsync_args[@]}"}; do
+        if [[ $arg == *.yaml || $arg == *.yml ]] && [[ -f $arg ]]; then
+            set_file=$(readlink -f -- "$arg" 2>/dev/null || echo "$arg")
+            break
+        fi
+    done
+    marker_append recording_start \
+        "\"video\":$(json_str "$out"),\"mode\":$(json_str "$mode_label"),\"audio\":$(json_str "$audio_mode"),\"set_file\":$(json_str "$set_file")" \
+        "$rec_epoch"
+    echo "Take markers: $markers"
 
     # Baseline PipeWire xrun counters; cleanup prints the take's delta.
     xrun_start="$outdir/.perform_xruns_$$"
@@ -834,7 +892,10 @@ main() {
 
     if (( ! keyframes_only )); then
         echo "Starting ShowSync..."
-        "$python" "$REPO_ROOT/showsync/main.py" ${showsync_args[@]+"${showsync_args[@]}"} &
+        # SHOWSYNC_MARKERS*: ShowSync appends song/tempo events to the take's
+        # sidecar on the same t_rec timeline (see showsync/showsync/markers.py).
+        SHOWSYNC_MARKERS="$markers" SHOWSYNC_MARKERS_EPOCH="$rec_epoch" \
+            "$python" "$REPO_ROOT/showsync/main.py" ${showsync_args[@]+"${showsync_args[@]}"} &
         showsync_pid=$!
     fi
 
