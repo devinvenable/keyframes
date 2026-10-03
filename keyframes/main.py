@@ -950,6 +950,11 @@ class Scene:
     def done(self, now):
         return False
 
+    def continue_from(self, previous):
+        """Hook for a scene activated on the very trigger that ended
+        ``previous`` — subclasses may carry state over (e.g. the rings scene
+        continues its expansion). Default: fresh start, nothing carried."""
+
 
 # name -> Scene subclass; activation picks randomly among registered scenes.
 SCENE_REGISTRY = {}
@@ -1103,15 +1108,22 @@ class ConcentricRingsScene(Scene):
     eye later."""
 
     name = 'concentric-rings'
-    RING_THICKNESS_FRACTION = 0.1   # ring width, as a fraction of screen height
-    EXPANSION_SPEED_FRACTION = 0.5  # screen-heights per second of outward growth
-    BEATS_TO_LIVE = 8
+    RING_THICKNESS_FRACTION = 0.1    # ring width, as a fraction of screen height
+    EXPANSION_SPEED_FRACTION = 0.25  # screen-heights per second of outward growth
+    BEATS_TO_LIVE = 16
 
     def __init__(self, image, now, background=None):
         super().__init__(image, now, background)
         self.beats = 0
         self.swapped = False
         self._cache = {}  # target_size -> (dist_q, fg_surface, bg_surface)
+
+    def continue_from(self, previous):
+        """Back-to-back rings: carry the predecessor's expansion origin so the
+        ring motion reads as one continuous tunnel — a retrigger swaps in the
+        new foreground image but never restarts ring placement from center."""
+        if isinstance(previous, ConcentricRingsScene):
+            self.activated_at = previous.activated_at
 
     def advance(self, media, now):
         self.beats += 1
@@ -1198,6 +1210,7 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
 
     ``prev_still`` is what was on screen before this trigger (see
     displayed_still_surface) — the new scene's optional background."""
+    ended_scene = None
     scene = current_state.get('active_scene')
     if scene is not None:
         scene.advance(media, now)
@@ -1208,6 +1221,7 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
         # ended the old one. Returning here instead left this note rendering
         # one normal full-screen frame before the next note could roll —
         # a visible flash between back-to-back scenes at high probability.
+        ended_scene = scene
         current_state['active_scene'] = None
     if not scenes_config or not scenes_config.get('enabled', True):
         return
@@ -1220,7 +1234,12 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
     if still is None:
         return
     scene_cls = SCENE_REGISTRY[random.choice(sorted(SCENE_REGISTRY))]
-    current_state['active_scene'] = scene_cls(still, now, background=prev_still)
+    new_scene = scene_cls(still, now, background=prev_still)
+    if ended_scene is not None:
+        # Back-to-back handoff on one trigger: let the new scene carry state
+        # over from the one that just ended (rings continue their expansion).
+        new_scene.continue_from(ended_scene)
+    current_state['active_scene'] = new_scene
 
 
 def draw_performance_frame(screen, current_state, target_size, now=None,
@@ -1232,18 +1251,21 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
     retrigger, which already reads well). Pitch-bend zoom and mod-wheel pan
     apply live to whatever is on screen — stills, videos, and gif loops.
 
-    An active scene takes over the whole frame (the narrow active_scene hook);
-    once it reports done it is dropped here and the normal path resumes with
-    whatever the latest triggers left in current_state."""
+    An active scene takes over the whole frame (the narrow active_scene hook)
+    for as long as it is installed — even once done() turns True it keeps
+    rendering its final frame (a finished sweep holds its fully-faded bars).
+    Only the trigger path (update_scene_on_trigger) clears a finished scene,
+    so the handoff is always scene -> held final frame -> next trigger's
+    scene or media. Dropping the scene here instead let the at-rest
+    full-screen view (a DIFFERENT, later-triggered key: normal state keeps
+    updating underneath) flash in the gap between the final fade completing
+    on wall-clock and the next trigger arriving."""
     scene = current_state.get('active_scene')
     if scene is not None:
         if now is None:
             now = time.monotonic()
-        if scene.done(now):
-            current_state['active_scene'] = None
-        else:
-            scene.render(screen, target_size, now)
-            return
+        scene.render(screen, target_size, now)
+        return
     zoom = effective_zoom_scale(current_state)
     pan = current_state.get('pan', 0.0)
     if current_state['video_player']:
@@ -1265,6 +1287,28 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
         screen.blit(scaled, (0, 0))
     else:
         screen.fill((0, 0, 0))
+
+
+def drain_startup_midi(ports, settle_seconds=0.25, sleep=time.sleep,
+                       clock=time.monotonic):
+    """Read and discard everything already pending on freshly opened input
+    ports, polling for ``settle_seconds`` so late-arriving buffered events are
+    caught too. Returns the number of messages discarded.
+
+    Stale events queued at port-open time (e.g. a hardware sequencer that ran
+    before launch, or ALSA-buffered traffic) otherwise replay the instant the
+    main loop starts — Devin saw a full phantom scene cycle at startup before
+    any key was pressed. Standard fix: drain-and-drop right after open,
+    before the loop ever reads the ports."""
+    drained = 0
+    deadline = clock() + settle_seconds
+    while True:
+        for port in ports:
+            for _ in port.iter_pending():
+                drained += 1
+        if clock() >= deadline:
+            return drained
+        sleep(0.01)
 
 
 def process_midi_messages(msg_source, start_note, end_note, note_to_media, target_size,
@@ -2209,6 +2253,11 @@ def main():
                 print(f"  Available ports: {inputs}")
         else:
             print("No MIDI input devices found — using keyboard only.")
+
+    if inports:
+        stale = drain_startup_midi(inports)
+        if stale:
+            print(f"Discarded {stale} stale MIDI event(s) queued before startup.")
 
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). L: toggle latch. ESC to quit.")
     print("Tab: toggle grid/media-manager view (Up/Down or mouse wheel to scroll).")

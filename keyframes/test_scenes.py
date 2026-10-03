@@ -246,11 +246,74 @@ def test_scene_completes_after_final_fade_and_normal_view_resumes():
     assert state['active_scene'] is scene
     assert screen.get_at((7, 7))[:3] != (0, 0, 255)
 
-    # Once the final fade elapses the hook is dropped and the latest
-    # triggered media (blue, note 62) draws full-screen again.
+    # Past the final fade, the render path does NOT drop the scene — it holds
+    # the fully-faded final frame (solid white) instead of letting the at-rest
+    # full-screen view (blue, a different key than the scene's red) flash
+    # through before the next trigger arrives.
     draw_performance_frame(screen, state, (8, 8), 15.1)
+    assert state['active_scene'] is scene
+    assert screen.get_at((4, 4))[:3] == (255, 255, 255)
+
+    # The NEXT trigger clears the finished scene (its roll stays above the
+    # probability here), and only then does the normal view resume — showing
+    # that very trigger's media (red, note 60: a non-repeat after 62, so no
+    # same-note invert in the way).
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 16.0, 60,
+                        {'enabled': True, 'probability': 0.05})
     assert state['active_scene'] is None
-    assert screen.get_at((4, 4))[:3] == (0, 0, 255)
+    draw_performance_frame(screen, state, (8, 8), 16.1)
+    assert screen.get_at((4, 4))[:3] == (255, 0, 0)
+
+
+def test_no_at_rest_frame_renders_across_a_scene_handoff():
+    """Render-level guard for Devin's reported flash: with probability 1.0,
+    NO frame between a scene's activation and the next scene's first frame
+    may be the plain full-screen view — including the dead zone between the
+    final fade completing on wall-clock and the next trigger arriving."""
+    screen = pygame.Surface((8, 8))
+    q = queue.Queue()
+    state = make_state()
+    red, blue = make_image((255, 0, 0)), make_image((0, 0, 255))
+    media = {60: {'type': 'image', 'surface': red, 'name': 'r.png'},
+             62: {'type': 'image', 'surface': blue, 'name': 'b.png'}}
+    config = {'enabled': True, 'probability': 1.0}
+
+    def plain_frame(now):
+        """What the at-rest (sceneless) view would show right now."""
+        ref = pygame.Surface((8, 8))
+        sceneless = dict(state, active_scene=None)
+        draw_performance_frame(ref, sceneless, (8, 8), now)
+        return ref
+
+    def assert_scene_owns_frame(now):
+        draw_performance_frame(screen, state, (8, 8), now)
+        assert state['active_scene'] is not None
+        ref = plain_frame(now)
+        # Byte-identical frames mean the composed frame IS the plain
+        # full-screen view — the reported flash.
+        assert (pygame.image.tobytes(screen, 'RGB')
+                != pygame.image.tobytes(ref, 'RGB'))
+
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('four-bar-sweep'):
+        state = trigger(q, state, media, 10.0, 60, config)
+        first = state['active_scene']
+
+        # Bars 2-4, final fade starts at 14.0; sample frames between beats,
+        # through the fade, and PAST its completion (15.0) into the dead zone
+        # where no trigger has arrived yet — the frames that used to flash.
+        for now, note in ((11.0, 62), (12.0, 60), (13.0, 60), (14.0, 62)):
+            state = trigger(q, state, media, now, note, config)
+            assert_scene_owns_frame(now + 0.5)
+        for now in (14.9, 15.1, 16.0, 25.0):
+            assert_scene_owns_frame(now)
+
+        # The next trigger hands off to the successor scene in the same call.
+        state = trigger(q, state, media, 26.0, 60, config)
+    assert state['active_scene'] is not None
+    assert state['active_scene'] is not first
+    assert_scene_owns_frame(26.0)
 
 
 def test_no_new_scene_can_stack_on_an_active_one():
@@ -370,7 +433,7 @@ def test_base_sweep_keeps_white_fade_and_no_tint():
 
 
 # --- concentric rings ---------------------------------------------------------
-# 40x40 screen, default params: ring thickness = 4px, expansion = 20px/s,
+# 40x40 screen, default params: ring thickness = 4px, expansion = 10px/s,
 # center at (19.5, 19.5). Pixel (19, 19) sits at dist ~0.7 (ring 0, even);
 # pixel (19, 25) at dist ~5.5 (ring 1, odd).
 
@@ -399,15 +462,15 @@ def test_even_rings_show_foreground_odd_show_background():
 
 def test_rings_expand_outward_with_wall_clock_time():
     scene = make_rings()
-    # At activation the dist-5.5 pixel is in odd ring 1 (background). 0.1s
+    # At activation the dist-5.5 pixel is in odd ring 1 (background). 0.2s
     # later the offset has grown by 2px, the ring boundary moved outward past
     # it, and the same pixel now shows foreground — without any beat.
     assert rendered(scene, 10.0).get_at(BG_PIXEL)[:3] == (0, 0, 255)
-    assert rendered(scene, 10.1).get_at(BG_PIXEL)[:3] == (255, 0, 0)
+    assert rendered(scene, 10.2).get_at(BG_PIXEL)[:3] == (255, 0, 0)
     # New rings are born at center: once the offset exceeds the center
     # distance, the center pixel flips to the newborn (odd) ring.
     assert rendered(scene, 10.0).get_at(FG_PIXEL)[:3] == (255, 0, 0)
-    assert rendered(scene, 10.1).get_at(FG_PIXEL)[:3] == (0, 0, 255)
+    assert rendered(scene, 10.2).get_at(FG_PIXEL)[:3] == (0, 0, 255)
 
 
 def test_beat_swaps_foreground_and_background():
@@ -427,13 +490,20 @@ def test_missing_background_falls_back_to_black():
     assert screen.get_at(BG_PIXEL)[:3] == (0, 0, 0)
 
 
-def test_rings_scene_ends_on_eighth_beat():
+def test_rings_tuning_defaults_slower_and_longer():
+    """Devin's live tuning (task 218): halve the expansion speed and double
+    the lifetime so the ring motion reads continuous for longer."""
+    assert ConcentricRingsScene.EXPANSION_SPEED_FRACTION == 0.25
+    assert ConcentricRingsScene.BEATS_TO_LIVE == 16
+
+
+def test_rings_scene_ends_on_sixteenth_beat():
     scene = make_rings()
-    for i in range(7):
+    for i in range(scene.BEATS_TO_LIVE - 1):
         scene.advance(None, 10.0 + i)
         assert not scene.done(10.0 + i)
-    scene.advance(None, 17.0)
-    assert scene.done(17.0)
+    scene.advance(None, 26.0)
+    assert scene.done(26.0)
 
 
 def test_new_scene_can_start_on_the_trigger_that_ended_the_old():
@@ -447,14 +517,56 @@ def test_new_scene_can_start_on_the_trigger_that_ended_the_old():
         update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.0)
         old = state['active_scene']
         assert isinstance(old, ConcentricRingsScene)
-        # Beats 1-8; the 8th ends `old` and must activate its successor
+        # Beats 1-16; the 16th ends `old` and must activate its successor
         # within the SAME call.
-        for i in range(8):
+        for i in range(ConcentricRingsScene.BEATS_TO_LIVE):
             update_scene_on_trigger(state, media, 11.0 + i, config,
                                     rng=lambda: 0.0)
-    assert old.done(19.0)
+    assert old.done(27.0)
     assert state['active_scene'] is not None
     assert state['active_scene'] is not old
+
+
+def test_back_to_back_rings_continue_the_expansion():
+    """Rings following rings on the ending trigger carry the predecessor's
+    expansion origin: ring placement never restarts from center, only the
+    foreground image swaps (Devin: 'keep the ring motion continuous')."""
+    media = {'type': 'image', 'surface': make_image(), 'name': 'a.png'}
+    config = {'enabled': True, 'probability': 1.0}
+    state = make_state()
+    with pick_scene('concentric-rings'):
+        update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.0)
+        old = state['active_scene']
+        for i in range(ConcentricRingsScene.BEATS_TO_LIVE):
+            update_scene_on_trigger(state, media, 11.0 + i, config,
+                                    rng=lambda: 0.0)
+    new = state['active_scene']
+    assert isinstance(new, ConcentricRingsScene) and new is not old
+    # Same expansion origin -> the render offset is continuous across the
+    # handoff instead of resetting to zero at the new activation time.
+    assert new.activated_at == old.activated_at
+
+
+def test_rings_after_a_sweep_start_fresh():
+    """continue_from only carries state between two rings scenes — rings
+    activated on the trigger that ended a SWEEP expand from center."""
+    media = {'type': 'image', 'surface': make_image(), 'name': 'a.png'}
+    config = {'enabled': True, 'probability': 1.0}
+    state = make_state()
+    with pick_scene('four-bar-sweep'):
+        update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.0)
+    sweep = state['active_scene']
+    for i in range(4):
+        update_scene_on_trigger(state, media, 11.0 + i, config,
+                                rng=lambda: 0.0)
+    assert sweep.finishing
+    with pick_scene('concentric-rings'):
+        # 20.0 is past the final fade, so this trigger ends the sweep and
+        # activates rings in the same call.
+        update_scene_on_trigger(state, media, 20.0, config, rng=lambda: 0.0)
+    rings = state['active_scene']
+    assert isinstance(rings, ConcentricRingsScene)
+    assert rings.activated_at == 20.0
 
 
 def test_activation_captures_previous_image_as_background():
@@ -482,7 +594,7 @@ def test_activation_captures_previous_image_as_background():
     assert scene.background is red
 
 
-def test_rings_complete_after_eight_beats_and_normal_view_resumes():
+def test_rings_complete_after_sixteen_beats_and_normal_view_resumes():
     screen = pygame.Surface((8, 8))
     q = queue.Queue()
     state = make_state()
@@ -497,21 +609,21 @@ def test_rings_complete_after_eight_beats_and_normal_view_resumes():
     scene = state['active_scene']
     assert isinstance(scene, ConcentricRingsScene)
 
-    # Beats 1-7 (notes alternate, so no same-note invert interferes): the
+    # Beats 1-15 (notes alternate, so no same-note invert interferes): the
     # scene stays active and owns the frame.
-    for beat in range(1, 8):
+    for beat in range(1, scene.BEATS_TO_LIVE):
         note = 60 if beat % 2 else 62
         state = trigger(q, state, media, 10.0 + beat, note, config)
-    draw_performance_frame(screen, state, (8, 8), 16.5)
+    draw_performance_frame(screen, state, (8, 8), 24.5)
     assert state['active_scene'] is scene
 
-    # Beat 8 ends the scene ON the beat — a hard cut back to the normal view
+    # Beat 16 ends the scene ON the beat — a hard cut back to the normal view
     # showing that very trigger's media (blue, note 62). The roll that the
     # ending trigger falls through to stays above the probability here, so
     # no back-to-back scene starts.
     with patch('main.random.random', return_value=0.9):
-        state = trigger(q, state, media, 18.0, 62,
+        state = trigger(q, state, media, 26.0, 62,
                         {'enabled': True, 'probability': 0.05})
     assert state['active_scene'] is None
-    draw_performance_frame(screen, state, (8, 8), 18.1)
+    draw_performance_frame(screen, state, (8, 8), 26.1)
     assert screen.get_at((4, 4))[:3] == (0, 0, 255)
