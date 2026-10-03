@@ -19,6 +19,7 @@ from main import (
     FourBarSweepScene,
     FourBarSweepTintedScene,
     SCENE_REGISTRY,
+    TimedConcentricRingsScene,
     draw_performance_frame,
     load_scenes_config,
     process_midi_messages,
@@ -361,6 +362,8 @@ def test_all_scenes_are_registered():
     assert SCENE_REGISTRY['four-bar-sweep-black'] is FourBarSweepBlackScene
     assert SCENE_REGISTRY['four-bar-sweep-tinted'] is FourBarSweepTintedScene
     assert SCENE_REGISTRY['concentric-rings'] is ConcentricRingsScene
+    assert SCENE_REGISTRY['concentric-rings-timed'] is TimedConcentricRingsScene
+    assert len(SCENE_REGISTRY) == 5
 
 
 # --- fade-to-black variant ----------------------------------------------------
@@ -627,3 +630,101 @@ def test_rings_complete_after_sixteen_beats_and_normal_view_resumes():
     assert state['active_scene'] is None
     draw_performance_frame(screen, state, (8, 8), 26.1)
     assert screen.get_at((4, 4))[:3] == (0, 0, 255)
+
+
+# --- timed rings variant ------------------------------------------------------
+
+def image_media(surface, name='m.png'):
+    return {'type': 'image', 'surface': surface, 'name': name}
+
+
+def make_timed_rings(fg=(255, 0, 0), background=(0, 0, 255)):
+    bg = make_image(background, RINGS_SIZE) if background else None
+    return TimedConcentricRingsScene(make_image(fg, RINGS_SIZE), 10.0,
+                                     background=bg)
+
+
+def test_timed_rings_defaults():
+    assert SCENE_REGISTRY['concentric-rings-timed'] is TimedConcentricRingsScene
+    assert TimedConcentricRingsScene.DURATION_SECONDS == 6.0
+
+
+def test_timed_rings_done_is_duration_based_not_beat_based():
+    scene = make_timed_rings()
+    media = image_media(make_image((0, 255, 0), RINGS_SIZE))
+    # 20 triggers inside the first second: still alive.
+    for i in range(20):
+        scene.advance(media, 10.0 + i * 0.05)
+    assert not scene.done(11.0)
+    # Zero further triggers: done exactly at activation + 6s.
+    assert not scene.done(15.99)
+    assert scene.done(16.0)
+
+
+def test_timed_rings_triggers_do_not_alter_ring_motion():
+    """Render bytes at a fixed t are identical with and without interleaved
+    advances (modulo image change — same image on every trigger here): no
+    parity swap, no offset change."""
+    quiet = make_timed_rings(fg=(255, 0, 0), background=(255, 0, 0))
+    busy = make_timed_rings(fg=(255, 0, 0), background=(255, 0, 0))
+    media = image_media(make_image((255, 0, 0), RINGS_SIZE))
+    rendered(busy, 10.5)  # populate the render cache before any rotation
+    for i in range(7):
+        busy.advance(media, 10.1 + i * 0.3)
+    a = pygame.surfarray.array3d(rendered(quiet, 12.3))
+    b = pygame.surfarray.array3d(rendered(busy, 12.3))
+    assert (a == b).all()
+
+
+def test_timed_rings_trigger_rotates_images():
+    """On each note-on the current foreground becomes the background and the
+    trigger's still becomes the foreground — newest image tunnels in."""
+    scene = make_timed_rings(fg=(255, 0, 0), background=(0, 0, 255))
+    rendered(scene, 10.0)  # cached layers must be rebuilt by the rotation
+    scene.advance(image_media(make_image((0, 255, 0), RINGS_SIZE)), 10.1)
+    screen = rendered(scene, 10.0)
+    assert screen.get_at(FG_PIXEL)[:3] == (0, 255, 0)  # new still: foreground
+    assert screen.get_at(BG_PIXEL)[:3] == (255, 0, 0)  # old fg: background
+    scene.advance(image_media(make_image((255, 255, 0), RINGS_SIZE)), 10.2)
+    screen = rendered(scene, 10.0)
+    assert screen.get_at(FG_PIXEL)[:3] == (255, 255, 0)
+    assert screen.get_at(BG_PIXEL)[:3] == (0, 255, 0)
+
+
+def test_timed_rings_handoff_carries_expansion_but_not_lifetime():
+    """A timed scene activated on the trigger that ended a rings scene keeps
+    the ring motion continuous (carries expansion_origin) but lives its FULL
+    6 seconds from its OWN activation, not the predecessor's."""
+    media = {'type': 'image', 'surface': make_image(), 'name': 'a.png'}
+    config = {'enabled': True, 'probability': 1.0}
+    state = make_state()
+    with pick_scene('concentric-rings'):
+        update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.0)
+        old = state['active_scene']
+        for i in range(ConcentricRingsScene.BEATS_TO_LIVE - 1):
+            update_scene_on_trigger(state, media, 11.0 + i, config,
+                                    rng=lambda: 0.0)
+    with pick_scene('concentric-rings-timed'):
+        update_scene_on_trigger(state, media, 26.0, config, rng=lambda: 0.0)
+    new = state['active_scene']
+    assert isinstance(new, TimedConcentricRingsScene) and new is not old
+    assert new.expansion_origin == old.expansion_origin == 10.0
+    assert new.activated_at == 26.0
+    assert not new.done(31.99)
+    assert new.done(32.0)
+
+
+def test_timed_rings_ends_on_first_trigger_past_duration():
+    """The render path holds a done scene's final frame; the next trigger
+    past the 6s mark is what actually ends it (and may roll a successor)."""
+    media = {'type': 'image', 'surface': make_image(), 'name': 'a.png'}
+    config = {'enabled': True, 'probability': 1.0}
+    state = make_state()
+    with pick_scene('concentric-rings-timed'):
+        update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.0)
+    scene = state['active_scene']
+    assert isinstance(scene, TimedConcentricRingsScene)
+    update_scene_on_trigger(state, media, 12.0, config, rng=lambda: 1.0)
+    assert state['active_scene'] is scene  # mid-flight trigger: still alive
+    update_scene_on_trigger(state, media, 17.0, config, rng=lambda: 1.0)
+    assert state['active_scene'] is None  # past 6s: this trigger ended it

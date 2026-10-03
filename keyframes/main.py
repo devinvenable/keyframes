@@ -1116,6 +1116,11 @@ class ConcentricRingsScene(Scene):
         super().__init__(image, now, background)
         self.beats = 0
         self.swapped = False
+        # Ring placement is anchored here, not on activated_at: a handoff may
+        # carry the origin for continuous motion while the successor's
+        # lifecycle (activated_at) starts fresh — the timed variant needs
+        # that split, since its done() runs on activated_at.
+        self.expansion_origin = now
         self._cache = {}  # target_size -> (dist_q, fg_surface, bg_surface)
 
     def continue_from(self, previous):
@@ -1124,6 +1129,7 @@ class ConcentricRingsScene(Scene):
         new foreground image but never restarts ring placement from center."""
         if isinstance(previous, ConcentricRingsScene):
             self.activated_at = previous.activated_at
+            self.expansion_origin = previous.expansion_origin
 
     def advance(self, media, now):
         self.beats += 1
@@ -1151,18 +1157,23 @@ class ConcentricRingsScene(Scene):
             dist = np.hypot(xs[:, None], ys[None, :])
             dist_q = (dist * (256.0 / self.ring_thickness(target_size))
                       ).astype(np.int32)
-            fg = pygame.Surface(target_size, pygame.SRCALPHA)
-            fg.blit(crop_to_fill(self.image, target_size), (0, 0))
-            bg = pygame.Surface(target_size)
-            if self.background is not None:
-                bg.blit(crop_to_fill(self.background, target_size), (0, 0))
-            cached = (dist_q, fg, bg)
+            cached = (dist_q,) + self.ring_layers(target_size)
             self._cache[target_size] = cached
         return cached
 
+    def ring_layers(self, target_size):
+        """(fg_surface, bg_surface) for one screen size: the current images
+        cropped-to-fill, fg with the writable alpha channel the mask needs."""
+        fg = pygame.Surface(target_size, pygame.SRCALPHA)
+        fg.blit(crop_to_fill(self.image, target_size), (0, 0))
+        bg = pygame.Surface(target_size)
+        if self.background is not None:
+            bg.blit(crop_to_fill(self.background, target_size), (0, 0))
+        return fg, bg
+
     def render(self, screen, target_size, now):
         dist_q, fg, bg = self.ring_cache(target_size)
-        offset = ((now - self.activated_at)
+        offset = ((now - self.expansion_origin)
                   * target_size[1] * self.EXPANSION_SPEED_FRACTION)
         offset_q = int(round(offset * 256.0 / self.ring_thickness(target_size)))
         # Ring parity by floor((dist - offset) / thickness) & 1, all in scaled
@@ -1178,6 +1189,41 @@ class ConcentricRingsScene(Scene):
         pygame.surfarray.pixels_alpha(fg)[:, :] = alpha
         screen.blit(bg, (0, 0))
         screen.blit(fg, (0, 0))
+
+
+@register_scene
+class TimedConcentricRingsScene(ConcentricRingsScene):
+    """Concentric rings whose animation is purely time-driven (Devin, task
+    220): the rings expand continuously for DURATION_SECONDS and then the
+    scene ends, regardless of how many (or few) triggers arrive. Triggers
+    never touch the ring motion — no parity swap, no offset change, no life
+    extension. A trigger ONLY rotates the images: the current foreground
+    becomes the background and the trigger's still becomes the foreground,
+    so the newest image always tunnels in through the previous one.
+
+    continue_from carries the predecessor rings' expansion origin (continuous
+    tunnel across a handoff) but NOT its activation time: a handed-off timed
+    scene still lives its full DURATION_SECONDS from its own activation."""
+
+    name = 'concentric-rings-timed'
+    DURATION_SECONDS = 6.0
+
+    def continue_from(self, previous):
+        if isinstance(previous, ConcentricRingsScene):
+            self.expansion_origin = previous.expansion_origin
+
+    def advance(self, media, now):
+        still = media_still_surface(media) if media else None
+        if still is None:
+            return
+        self.background = self.image
+        self.image = still
+        # Rebuild only the image layers; the distance field never changes.
+        for size, (dist_q, _fg, _bg) in list(self._cache.items()):
+            self._cache[size] = (dist_q,) + self.ring_layers(size)
+
+    def done(self, now):
+        return now - self.activated_at >= self.DURATION_SECONDS
 
 
 def displayed_still_surface(current_state):
