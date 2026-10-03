@@ -219,10 +219,17 @@ entirely. Ring thickness (default 1/10 screen height), expansion speed
 parameters on `ConcentricRingsScene` (`RING_THICKNESS_FRACTION`,
 `EXPANSION_SPEED_FRACTION`, `BEATS_TO_LIVE`).
 
-Simplifications in this first version: if a *video* note activates a scene,
-its first frame is used as the scene's still (a video triggered *during* a
-scene only advances the beat — per design, the activating image is the one
-that steps across the bars, so no per-trigger frame is shown). Scene config
+Videos and animated GIFs play *live* inside scenes, through the same
+VideoPlayer pipeline as the normal view: a GIF keeps looping, a video plays
+once and freezes on its last frame, and playback is paced by the media's
+own frame rate — scene motion (ring expansion, bar fades) stays wall-clock
+smooth regardless. All four sweep bars always show the *same* synchronized
+frame (one decode per render tick). A rings scene activated while a video
+is on screen adopts that live player as its background, continuing from the
+current playback position rather than restarting. Still images keep their
+fully-cached zero-rebuild path, so all-image performance is unchanged. (A
+video triggered *during* a sweep still only advances the beat — per design,
+the activating media is the one that steps across the bars.) Scene config
 lives in `scenes.json` beside `mapping.json` (it can't live inside
 `mapping.json`, which is rewritten as a pure note→file manifest):
 

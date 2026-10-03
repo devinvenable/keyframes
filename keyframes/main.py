@@ -597,7 +597,12 @@ class VideoPlayer:
     wall clock (``clock``, injectable for tests), returning the previous
     surface otherwise. Media faster than the render loop is kept real-time by
     grab()-skipping the frames that will never be shown. Streams that don't
-    report a frame rate fall back to one decode per call."""
+    report a frame rate fall back to one decode per call.
+
+    ``target_size=None`` skips the fit/fill scaling entirely and yields
+    frames at the stream's native size — scene media sources use this so the
+    scene's own per-layer crop (bar sizes, ring layers) works from the full
+    frame instead of a pre-cropped one."""
 
     def __init__(self, path, target_size, loop=False, clock=time.monotonic,
                  display_mode='fill'):
@@ -660,8 +665,18 @@ class VideoPlayer:
             return self.last_surface
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if self.target_size is not None:
+            frame = self._scale_frame(frame)
+        surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+        self.last_surface = surface
+        return surface
+
+    def _scale_frame(self, frame):
+        """Fit or crop-to-fill one decoded frame to target_size."""
         th, tw = self.target_size[1], self.target_size[0]
         fh, fw = frame.shape[:2]
+        if (fw, fh) == (tw, th):
+            return frame
         if self.display_mode == 'fit':
             # Fit: scale to sit inside target, centered on black bars
             scale = min(tw / fw, th / fh)
@@ -687,9 +702,7 @@ class VideoPlayer:
             x_off = (new_w - tw) // 2
             y_off = (new_h - th) // 2
             frame = frame[y_off:y_off+th, x_off:x_off+tw]
-        surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
-        self.last_surface = surface
-        return surface
+        return frame
 
     def release(self):
         if self.cap:
@@ -760,6 +773,19 @@ def update_pan_recenter(current_state, now):
     current_state['pan'] = ease['from'] * (1.0 - s)
 
 
+def blit_cover(dst, surface, size, pos=(0, 0)):
+    """Blit ``surface`` crop-to-filled at ``size`` onto dst.
+
+    When the surface is already exactly ``size`` (scene sources decode
+    pre-cropped to the screen), this blits it directly — skipping
+    crop_to_fill's full-surface subsurface copy, which matters at 1080p on
+    every animated-layer refresh."""
+    if surface.get_size() == size:
+        dst.blit(surface, pos)
+    else:
+        dst.blit(crop_to_fill(surface, size), pos)
+
+
 def crop_to_fill(surface, target_size):
     """Scale surface to cover target_size, cropping edges to preserve aspect ratio."""
     sw, sh = surface.get_size()
@@ -774,7 +800,10 @@ def crop_to_fill(surface, target_size):
         # Source is taller — scale by width, crop height
         new_w = tw
         new_h = int(sh * tw / sw)
-    scaled = pygame.transform.smoothscale(surface, (new_w, new_h))
+    # Already at cover scale (e.g. a frame decoded at screen size, or a bar
+    # whose height matches the source): skip the smoothscale, just crop.
+    scaled = (surface if (new_w, new_h) == (sw, sh)
+              else pygame.transform.smoothscale(surface, (new_w, new_h)))
     x_offset = (new_w - tw) // 2
     y_offset = (new_h - th) // 2
     cropped = scaled.subsurface((x_offset, y_offset, tw, th)).copy()
@@ -903,28 +932,92 @@ def load_scenes_config(path=None):
     return config
 
 
-def media_still_surface(media):
-    """A representative still surface for any media: images as-is, videos by
-    their current-position/first frame. Scenes present stills only in v1, so a
-    video trigger contributes one frame rather than full playback. Returns
-    None if a video can't be decoded (the scene then simply doesn't start)."""
+class SceneMediaSource:
+    """A pollable per-tick frame source for one scene media layer.
+
+    This base class is the STATIC case: current_frame() returns the same
+    surface object forever, so scenes keyed on frame identity never rebuild
+    their caches for images — the all-images path stays exactly as cheap as
+    the stills-only v1."""
+
+    animated = False
+
+    def __init__(self, surface):
+        self._frame = surface
+
+    def current_frame(self):
+        return self._frame
+
+    def release(self):
+        pass
+
+
+class AnimatedSceneSource(SceneMediaSource):
+    """A scene layer backed by a live VideoPlayer (video or looping GIF).
+
+    current_frame() polls the player, which is paced by the media's own fps:
+    within one render tick repeated polls return the same surface object, so
+    frame identity doubles as the scenes' cache-invalidation signal (rebuild
+    only when the media actually advanced). A not-ready/ended frame holds the
+    previous one — scene motion (rings, fades) stays wall-clock smooth no
+    matter what the decoder does."""
+
+    animated = True
+
+    def __init__(self, player):
+        super().__init__(player.last_surface)
+        self.player = player
+
+    def current_frame(self):
+        frame = self.player.get_frame()
+        if frame is not None:
+            self._frame = frame
+        return self._frame
+
+    def release(self):
+        self.player.release()
+
+
+def as_scene_source(media_or_surface):
+    """Wrap a plain surface as a static source; pass sources (or None) through."""
+    if media_or_surface is None or isinstance(media_or_surface, SceneMediaSource):
+        return media_or_surface
+    return SceneMediaSource(media_or_surface)
+
+
+def release_scene_source(source):
+    """Release a source if it is one — raw surfaces and None are no-ops."""
+    if isinstance(source, SceneMediaSource):
+        source.release()
+
+
+def scene_media_source(media, target_size=None, clock=time.monotonic):
+    """A frame source for any media entry: images static, videos/GIFs live.
+
+    Video playback inside a scene behaves exactly as in the normal view —
+    same VideoPlayer, same fps pacing, GIFs loop, real videos play once and
+    freeze on their last frame. ``target_size`` pre-crops decoded frames in
+    cv2 (cheap) so per-layer crops are near-identity; None decodes at native
+    size. Returns None if a video can't produce a first frame (the scene
+    then simply doesn't start)."""
     if media['type'] == 'image':
-        return media['surface']
-    cap = open_video_capture(media['path'])
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
+        return SceneMediaSource(media['surface'])
+    player = VideoPlayer(media['path'], target_size,
+                         loop=media.get('loop', False), clock=clock)
+    source = AnimatedSceneSource(player)
+    if source.current_frame() is None:
+        player.release()
         return None
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    return pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+    return source
 
 
 class Scene:
     """Base class for scenes — pre-configured, reusable playback templates
     that occasionally take over presentation from the normal full-screen view.
 
-    Lifecycle: constructed on the activating trigger with that media's still
-    surface; ``advance()`` on every later media-triggering note-on (Keyframes
+    Lifecycle: constructed on the activating trigger with that media's frame
+    source (static for images, live playback for videos and GIFs);
+    ``advance()`` on every later media-triggering note-on (Keyframes
     is note-driven, so a "beat" is a trigger, not clock time); ``render()``
     each frame while active; ``done()`` True once finished, after which the
     main loop drops it and normal full-screen behavior resumes. Scene state
@@ -934,12 +1027,49 @@ class Scene:
     name = 'scene'
 
     def __init__(self, image, now, background=None):
-        self.image = image
+        # ``image``/``background`` accept a SceneMediaSource or a bare
+        # surface (wrapped as a static source). self.image/self.background
+        # always hold the layer's CURRENT frame surface — for static images
+        # that is one object forever, so identity-keyed caches never churn.
+        self.image_source = as_scene_source(image)
+        self.image = self.image_source.current_frame()
         self.activated_at = now
-        # Still of whatever was on screen when the scene activated (None if
-        # nothing was displayed). Scenes that composite "new over old" use it;
+        # Whatever was on screen when the scene activated (None if nothing
+        # was displayed) — a live video keeps playing from its current
+        # position. Scenes that composite "new over old" use it;
         # single-image scenes like the sweeps simply ignore it.
-        self.background = background
+        self.background_source = as_scene_source(background)
+        self.background = (self.background_source.current_frame()
+                           if self.background_source is not None else None)
+
+    def poll_media(self, poll_background=True):
+        """Advance animated layers one render tick; returns what changed.
+
+        Called once at the top of each render() so every consumer within the
+        tick (all sweep bars, both ring layers) sees ONE consistent frame per
+        layer — one decode per tick, media-fps paced. Returns
+        ``(fg_changed, bg_changed)``; a changed layer is the ONLY thing that
+        may invalidate a frame-derived cache."""
+        fg_changed = bg_changed = False
+        if self.image_source is not None and self.image_source.animated:
+            frame = self.image_source.current_frame()
+            if frame is not self.image:
+                self.image = frame
+                fg_changed = True
+        if (poll_background and self.background_source is not None
+                and self.background_source.animated):
+            frame = self.background_source.current_frame()
+            if frame is not self.background:
+                self.background = frame
+                bg_changed = True
+        return fg_changed, bg_changed
+
+    def release(self):
+        """Free the layers' decoders. Called when the trigger path drops the
+        scene (ended, with or without a successor) — continue_from only ever
+        carries timing values, never sources, so this is always safe."""
+        for source in (self.image_source, self.background_source):
+            release_scene_source(source)
 
     def advance(self, media, now):
         """React to the next note-on trigger while active."""
@@ -1002,6 +1132,12 @@ class FourBarSweepScene(Scene):
 
     def __init__(self, image, now, background=None):
         super().__init__(image, now, background)
+        # Sweeps never composite over the previous view: release an animated
+        # background NOW so its decoder doesn't sit open (and silently
+        # polled) for the whole scene.
+        if self.background_source is not None:
+            self.background_source.release()
+            self.background_source = None
         self.bars_placed = 1
         self.fade_starts = {}  # bar index -> monotonic time its fade began
         self.finishing = False
@@ -1053,6 +1189,12 @@ class FourBarSweepScene(Scene):
         return min(max((now - start) / self.FADE_SECONDS, 0.0), 1.0)
 
     def render(self, screen, target_size, now):
+        # One poll per tick: every bar below crops from this same frame
+        # (synchronized bars), and the crop cache survives until the media
+        # actually advances — static images never invalidate it.
+        fg_changed, _ = self.poll_media(poll_background=False)
+        if fg_changed:
+            self._bar_cache.clear()
         screen.fill((0, 0, 0))
         for i in range(self.bars_placed):
             x, y, w, h = scene_bar_rect(i, target_size, self.NUM_BARS)
@@ -1165,13 +1307,29 @@ class ConcentricRingsScene(Scene):
         """(fg_surface, bg_surface) for one screen size: the current images
         cropped-to-fill, fg with the writable alpha channel the mask needs."""
         fg = pygame.Surface(target_size, pygame.SRCALPHA)
-        fg.blit(crop_to_fill(self.image, target_size), (0, 0))
+        blit_cover(fg, self.image, target_size)
         bg = pygame.Surface(target_size)
         if self.background is not None:
-            bg.blit(crop_to_fill(self.background, target_size), (0, 0))
+            blit_cover(bg, self.background, target_size)
         return fg, bg
 
+    def refresh_ring_layers(self, fg_changed=True, bg_changed=True):
+        """Re-blit changed media frames into the cached layer surfaces.
+
+        In place, per cached size, and ONLY for the layers whose media
+        actually advanced — the distance field and the untouched layer are
+        never rebuilt, so animating one video costs one crop+blit per media
+        frame (not per render frame) per size."""
+        for size, (_dist_q, fg, bg) in self._cache.items():
+            if fg_changed:
+                blit_cover(fg, self.image, size)
+            if bg_changed and self.background is not None:
+                blit_cover(bg, self.background, size)
+
     def render(self, screen, target_size, now):
+        fg_changed, bg_changed = self.poll_media()
+        if fg_changed or bg_changed:
+            self.refresh_ring_layers(fg_changed, bg_changed)
         dist_q, fg, bg = self.ring_cache(target_size)
         offset = ((now - self.expansion_origin)
                   * target_size[1] * self.EXPANSION_SPEED_FRACTION)
@@ -1213,38 +1371,51 @@ class TimedConcentricRingsScene(ConcentricRingsScene):
             self.expansion_origin = previous.expansion_origin
 
     def advance(self, media, now):
-        still = media_still_surface(media) if media else None
-        if still is None:
+        # Decode at a size we already render at, when known — same reasoning
+        # as activation's target_size pre-crop.
+        size_hint = next(iter(self._cache), None)
+        source = scene_media_source(media, size_hint) if media else None
+        if source is None:
             return
+        release_scene_source(self.background_source)
+        self.background_source = self.image_source
         self.background = self.image
-        self.image = still
-        # Rebuild only the image layers; the distance field never changes.
-        for size, (dist_q, _fg, _bg) in list(self._cache.items()):
-            self._cache[size] = (dist_q,) + self.ring_layers(size)
+        self.image_source = source
+        self.image = source.current_frame()
+        # Re-blit only the image layers; the distance field never changes.
+        self.refresh_ring_layers()
 
     def done(self, now):
         return now - self.activated_at >= self.DURATION_SECONDS
 
 
-def displayed_still_surface(current_state):
-    """A still of what is on screen right now, or None if nothing is.
+def displayed_media_source(current_state):
+    """A frame source for what is on screen right now, or None if nothing is.
 
-    Videos contribute their current frame, stills their surface — the
-    inverted copy when a same-note repeat has flipped it, so the capture
-    matches what the audience actually sees. Callers must capture BEFORE a
-    trigger overwrites current_state (the scene hook itself runs after)."""
+    A playing video contributes its LIVE player, wrapped — not a frozen
+    frame and not a restarted stream — so a scene that composites over the
+    previous view keeps that video playing from its current position.
+    Ownership: the caller must detach the wrapped player from current_state
+    before handing the source to the scene path (process_midi_messages does),
+    and whoever ends up not using the source must release it. Stills
+    contribute their surface — the inverted copy when a same-note repeat has
+    flipped it, so the capture matches what the audience actually sees.
+    Callers must capture BEFORE a trigger overwrites current_state (the
+    scene hook itself runs after)."""
     player = current_state.get('video_player')
     if player:
-        return player.get_frame()
+        return AnimatedSceneSource(player)
     surface = current_state.get('surface')
     if (surface is not None and current_state.get('inverted')
             and current_state.get('surface_media')):
-        return inverted_surface(current_state['surface_media'])
-    return surface
+        return SceneMediaSource(inverted_surface(current_state['surface_media']))
+    if surface is not None:
+        return SceneMediaSource(surface)
+    return None
 
 
 def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
-                            prev_still=None):
+                            prev_still=None, target_size=None):
     """Advance the active scene, or roll the activation dice for a new one.
 
     Called on every media-triggering note-on. While a scene is active each
@@ -1255,37 +1426,48 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
     so when the scene ends the screen resumes with the latest trigger.
 
     ``prev_still`` is what was on screen before this trigger (see
-    displayed_still_surface) — the new scene's optional background."""
+    displayed_media_source) — the new scene's optional background; a bare
+    surface or a SceneMediaSource. This function takes ownership of it:
+    it is released on every path that doesn't hand it to a new scene.
+    ``target_size`` lets a video activation decode pre-cropped to the
+    screen; an ended scene's decoders are always released here."""
     ended_scene = None
-    scene = current_state.get('active_scene')
-    if scene is not None:
-        scene.advance(media, now)
-        if not scene.done(now):
+    try:
+        scene = current_state.get('active_scene')
+        if scene is not None:
+            scene.advance(media, now)
+            if not scene.done(now):
+                return
+            # The scene ended ON this trigger: clear it and fall through to the
+            # activation roll, so a new scene can start on the very note that
+            # ended the old one. Returning here instead left this note rendering
+            # one normal full-screen frame before the next note could roll —
+            # a visible flash between back-to-back scenes at high probability.
+            ended_scene = scene
+            current_state['active_scene'] = None
+        if not scenes_config or not scenes_config.get('enabled', True):
             return
-        # The scene ended ON this trigger: clear it and fall through to the
-        # activation roll, so a new scene can start on the very note that
-        # ended the old one. Returning here instead left this note rendering
-        # one normal full-screen frame before the next note could roll —
-        # a visible flash between back-to-back scenes at high probability.
-        ended_scene = scene
-        current_state['active_scene'] = None
-    if not scenes_config or not scenes_config.get('enabled', True):
-        return
-    if not SCENE_REGISTRY:
-        return
-    roll = (rng if rng is not None else random.random)()
-    if roll >= scenes_config.get('probability', DEFAULT_SCENE_PROBABILITY):
-        return
-    still = media_still_surface(media)
-    if still is None:
-        return
-    scene_cls = SCENE_REGISTRY[random.choice(sorted(SCENE_REGISTRY))]
-    new_scene = scene_cls(still, now, background=prev_still)
-    if ended_scene is not None:
-        # Back-to-back handoff on one trigger: let the new scene carry state
-        # over from the one that just ended (rings continue their expansion).
-        new_scene.continue_from(ended_scene)
-    current_state['active_scene'] = new_scene
+        if not SCENE_REGISTRY:
+            return
+        roll = (rng if rng is not None else random.random)()
+        if roll >= scenes_config.get('probability', DEFAULT_SCENE_PROBABILITY):
+            return
+        source = scene_media_source(media, target_size)
+        if source is None:
+            return
+        scene_cls = SCENE_REGISTRY[random.choice(sorted(SCENE_REGISTRY))]
+        new_scene = scene_cls(source, now, background=prev_still)
+        prev_still = None  # the scene owns it now (even if it released it)
+        if ended_scene is not None:
+            # Back-to-back handoff on one trigger: let the new scene carry
+            # state over from the one that just ended (rings continue their
+            # expansion). Only timing values carry, never media sources.
+            new_scene.continue_from(ended_scene)
+        current_state['active_scene'] = new_scene
+    finally:
+        if ended_scene is not None:
+            ended_scene.release()
+        release_scene_source(prev_still)
 
 
 def draw_performance_frame(screen, current_state, target_size, now=None,
@@ -1430,19 +1612,25 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # (Captured even while a scene is active: a trigger can end the
             # old scene and activate the next one in the same call, and that
             # new scene's background is the underlying normal view.)
-            prev_still = None
+            prev_source = None
             if media and scenes_config and scenes_config.get('enabled', True):
-                prev_still = displayed_still_surface(current_state)
+                prev_source = displayed_media_source(current_state)
             is_repeat = note == current_state.get('last_note')
             current_state['last_note'] = note
             if is_repeat and media and media['type'] == 'image':
                 current_state['inverted'] = not current_state.get('inverted', False)
             else:
                 current_state['inverted'] = False
-            # Stop any current video
-            if current_state['video_player']:
-                current_state['video_player'].release()
+            # Stop any current video — unless the scene capture wrapped it:
+            # then ownership moves to prev_source (a scene adopts it as a
+            # still-playing background, or update_scene_on_trigger releases
+            # it), keeping its playback position instead of restarting.
+            player = current_state['video_player']
+            if player:
                 current_state['video_player'] = None
+                if not (isinstance(prev_source, AnimatedSceneSource)
+                        and prev_source.player is player):
+                    player.release()
 
             # Clear any pending hold
             current_state['hold_until'] = None
@@ -1469,7 +1657,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # an active scene, or rolls the low-probability activation gate.
             if media:
                 update_scene_on_trigger(current_state, media, now, scenes_config,
-                                        prev_still=prev_still)
+                                        prev_still=prev_source,
+                                        target_size=target_size)
 
         elif (is_note_off and not latch_mode
               and note == current_state['note_active']):
@@ -2577,6 +2766,8 @@ def main():
     stop_event.set()
     if state['video_player']:
         state['video_player'].release()
+    if state['active_scene']:
+        state['active_scene'].release()
     if grid_preview:
         grid_preview['player'].release()
     pygame.quit()
