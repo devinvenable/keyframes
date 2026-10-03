@@ -14,7 +14,9 @@ import pygame
 
 from main import (
     DEFAULT_SCENE_PROBABILITY,
+    FourBarSweepBlackScene,
     FourBarSweepScene,
+    FourBarSweepTintedScene,
     SCENE_REGISTRY,
     draw_performance_frame,
     load_scenes_config,
@@ -280,5 +282,76 @@ def test_bar_surface_is_center_crop_at_bar_aspect():
     assert scene.bar_surface((10, 10)) is bar
 
 
-def test_four_bar_sweep_is_registered():
+def test_all_three_sweeps_are_registered():
     assert SCENE_REGISTRY['four-bar-sweep'] is FourBarSweepScene
+    assert SCENE_REGISTRY['four-bar-sweep-black'] is FourBarSweepBlackScene
+    assert SCENE_REGISTRY['four-bar-sweep-tinted'] is FourBarSweepTintedScene
+
+
+# --- fade-to-black variant ----------------------------------------------------
+
+def test_black_variant_fades_previous_bar_to_black():
+    screen = pygame.Surface((8, 8))
+    scene = FourBarSweepBlackScene(make_image((255, 0, 0), (8, 8)), 10.0)
+    scene.advance(None, 11.0)  # bar 2 placed, bar 1 fading from 11.0
+
+    # Mid-fade: bar 1 is red blended halfway to black, bar 2 still pure red.
+    scene.render(screen, (8, 8), 11.5)
+    r, g, b = screen.get_at((0, 0))[:3]
+    assert 100 < r < 155 and g == 0 and b == 0
+    assert screen.get_at((2, 0))[:3] == (255, 0, 0)
+
+    # Fade complete: bar 1 is solid black.
+    scene.render(screen, (8, 8), 12.5)
+    assert screen.get_at((0, 0))[:3] == (0, 0, 0)
+
+
+# --- per-bar tints ------------------------------------------------------------
+
+def test_tinted_variant_tints_each_bar_with_bar_four_untinted():
+    # White source: multiply shows each bar's tint directly, and the untinted
+    # bar 4 stays white. All advances share one timestamp and the render
+    # happens at that same instant, so every fade strength is still 0.
+    screen = pygame.Surface((8, 8))
+    scene = FourBarSweepTintedScene(make_image((255, 255, 255), (8, 8)), 10.0)
+    for _ in range(3):
+        scene.advance(None, 10.0)
+    assert scene.bars_placed == 4
+    scene.render(screen, (8, 8), 10.0)
+
+    red = screen.get_at((0, 0))[:3]
+    assert red[0] >= 250 and red[1] == 0 and red[2] == 0
+    green = screen.get_at((2, 0))[:3]
+    assert green[0] == 0 and green[1] >= 250 and green[2] == 0
+    blue = screen.get_at((4, 0))[:3]
+    assert blue[0] == 0 and blue[1] == 0 and blue[2] >= 250
+    # Bar 4 untinted: the natural image, give or take fade-start timing...
+    bar4 = screen.get_at((6, 0))[:3]
+    assert all(c >= 250 for c in bar4)
+
+
+def test_tint_applies_to_color_sources_too():
+    """Devin's decision: tint ALWAYS applies — no grayscale gating. A yellow
+    source through the red tint keeps only its red channel (multiply)."""
+    scene = FourBarSweepTintedScene(make_image((255, 255, 0), (8, 8)), 10.0)
+    bar = scene.bar_surface((2, 8), 0)  # bar 1 = red tint
+    r, g, b = bar.get_at((1, 4))[:3]
+    assert r >= 250 and g == 0 and b == 0
+
+    # ...while the untinted bar shows the source unchanged.
+    plain = scene.bar_surface((2, 8), 3)
+    assert plain.get_at((1, 4))[:3] == (255, 255, 0)
+
+
+def test_tinted_bar_cache_is_keyed_by_tint():
+    scene = FourBarSweepTintedScene(make_image((255, 255, 255), (8, 8)), 10.0)
+    assert scene.bar_surface((2, 8), 0) is not scene.bar_surface((2, 8), 1)
+    assert scene.bar_surface((2, 8), 0) is scene.bar_surface((2, 8), 0)
+
+
+def test_base_sweep_keeps_white_fade_and_no_tint():
+    # The parameterization must not change the original scene's behavior.
+    assert FourBarSweepScene.FADE_COLOR == (255, 255, 255)
+    assert FourBarSweepScene.BAR_TINTS is None
+    scene = FourBarSweepScene(make_image((255, 255, 0), (8, 8)), 10.0)
+    assert scene.bar_surface((2, 8), 0).get_at((1, 4))[:3] == (255, 255, 0)

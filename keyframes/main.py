@@ -873,7 +873,7 @@ def render_still(current_state, surface, target_size, zoom, display_mode, pan):
 
 # Chance that any media-triggering note-on hands presentation to a scene.
 DEFAULT_SCENE_PROBABILITY = 0.05
-# Seconds a four-bar-sweep bar takes to fade to white once its successor lands.
+# Seconds a four-bar-sweep bar takes to fade out once its successor lands.
 SCENE_FADE_SECONDS = 1.0
 
 
@@ -974,21 +974,29 @@ class FourBarSweepScene(Scene):
 
     Activation shows the activating note's image in bar 1; each following
     trigger places it in the next bar and starts the previous bar's ~1s fade
-    to white (fades keep running across later steps). Each bar shows a center
-    crop-to-fill of the image at the bar's aspect — cropped, never squeezed.
+    to FADE_COLOR (fades keep running across later steps). Each bar shows a
+    center crop-to-fill of the image at the bar's aspect — cropped, never
+    squeezed — multiplied by that bar's BAR_TINTS entry when one is set.
     The trigger after bar 4 starts the final fade; the scene is done when
-    that last fade completes."""
+    that last fade completes.
+
+    FADE_COLOR and BAR_TINTS are the template parameters: subclasses override
+    them to register sweep variants without duplicating the mechanics."""
 
     name = 'four-bar-sweep'
     NUM_BARS = 4
     FADE_SECONDS = SCENE_FADE_SECONDS
+    FADE_COLOR = (255, 255, 255)
+    # Per-bar RGB multiplied over the bar's crop (None = untinted). Applied on
+    # every activation to any source image — never gated on grayscale.
+    BAR_TINTS = None
 
     def __init__(self, image, now):
         super().__init__(image, now)
         self.bars_placed = 1
         self.fade_starts = {}  # bar index -> monotonic time its fade began
         self.finishing = False
-        self._bar_cache = {}  # (w, h) -> center-cropped bar surface
+        self._bar_cache = {}  # (size, tint) -> cropped (and tinted) bar surface
 
     def advance(self, media, now):
         if self.finishing:
@@ -1004,17 +1012,32 @@ class FourBarSweepScene(Scene):
         return (self.finishing
                 and now - self.fade_starts[self.NUM_BARS - 1] >= self.FADE_SECONDS)
 
-    def bar_surface(self, size):
-        """The image center-cropped-to-fill at one bar's size, cached: every
-        bar shows the SAME image, so one crop serves all equal-width bars."""
-        cached = self._bar_cache.get(size)
+    def bar_tint(self, index):
+        """This bar's tint RGB, or None. Tints cycle if the list is short."""
+        if not self.BAR_TINTS:
+            return None
+        return self.BAR_TINTS[index % len(self.BAR_TINTS)]
+
+    def bar_surface(self, size, index=0):
+        """The image center-cropped-to-fill at one bar's size, with the bar's
+        tint multiplied in, cached by (size, tint): every bar shows the SAME
+        image, so one crop serves all equal-width bars sharing a tint."""
+        tint = self.bar_tint(index)
+        key = (size, tint)
+        cached = self._bar_cache.get(key)
         if cached is None:
             cached = crop_to_fill(self.image, size)
-            self._bar_cache[size] = cached
+            if tint is not None:
+                overlay = pygame.Surface(cached.get_size())
+                overlay.fill(tint)
+                cached = cached.copy()
+                cached.blit(overlay, (0, 0),
+                            special_flags=pygame.BLEND_MULT)
+            self._bar_cache[key] = cached
         return cached
 
     def fade_strength(self, index, now):
-        """0.0 (full image) .. 1.0 (solid white) for one bar's fade."""
+        """0.0 (full image) .. 1.0 (solid FADE_COLOR) for one bar's fade."""
         start = self.fade_starts.get(index)
         if start is None:
             return 0.0
@@ -1024,12 +1047,31 @@ class FourBarSweepScene(Scene):
         screen.fill((0, 0, 0))
         for i in range(self.bars_placed):
             x, y, w, h = scene_bar_rect(i, target_size, self.NUM_BARS)
-            screen.blit(self.bar_surface((w, h)), (x, y))
+            screen.blit(self.bar_surface((w, h), i), (x, y))
             strength = self.fade_strength(i, now)
             if strength > 0.0:
                 overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-                overlay.fill((255, 255, 255, int(round(255 * strength))))
+                overlay.fill(self.FADE_COLOR
+                             + (int(round(255 * strength)),))
                 screen.blit(overlay, (x, y))
+
+
+@register_scene
+class FourBarSweepBlackScene(FourBarSweepScene):
+    """Four-bar sweep whose bars fade to black instead of white."""
+
+    name = 'four-bar-sweep-black'
+    FADE_COLOR = (0, 0, 0)
+
+
+@register_scene
+class FourBarSweepTintedScene(FourBarSweepScene):
+    """Four-bar sweep with a per-bar color tint multiplied over each bar's
+    crop — duotone on B&W sources, a palette shift on color ones. Bar 4 stays
+    untinted as the natural-image payoff. Fades to white like the original."""
+
+    name = 'four-bar-sweep-tinted'
+    BAR_TINTS = ((255, 0, 0), (0, 255, 0), (0, 0, 255), None)
 
 
 def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None):

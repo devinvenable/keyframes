@@ -188,6 +188,20 @@ squeezed). When a bar's successor appears, the previous bar fades to white
 over ~1 second; the trigger after the fourth bar starts the final fade, and
 the scene ends when it completes.
 
+Two variants of the sweep are registered alongside it (activation picks
+randomly among all three):
+
+**Four-bar sweep (black)**: identical mechanics, but bars fade to *black*
+instead of white — same template, different fade target color.
+
+**Four-bar sweep (tinted)**: each bar's crop gets a per-bar color tint,
+multiplied over the image (`BLEND_MULT`) — a duotone look on black-and-white
+sources, a palette shift on color ones. The tint always applies, to any
+source image. The default tint list is red, green, blue, untinted — bar 4
+shows the natural image as the payoff. The list is a template parameter
+(`BAR_TINTS` on the scene class), so other combinations are a one-line
+subclass. Bars fade to white, as in the original.
+
 Simplifications in this first version: if a *video* note activates a scene,
 its first frame is used as the scene's still (a video triggered *during* a
 scene only advances the beat — per design, the activating image is the one
