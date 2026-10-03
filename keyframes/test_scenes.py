@@ -662,15 +662,16 @@ def test_timed_rings_done_is_duration_based_not_beat_based():
 
 
 def test_timed_rings_triggers_do_not_alter_ring_motion():
-    """Render bytes at a fixed t are identical with and without interleaved
-    advances (modulo image change — same image on every trigger here): no
-    parity swap, no offset change."""
-    quiet = make_timed_rings(fg=(255, 0, 0), background=(255, 0, 0))
-    busy = make_timed_rings(fg=(255, 0, 0), background=(255, 0, 0))
-    media = image_media(make_image((255, 0, 0), RINGS_SIZE))
+    """After a trigger, the busy scene renders byte-identically (at a fixed
+    t) to a quiet scene BORN with the busy scene's post-rotation images and
+    the same activation time: the trigger changed the images and nothing
+    else — no parity swap, no expansion offset change. (fg and bg colors
+    must differ here, or a parity swap would be invisible.)"""
+    busy = make_timed_rings(fg=(255, 0, 0), background=(0, 0, 255))
     rendered(busy, 10.5)  # populate the render cache before any rotation
-    for i in range(7):
-        busy.advance(media, 10.1 + i * 0.3)
+    busy.advance(image_media(make_image((0, 0, 255), RINGS_SIZE)), 10.4)
+    # Layers are now blue over red; a quiet twin starts that way.
+    quiet = make_timed_rings(fg=(0, 0, 255), background=(255, 0, 0))
     a = pygame.surfarray.array3d(rendered(quiet, 12.3))
     b = pygame.surfarray.array3d(rendered(busy, 12.3))
     assert (a == b).all()
