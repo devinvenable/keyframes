@@ -14,6 +14,7 @@ import pygame
 
 from main import (
     DEFAULT_SCENE_PROBABILITY,
+    ConcentricRingsScene,
     FourBarSweepBlackScene,
     FourBarSweepScene,
     FourBarSweepTintedScene,
@@ -24,6 +25,11 @@ from main import (
     scene_bar_rect,
     update_scene_on_trigger,
 )
+
+
+def pick_scene(name):
+    """Pin the random registry pick so a test exercises one known scene."""
+    return patch('main.random.choice', return_value=name)
 
 
 def make_state():
@@ -73,7 +79,8 @@ def test_activation_requires_roll_under_probability():
     update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.9)
     assert state['active_scene'] is None
 
-    update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.01)
+    with pick_scene('four-bar-sweep'):
+        update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.01)
     assert isinstance(state['active_scene'], FourBarSweepScene)
 
 
@@ -100,7 +107,8 @@ def test_activation_rolls_through_process_midi_messages():
         state = trigger(q, state, media, 10.0, 60, config)
     assert state['active_scene'] is None
 
-    with patch('main.random.random', return_value=0.01):
+    with patch('main.random.random', return_value=0.01), \
+            pick_scene('four-bar-sweep'):
         state = trigger(q, state, media, 11.0, 60, config)
     assert isinstance(state['active_scene'], FourBarSweepScene)
 
@@ -164,7 +172,8 @@ def test_same_image_steps_across_bars_while_other_notes_trigger():
              62: {'type': 'image', 'surface': blue, 'name': 'b.png'}}
     config = {'enabled': True, 'probability': 1.0}
 
-    with patch('main.random.random', return_value=0.0):
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('four-bar-sweep'):
         state = trigger(q, state, media, 10.0, 60, config)
     scene = state['active_scene']
     assert scene.image is red
@@ -218,7 +227,8 @@ def test_scene_completes_after_final_fade_and_normal_view_resumes():
              62: {'type': 'image', 'surface': blue, 'name': 'b.png'}}
     config = {'enabled': True, 'probability': 1.0}
 
-    with patch('main.random.random', return_value=0.0):
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('four-bar-sweep'):
         state = trigger(q, state, media, 10.0, 60, config)
     scene = state['active_scene']
 
@@ -247,7 +257,8 @@ def test_no_new_scene_can_stack_on_an_active_one():
     media = {'type': 'image', 'surface': make_image(), 'name': 'a.png'}
     config = {'enabled': True, 'probability': 1.0}
     state = make_state()
-    update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.0)
+    with pick_scene('four-bar-sweep'):
+        update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.0)
     scene = state['active_scene']
     update_scene_on_trigger(state, media, 11.0, config, rng=lambda: 0.0)
     assert state['active_scene'] is scene
@@ -282,10 +293,11 @@ def test_bar_surface_is_center_crop_at_bar_aspect():
     assert scene.bar_surface((10, 10)) is bar
 
 
-def test_all_three_sweeps_are_registered():
+def test_all_scenes_are_registered():
     assert SCENE_REGISTRY['four-bar-sweep'] is FourBarSweepScene
     assert SCENE_REGISTRY['four-bar-sweep-black'] is FourBarSweepBlackScene
     assert SCENE_REGISTRY['four-bar-sweep-tinted'] is FourBarSweepTintedScene
+    assert SCENE_REGISTRY['concentric-rings'] is ConcentricRingsScene
 
 
 # --- fade-to-black variant ----------------------------------------------------
@@ -355,3 +367,151 @@ def test_base_sweep_keeps_white_fade_and_no_tint():
     assert FourBarSweepScene.BAR_TINTS is None
     scene = FourBarSweepScene(make_image((255, 255, 0), (8, 8)), 10.0)
     assert scene.bar_surface((2, 8), 0).get_at((1, 4))[:3] == (255, 255, 0)
+
+
+# --- concentric rings ---------------------------------------------------------
+# 40x40 screen, default params: ring thickness = 4px, expansion = 20px/s,
+# center at (19.5, 19.5). Pixel (19, 19) sits at dist ~0.7 (ring 0, even);
+# pixel (19, 25) at dist ~5.5 (ring 1, odd).
+
+RINGS_SIZE = (40, 40)
+FG_PIXEL = (19, 19)
+BG_PIXEL = (19, 25)
+
+
+def make_rings(background='blue'):
+    fg = make_image((255, 0, 0), RINGS_SIZE)
+    bg = make_image((0, 0, 255), RINGS_SIZE) if background == 'blue' else None
+    return ConcentricRingsScene(fg, 10.0, background=bg)
+
+
+def rendered(scene, now):
+    screen = pygame.Surface(RINGS_SIZE)
+    scene.render(screen, RINGS_SIZE, now)
+    return screen
+
+
+def test_even_rings_show_foreground_odd_show_background():
+    screen = rendered(make_rings(), 10.0)
+    assert screen.get_at(FG_PIXEL)[:3] == (255, 0, 0)  # ring 0: foreground
+    assert screen.get_at(BG_PIXEL)[:3] == (0, 0, 255)  # ring 1: background
+
+
+def test_rings_expand_outward_with_wall_clock_time():
+    scene = make_rings()
+    # At activation the dist-5.5 pixel is in odd ring 1 (background). 0.1s
+    # later the offset has grown by 2px, the ring boundary moved outward past
+    # it, and the same pixel now shows foreground — without any beat.
+    assert rendered(scene, 10.0).get_at(BG_PIXEL)[:3] == (0, 0, 255)
+    assert rendered(scene, 10.1).get_at(BG_PIXEL)[:3] == (255, 0, 0)
+    # New rings are born at center: once the offset exceeds the center
+    # distance, the center pixel flips to the newborn (odd) ring.
+    assert rendered(scene, 10.0).get_at(FG_PIXEL)[:3] == (255, 0, 0)
+    assert rendered(scene, 10.1).get_at(FG_PIXEL)[:3] == (0, 0, 255)
+
+
+def test_beat_swaps_foreground_and_background():
+    scene = make_rings()
+    assert rendered(scene, 10.0).get_at(FG_PIXEL)[:3] == (255, 0, 0)
+    scene.advance(None, 10.0)
+    screen = rendered(scene, 10.0)
+    assert screen.get_at(FG_PIXEL)[:3] == (0, 0, 255)  # same pixel, other image
+    assert screen.get_at(BG_PIXEL)[:3] == (255, 0, 0)
+    scene.advance(None, 10.0)
+    assert rendered(scene, 10.0).get_at(FG_PIXEL)[:3] == (255, 0, 0)
+
+
+def test_missing_background_falls_back_to_black():
+    screen = rendered(make_rings(background=None), 10.0)
+    assert screen.get_at(FG_PIXEL)[:3] == (255, 0, 0)
+    assert screen.get_at(BG_PIXEL)[:3] == (0, 0, 0)
+
+
+def test_rings_scene_ends_on_eighth_beat():
+    scene = make_rings()
+    for i in range(7):
+        scene.advance(None, 10.0 + i)
+        assert not scene.done(10.0 + i)
+    scene.advance(None, 17.0)
+    assert scene.done(17.0)
+
+
+def test_new_scene_can_start_on_the_trigger_that_ended_the_old():
+    """A trigger that finishes the active scene falls through to the
+    activation roll in the same call — no one-frame full-screen flash
+    between back-to-back scenes."""
+    media = {'type': 'image', 'surface': make_image(), 'name': 'a.png'}
+    config = {'enabled': True, 'probability': 1.0}
+    state = make_state()
+    with pick_scene('concentric-rings'):
+        update_scene_on_trigger(state, media, 10.0, config, rng=lambda: 0.0)
+        old = state['active_scene']
+        assert isinstance(old, ConcentricRingsScene)
+        # Beats 1-8; the 8th ends `old` and must activate its successor
+        # within the SAME call.
+        for i in range(8):
+            update_scene_on_trigger(state, media, 11.0 + i, config,
+                                    rng=lambda: 0.0)
+    assert old.done(19.0)
+    assert state['active_scene'] is not None
+    assert state['active_scene'] is not old
+
+
+def test_activation_captures_previous_image_as_background():
+    """The background is what was ON SCREEN before the activating trigger —
+    captured before the trigger overwrites state — so the new image tunnels
+    in through the old."""
+    q = queue.Queue()
+    state = make_state()
+    red, blue = make_image((255, 0, 0)), make_image((0, 0, 255))
+    media = {60: {'type': 'image', 'surface': red, 'name': 'r.png'},
+             62: {'type': 'image', 'surface': blue, 'name': 'b.png'}}
+    config = {'enabled': True, 'probability': 1.0}
+
+    quiet = {'enabled': True, 'probability': 0.05}
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 10.0, 60, quiet)  # red on screen
+    assert state['active_scene'] is None
+
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('concentric-rings'):
+        state = trigger(q, state, media, 11.0, 62, config)
+    scene = state['active_scene']
+    assert isinstance(scene, ConcentricRingsScene)
+    assert scene.image is blue
+    assert scene.background is red
+
+
+def test_rings_complete_after_eight_beats_and_normal_view_resumes():
+    screen = pygame.Surface((8, 8))
+    q = queue.Queue()
+    state = make_state()
+    red, blue = make_image((255, 0, 0)), make_image((0, 0, 255))
+    media = {60: {'type': 'image', 'surface': red, 'name': 'r.png'},
+             62: {'type': 'image', 'surface': blue, 'name': 'b.png'}}
+    config = {'enabled': True, 'probability': 1.0}
+
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('concentric-rings'):
+        state = trigger(q, state, media, 10.0, 60, config)
+    scene = state['active_scene']
+    assert isinstance(scene, ConcentricRingsScene)
+
+    # Beats 1-7 (notes alternate, so no same-note invert interferes): the
+    # scene stays active and owns the frame.
+    for beat in range(1, 8):
+        note = 60 if beat % 2 else 62
+        state = trigger(q, state, media, 10.0 + beat, note, config)
+    draw_performance_frame(screen, state, (8, 8), 16.5)
+    assert state['active_scene'] is scene
+
+    # Beat 8 ends the scene ON the beat — a hard cut back to the normal view
+    # showing that very trigger's media (blue, note 62). The roll that the
+    # ending trigger falls through to stays above the probability here, so
+    # no back-to-back scene starts.
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 18.0, 62,
+                        {'enabled': True, 'probability': 0.05})
+    assert state['active_scene'] is None
+    draw_performance_frame(screen, state, (8, 8), 18.1)
+    assert screen.get_at((4, 4))[:3] == (0, 0, 255)

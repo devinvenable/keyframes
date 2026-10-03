@@ -188,8 +188,8 @@ squeezed). When a bar's successor appears, the previous bar fades to white
 over ~1 second; the trigger after the fourth bar starts the final fade, and
 the scene ends when it completes.
 
-Two variants of the sweep are registered alongside it (activation picks
-randomly among all three):
+Two variants of the sweep are registered alongside it, plus the concentric
+rings scene below (activation picks randomly among all four):
 
 **Four-bar sweep (black)**: identical mechanics, but bars fade to *black*
 instead of white — same template, different fade target color.
@@ -201,6 +201,23 @@ source image. The default tint list is red, green, blue, untinted — bar 4
 shows the natural image as the payoff. The list is a template parameter
 (`BAR_TINTS` on the scene class), so other combinations are a one-line
 subclass. Bars fade to white, as in the original.
+
+**Concentric rings**: expanding concentric rings — a dartboard — act as a
+per-pixel mask between two full-screen images. Even rings show the
+*foreground* (the activating note's image), odd rings show the *background*
+(whatever was on screen when the scene activated, so the new image tunnels
+in through the old; black if nothing was displayed). Rings expand outward
+continuously on wall-clock time — existing rings grow past the screen edge
+while new ones are born at center — reading as motion *into* the scene.
+Every note-on beat swaps foreground and background for a punchy per-beat
+inversion. After 8 beats the scene ends *on* that 8th beat with a hard cut
+to that trigger's media full-screen: the cut itself is the final punch.
+There is deliberately no timed exit fade — the sweep's wall-clock fade tail
+reads as a pause during fast playing, and a beat-locked cut avoids that
+entirely. Ring thickness (default 1/10 screen height), expansion speed
+(default half a screen height per second) and beat count are template
+parameters on `ConcentricRingsScene` (`RING_THICKNESS_FRACTION`,
+`EXPANSION_SPEED_FRACTION`, `BEATS_TO_LIVE`).
 
 Simplifications in this first version: if a *video* note activates a scene,
 its first frame is used as the scene's still (a video triggered *during* a
@@ -216,7 +233,10 @@ lives in `scenes.json` beside `mapping.json` (it can't live inside
 Both keys are optional; a missing or malformed file means scenes are enabled
 at the 5% default. New scenes subclass `Scene` in `main.py` and register with
 `@register_scene` — activation picks randomly among registered scenes, and
-the main loop only ever sees the one `active_scene` hook.
+the main loop only ever sees the one `active_scene` hook. A trigger that
+ends the active scene falls straight through to the activation roll, so a
+new scene can start on the very note that ended the old one — no one-frame
+full-screen flash between back-to-back scenes.
 
 ## Media folder
 

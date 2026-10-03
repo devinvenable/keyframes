@@ -933,9 +933,13 @@ class Scene:
 
     name = 'scene'
 
-    def __init__(self, image, now):
+    def __init__(self, image, now, background=None):
         self.image = image
         self.activated_at = now
+        # Still of whatever was on screen when the scene activated (None if
+        # nothing was displayed). Scenes that composite "new over old" use it;
+        # single-image scenes like the sweeps simply ignore it.
+        self.background = background
 
     def advance(self, media, now):
         """React to the next note-on trigger while active."""
@@ -991,8 +995,8 @@ class FourBarSweepScene(Scene):
     # every activation to any source image — never gated on grayscale.
     BAR_TINTS = None
 
-    def __init__(self, image, now):
-        super().__init__(image, now)
+    def __init__(self, image, now, background=None):
+        super().__init__(image, now, background)
         self.bars_placed = 1
         self.fade_starts = {}  # bar index -> monotonic time its fade began
         self.finishing = False
@@ -1074,7 +1078,115 @@ class FourBarSweepTintedScene(FourBarSweepScene):
     BAR_TINTS = ((255, 0, 0), (0, 255, 0), (0, 0, 255), None)
 
 
-def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None):
+@register_scene
+class ConcentricRingsScene(Scene):
+    """Expanding concentric rings (dartboard) mask between two images.
+
+    Even rings show the FOREGROUND (the activating trigger's still), odd rings
+    the BACKGROUND (whatever was on screen at activation — the new image
+    tunnels in through the old; black if nothing was displayed). Rings expand
+    outward continuously on wall-clock time: existing rings grow past the
+    screen edge while new ones are born at center, reading as motion INTO the
+    scene. Each note-on beat swaps foreground/background for a punchy per-beat
+    inversion. Exit: the scene ends ON its BEATS_TO_LIVE-th beat — a hard cut
+    to that trigger's media full-screen (normal state kept updating
+    underneath), so the cut itself is the final punch; no extra fade.
+
+    Rendering precomputes per screen size a quantized center-distance field
+    and both stills cropped-to-fill; each frame derives the ring-parity mask
+    with a couple of integer numpy ops, writes it into the foreground's alpha
+    channel, and lets two SDL blits composite — no per-frame pygame circle
+    drawing, crops, or full np.where (~8ms/frame at 1080p).
+
+    RING_THICKNESS_FRACTION / EXPANSION_SPEED_FRACTION (both of screen
+    height) and BEATS_TO_LIVE are the template parameters, defaults tuned by
+    eye later."""
+
+    name = 'concentric-rings'
+    RING_THICKNESS_FRACTION = 0.1   # ring width, as a fraction of screen height
+    EXPANSION_SPEED_FRACTION = 0.5  # screen-heights per second of outward growth
+    BEATS_TO_LIVE = 8
+
+    def __init__(self, image, now, background=None):
+        super().__init__(image, now, background)
+        self.beats = 0
+        self.swapped = False
+        self._cache = {}  # target_size -> (dist_q, fg_surface, bg_surface)
+
+    def advance(self, media, now):
+        self.beats += 1
+        self.swapped = not self.swapped
+
+    def done(self, now):
+        return self.beats >= self.BEATS_TO_LIVE
+
+    def ring_thickness(self, target_size):
+        return max(1.0, target_size[1] * self.RING_THICKNESS_FRACTION)
+
+    def ring_cache(self, target_size):
+        """(dist_q, fg_surface, bg_surface) for one screen size, cached.
+
+        dist_q is the (w, h) center-distance field pre-divided by the ring
+        thickness and scaled by 256 as int32, so the per-frame ring index is
+        a subtract and an arithmetic shift. fg is the activating still
+        crop_to_fill'ed with a writable per-pixel alpha channel (the mask);
+        bg is the previous view's still, or solid black when there was none."""
+        cached = self._cache.get(target_size)
+        if cached is None:
+            tw, th = target_size
+            xs = np.arange(tw, dtype=np.float32) - (tw - 1) / 2.0
+            ys = np.arange(th, dtype=np.float32) - (th - 1) / 2.0
+            dist = np.hypot(xs[:, None], ys[None, :])
+            dist_q = (dist * (256.0 / self.ring_thickness(target_size))
+                      ).astype(np.int32)
+            fg = pygame.Surface(target_size, pygame.SRCALPHA)
+            fg.blit(crop_to_fill(self.image, target_size), (0, 0))
+            bg = pygame.Surface(target_size)
+            if self.background is not None:
+                bg.blit(crop_to_fill(self.background, target_size), (0, 0))
+            cached = (dist_q, fg, bg)
+            self._cache[target_size] = cached
+        return cached
+
+    def render(self, screen, target_size, now):
+        dist_q, fg, bg = self.ring_cache(target_size)
+        offset = ((now - self.activated_at)
+                  * target_size[1] * self.EXPANSION_SPEED_FRACTION)
+        offset_q = int(round(offset * 256.0 / self.ring_thickness(target_size)))
+        # Ring parity by floor((dist - offset) / thickness) & 1, all in scaled
+        # integers (>> 8 floors, so the negative indices under the center —
+        # the new rings being born — alternate correctly too). The growing
+        # offset pushes every ring boundary outward.
+        parity = (dist_q - offset_q) >> 8
+        parity &= 1
+        if not self.swapped:
+            parity ^= 1  # even rings carry the foreground
+        alpha = parity.astype(np.uint8)
+        alpha *= 255
+        pygame.surfarray.pixels_alpha(fg)[:, :] = alpha
+        screen.blit(bg, (0, 0))
+        screen.blit(fg, (0, 0))
+
+
+def displayed_still_surface(current_state):
+    """A still of what is on screen right now, or None if nothing is.
+
+    Videos contribute their current frame, stills their surface — the
+    inverted copy when a same-note repeat has flipped it, so the capture
+    matches what the audience actually sees. Callers must capture BEFORE a
+    trigger overwrites current_state (the scene hook itself runs after)."""
+    player = current_state.get('video_player')
+    if player:
+        return player.get_frame()
+    surface = current_state.get('surface')
+    if (surface is not None and current_state.get('inverted')
+            and current_state.get('surface_media')):
+        return inverted_surface(current_state['surface_media'])
+    return surface
+
+
+def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
+                            prev_still=None):
     """Advance the active scene, or roll the activation dice for a new one.
 
     Called on every media-triggering note-on. While a scene is active each
@@ -1082,13 +1194,21 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None):
     can't cancel it mid-flight). With no scene active, a roll under the
     configured probability activates a randomly chosen registered scene on
     this trigger's media. Normal state keeps updating underneath either way,
-    so when the scene ends the screen resumes with the latest trigger."""
+    so when the scene ends the screen resumes with the latest trigger.
+
+    ``prev_still`` is what was on screen before this trigger (see
+    displayed_still_surface) — the new scene's optional background."""
     scene = current_state.get('active_scene')
     if scene is not None:
         scene.advance(media, now)
-        if scene.done(now):
-            current_state['active_scene'] = None
-        return
+        if not scene.done(now):
+            return
+        # The scene ended ON this trigger: clear it and fall through to the
+        # activation roll, so a new scene can start on the very note that
+        # ended the old one. Returning here instead left this note rendering
+        # one normal full-screen frame before the next note could roll —
+        # a visible flash between back-to-back scenes at high probability.
+        current_state['active_scene'] = None
     if not scenes_config or not scenes_config.get('enabled', True):
         return
     if not SCENE_REGISTRY:
@@ -1100,7 +1220,7 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None):
     if still is None:
         return
     scene_cls = SCENE_REGISTRY[random.choice(sorted(SCENE_REGISTRY))]
-    current_state['active_scene'] = scene_cls(still, now)
+    current_state['active_scene'] = scene_cls(still, now, background=prev_still)
 
 
 def draw_performance_frame(screen, current_state, target_size, now=None,
@@ -1213,6 +1333,16 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # untouched (it restarts on retrigger). last_note holds across
             # note-offs in both latch and non-latch modes.
             media = note_to_media.get(note)
+            # What is on screen right now, captured before this trigger
+            # rewrites the state — a newly activated scene's background. Only
+            # taken when this trigger could actually activate a scene, so the
+            # normal path never pays for (or touches) the capture.
+            # (Captured even while a scene is active: a trigger can end the
+            # old scene and activate the next one in the same call, and that
+            # new scene's background is the underlying normal view.)
+            prev_still = None
+            if media and scenes_config and scenes_config.get('enabled', True):
+                prev_still = displayed_still_surface(current_state)
             is_repeat = note == current_state.get('last_note')
             current_state['last_note'] = note
             if is_repeat and media and media['type'] == 'image':
@@ -1248,7 +1378,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # Scenes: a media-triggering note-on is one "beat" — it advances
             # an active scene, or rolls the low-probability activation gate.
             if media:
-                update_scene_on_trigger(current_state, media, now, scenes_config)
+                update_scene_on_trigger(current_state, media, now, scenes_config,
+                                        prev_still=prev_still)
 
         elif (is_note_off and not latch_mode
               and note == current_state['note_active']):
