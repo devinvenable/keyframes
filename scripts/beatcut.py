@@ -17,6 +17,26 @@ shares the band at off-kick phases but swells instead of hitting. The general
 onsets remain the fallback where kick density is too low, seeded with the
 kick-derived phase so it carries through breakdowns.
 
+TEMPO is NOT taken from the strongest kick periodicity alone: syncopated
+(hip-hop style) kick patterns put their strongest coherence peak on a
+sub-pulse — a dotted-quarter lattice reads as 3/4 of the true tempo. Tempo
+hypotheses (coherence peaks of both onset populations, folded by small-integer
+ratios into a plausible quarter-note range) are each refined to a 16th-note
+lattice and scored by how metrically STATIONARY the kick pattern is under
+them: on-lattice fraction x bar-position concentration x bar-to-bar
+similarity. A 3:4 misread leaves kicks precessing through the bar, so the
+true tempo wins even when its raw coherence peak is weaker. --bpm pins the
+search near an operator-supplied value.
+
+The DOWNBEAT no longer assumes the kick lands on beats 1/3: per segment the
+kick+snare pattern is classified on the bar's 16 sixteenth positions and the
+downbeat (including a possible sub-beat lattice correction) is the rotation
+that makes the pattern conventional — snare backbeat on 2 and 4, kick toward
+beat 1. When one sixteenth lattice carries a dominant share of kick mass
+(four-on-the-floor), the choice is constrained to that lattice. Ties (e.g.
+kick on 1 and 3 with a flat snare) are flagged ambiguous in the manifest.
+--downbeat-shift rotates the inferred one by whole beats after listening.
+
 Outputs <out>/section_XXX*.mp4 (re-encoded for frame-accurate cuts, share-mp4
 settings + faststart) and <out>/manifest.json with the grids and cut times.
 
@@ -84,8 +104,12 @@ def calibrate_timeline(take, wav_path, rate=48000):
     return median, float(max(abs(o - median) for o in offsets))
 
 
-def kick_onsets(wav_path, lo_hz=40.0, hi_hz=130.0):
-    """Kick attack times + sharpness weights from the 40-130 Hz band.
+def band_onsets(wav_path, lo_hz=40.0, hi_hz=130.0):
+    """Attack times + sharpness weights from a frequency band.
+
+    Defaults to the kick band (40-130 Hz); 150-400 Hz catches the snare body
+    for backbeat classification (kick harmonics bleed into it, so snare
+    evidence is only trusted where it is NOT co-located with kick mass).
 
     Band-pass by FFT, square to a 1 kHz power envelope, then peak-pick the
     POSITIVE DERIVATIVE of the amplitude envelope. The derivative is the
@@ -174,6 +198,162 @@ def global_grid(times, weights):
             if on > .40 * total:
                 return halved
     return period, offset
+
+
+RATIOS = (1, 2, .5, 3, 1 / 3, 1.5, 2 / 3, 4 / 3, .75)
+TEMPO_RANGE = (70.0, 140.0)  # quarter-note fold range without an operator hint
+HINT_WINDOW = .04            # --bpm hint: candidates must land within +-4%
+
+
+def coherence_peaks(times, weights, top=5):
+    """Strongest periodicities (bpm) of an onset population over 60-200."""
+    if len(times) < 16:
+        return []
+    span = times[-1] - times[0]
+    frequencies = np.arange(1.0, 200 / 60, .01 / span)
+    magnitudes = np.empty(len(frequencies))
+    for start in range(0, len(frequencies), 64):
+        trial = frequencies[start:start + 64]
+        phases = np.exp(2j * np.pi * trial[:, None] * times)
+        magnitudes[start:start + 64] = np.abs(phases @ weights / weights.sum())
+    peaks = np.flatnonzero((magnitudes >= np.roll(magnitudes, 1)) &
+                           (magnitudes > np.roll(magnitudes, -1)))
+    peaks = peaks[np.argsort(magnitudes[peaks])][::-1]
+    picked = []
+    for p in peaks:
+        if all(abs(frequencies[p] - frequencies[q]) > .05 for q in picked):
+            picked.append(p)
+        if len(picked) >= top:
+            break
+    return [60 * frequencies[p] for p in picked]
+
+
+def sixteenth_fit(times, weights, bpm):
+    """IRLS-refined 16th-note lattice (p16, o16) seeded at bpm; or None."""
+    frequency = bpm / 60 * 4
+    coherence = np.exp(2j * np.pi * frequency * times) @ weights / weights.sum()
+    offset = (np.angle(coherence) / (2 * np.pi * frequency)) % (1 / frequency)
+    return irls_fit(times, weights, 60 / bpm / 4, offset)
+
+
+def hist16(times, weights, p16, o16):
+    """(bar-position histogram, on-lattice fraction, bins, on-lattice mask)."""
+    position = (times - o16) / p16
+    on_grid = np.abs(position - np.round(position)) < .25
+    bins = np.round(position).astype(int) % 16
+    h = np.bincount(bins[on_grid], weights=weights[on_grid], minlength=16)
+    total = weights.sum()
+    if h.sum() > 0:
+        h = h / h.sum()
+    return h, (weights[on_grid].sum() / total if total > 0 else 0.), bins, on_grid
+
+
+def stationarity(times, weights, p16, o16):
+    """How metrically stationary the population is on a 16th lattice.
+
+    on-lattice fraction x bar-position concentration (top-6 bins) x mean
+    bar-to-bar cosine similarity. Under a 3:4 or 4:3 tempo misread the
+    pattern's events sit off the 16th lattice and precess through the bar,
+    so every factor drops; under the true tempo a repeating pattern parks
+    its mass in a few stable positions.
+    """
+    h, grid_fraction, bins, on_grid = hist16(times, weights, p16, o16)
+    if h.sum() <= 0:
+        return 0.0
+    concentration = float(np.sort(h)[::-1][:6].sum())
+    bar = np.floor((times - o16) / (p16 * 16)).astype(int)
+    norm_h = np.linalg.norm(h)
+    similarities = []
+    for b in np.unique(bar):
+        sel = (bar == b) & on_grid
+        if weights[sel].sum() <= 0:
+            continue
+        hb = np.bincount(bins[sel], weights=weights[sel], minlength=16)
+        similarities.append(float((hb * h).sum())
+                            / max(1e-12, np.linalg.norm(hb) * norm_h))
+    similarity = float(np.mean(similarities)) if similarities else 0.0
+    return float(grid_fraction) * concentration * similarity
+
+
+def choose_tempo(fit_times, fit_weights, times, weights, raw_period, hint):
+    """Rank tempo hypotheses by metrical stationarity of the fit population.
+
+    Candidates are coherence peaks of BOTH populations folded by small-
+    integer ratios into the quarter-note range (a syncopated kick's top
+    peak is often the 3/4 sub-pulse), plus the raw coherence-max grid and
+    the operator hint. Returns candidate dicts sorted best-first.
+    """
+    raw_bpm = 60 / raw_period
+    lo, hi = ((hint * (1 - HINT_WINDOW), hint * (1 + HINT_WINDOW)) if hint
+              else TEMPO_RANGE)
+    pool = (coherence_peaks(fit_times, fit_weights)
+            + coherence_peaks(times, weights)
+            + [raw_bpm] + ([hint] if hint else []))
+    bpms = []
+    for base in pool:
+        for ratio in RATIOS:
+            value = base * ratio
+            for _ in range(8):
+                if value < lo:
+                    value *= 2
+                elif value >= hi:
+                    value /= 2
+                else:
+                    break
+            if lo <= value < hi and all(abs(value - b) > .5 for b in bpms):
+                bpms.append(value)
+    if all(abs(raw_bpm - b) > .5 for b in bpms):
+        bpms.append(raw_bpm)  # keep the raw pick comparable even out of range
+    candidates = []
+    for bpm in bpms:
+        fit = sixteenth_fit(fit_times, fit_weights, bpm)
+        if fit is None:
+            continue
+        p16, o16 = fit
+        candidates.append({'seed_bpm': round(bpm, 2),
+                           'bpm': round(60 / (4 * p16), 4),
+                           'score': round(stationarity(fit_times, fit_weights,
+                                                       p16, o16), 4),
+                           'p16': p16, 'o16': o16})
+    candidates.sort(key=lambda c: -c['score'])
+    return candidates
+
+
+def bar_rotation(grid, kick_t, kick_w, snare_t, snare_w):
+    """Downbeat 16th position for one segment, or None when kick-sparse.
+
+    Scores rotations of the bar by pattern conventionality: snare backbeat
+    on beats 2 AND 4 (snare evidence discounted where it is co-located with
+    kick mass — the 150-400 Hz detector fires on kick harmonics too) plus a
+    kick-toward-beat-1 term tolerant of a doubled 16th hit. When one
+    sixteenth lattice holds a dominant share of kick mass the kick itself is
+    on-beat (four-on-the-floor) and rotations are constrained to it.
+    """
+    p16 = grid['period'] / 4
+    sel = (kick_t >= grid['start']) & (kick_t < grid['stop'])
+    hk, _, _, on_grid = hist16(kick_t[sel], kick_w[sel], p16, grid['offset'])
+    if on_grid.sum() < 12:
+        return None
+    sel = (snare_t >= grid['start']) & (snare_t < grid['stop'])
+    hs, _, _, _ = hist16(snare_t[sel], snare_w[sel], p16, grid['offset'])
+    snare = np.maximum(0, hs - hk)
+    shares = np.array([hk[j::4].sum() for j in range(4)])
+    order = np.argsort(shares)[::-1]
+    if shares[order[0]] >= .5 and shares[order[0]] >= 2.5 * shares[order[1]]:
+        rotations = [int(order[0]) + 4 * b for b in range(4)]
+    else:
+        rotations = list(range(16))
+
+    def score(r):
+        two, four = snare[(r + 4) % 16], snare[(r + 12) % 16]
+        return two + four + min(two, four) + .25 * (hk[r] + .5 * hk[(r + 1) % 16])
+
+    ranked = sorted(((score(r), r) for r in rotations), reverse=True)
+    best, runner = ranked[0], ranked[1]
+    return {'r': best[1],
+            'confidence': round(min(99.0, float(best[0]) / float(runner[0])), 2)
+            if runner[0] > 0 else 99.0,
+            'constrained': len(rotations) == 4}
 
 
 def phase_track(times, weights, residual, duration):
@@ -309,6 +489,12 @@ def main():
                         help='output dir (default recordings/cuts_<take-id>/)')
     parser.add_argument('--measures', type=int, default=8, help='measures per section')
     parser.add_argument('--beats-per-bar', type=int, default=4, help='assumed meter')
+    parser.add_argument('--bpm', type=float, default=None,
+                        help='operator tempo hint: pin the tempo hypothesis '
+                             'search to within +-4%% of this value')
+    parser.add_argument('--downbeat-shift', type=int, default=0,
+                        help='rotate the inferred downbeat N beats later '
+                             '(negative = earlier) in every segment')
     parser.add_argument('--clicks', type=int, default=3,
                         help='render N sample clips with click overlay for verification')
     parser.add_argument('--analyze-only', action='store_true',
@@ -332,7 +518,8 @@ def main():
                         '-c:a', 'pcm_f32le', temp.name], check=True)
         envelope, power, kick = _features(temp.name, lambda: None)
         start_correction, spread = calibrate_timeline(take, temp.name)
-        kick_times, kick_weights = kick_onsets(temp.name)
+        kick_times, kick_weights = band_onsets(temp.name)
+        snare_times, snare_weights = band_onsets(temp.name, lo_hz=150.0, hi_hz=400.0)
     print(f'timeline calibration: analysis -> master {start_correction * 1000:+.1f}ms '
           f'(spread {spread * 1000:.1f}ms)')
     if spread > 0.005:
@@ -356,6 +543,28 @@ def main():
         fit_times, fit_weights = times, weights
 
     period, offset = global_grid(fit_times, fit_weights)
+    candidates = choose_tempo(fit_times, fit_weights, times, weights,
+                              period, args.bpm)
+    tempo_source = 'coherence-max'
+    if candidates:
+        for c in candidates[:4]:
+            print(f'  tempo hypothesis {c["seed_bpm"]:7.2f} -> '
+                  f'{c["bpm"]:8.3f} bpm  stationarity={c["score"]:.3f}')
+        best = candidates[0]
+        if abs(best['bpm'] - 60 / period) > .25:
+            # The raw coherence max locked a sub/super-pulse (e.g. the
+            # dotted-quarter 3:4 lattice of a syncopated kick). Rebase the
+            # grid on the winning hypothesis's 16th lattice, with the beat
+            # on the sixteenth that carries the most kick mass; per-segment
+            # rotation may still move it by whole sixteenths below.
+            h, _, _, _ = hist16(fit_times, fit_weights,
+                                best['p16'], best['o16'])
+            j0 = int(np.argmax([h[j::4].sum() for j in range(4)]))
+            period, offset = best['p16'] * 4, best['o16'] + j0 * best['p16']
+            tempo_source = ('stationarity-override'
+                            + ('+bpm-hint' if args.bpm else ''))
+            print(f'  tempo override: coherence max contradicts kick '
+                  f'stationarity; using {60 / period:.3f} bpm')
     beats = np.rint((fit_times - offset) / period)
     residual = fit_times - (offset + beats * period)
     track = phase_track(fit_times, fit_weights, residual, duration)
@@ -420,9 +629,33 @@ def main():
             after['start'] = g['start']
         grids.pop(index)
     for g in grids:
-        g['downbeat_phase'] = downbeat_phase(kick, g['period'], g['offset'],
-                                             g['start'], g['stop'],
-                                             args.beats_per_bar)
+        rotation = (bar_rotation(g, kick_times, kick_weights,
+                                 snare_times, snare_weights)
+                    if args.beats_per_bar == 4 else None)
+        if rotation is not None:
+            r = rotation['r']
+            g['offset'] += (r % 4) * g['period'] / 4
+            g['downbeat_phase'] = r // 4
+            g['subbeat_shift_16ths'] = r % 4
+            g['downbeat_source'] = ('kick-lattice+snare'
+                                    if rotation['constrained']
+                                    else 'snare-backbeat')
+            g['downbeat_confidence'] = rotation['confidence']
+            # A true tie (e.g. kick on 1 and 3, flat snare: the half-bar
+            # rotation scores identically) sits at ~1.0; kick-only energy
+            # margins on four-on-the-floor are legitimately small, so only
+            # near-ties count as ambiguous.
+            g['downbeat_ambiguous'] = bool(rotation['confidence'] < 1.05)
+        else:
+            g['downbeat_phase'] = downbeat_phase(kick, g['period'],
+                                                 g['offset'], g['start'],
+                                                 g['stop'], args.beats_per_bar)
+            g['subbeat_shift_16ths'] = 0
+            g['downbeat_source'] = 'kick-envelope'
+            g['downbeat_confidence'] = None
+            g['downbeat_ambiguous'] = False
+        g['downbeat_phase'] = ((g['downbeat_phase'] + args.downbeat_shift)
+                               % args.beats_per_bar)
         sel = (kick_times >= g['start']) & (kick_times < g['stop'])
         kres = kick_times[sel] - (g['offset'] + np.rint(
             (kick_times[sel] - g['offset']) / g['period']) * g['period'])
@@ -434,7 +667,10 @@ def main():
               f'downbeat=beat{g["downbeat_phase"]} '
               f'p90|resid|={g["residual_p90_ms"]:.1f}ms n={g["onsets_on_grid"]} '
               f'[{g["phase_source"]}] kick-median='
-              f'{g["kick_residual_median_ms"]}ms')
+              f'{g["kick_residual_median_ms"]}ms '
+              f'downbeat<-{g["downbeat_source"]}'
+              f'(conf={g["downbeat_confidence"]}'
+              f'{", AMBIGUOUS" if g["downbeat_ambiguous"] else ""})')
 
     entry = music_entry(times, period)
 
@@ -511,12 +747,20 @@ def main():
             'beat phase anchored to kick-band (40-130Hz) attack onsets'
             if use_kick else
             'too few kick onsets; beat phase fit to general onset population',
-            'downbeat chosen per segment by kick-band energy, not score data',
+            'tempo chosen by kick metrical-stationarity hypothesis test '
+            f'({tempo_source})',
+            'downbeat chosen per segment by kick+snare bar-pattern '
+            'conventionality (snare backbeat on 2/4, kick toward 1), '
+            'not score data',
             'analysis timeline mapped to master by cross-correlation '
             f'calibration: {start_correction * 1000:+.1f}ms '
             f'(spread {spread * 1000:.1f}ms)'],
         'music_entry': entry,
         'timeline_correction': round(start_correction, 5),
+        'tempo': {'source': tempo_source, 'bpm_hint': args.bpm,
+                  'downbeat_shift': args.downbeat_shift,
+                  'candidates': [{k: c[k] for k in ('seed_bpm', 'bpm', 'score')}
+                                 for c in candidates[:5]]},
         'segments': [{**g, 'bpm': round(g['bpm'], 4)} for g in grids],
         'clips': [{'name': c['name'], 'kind': c['kind'], 'segment': c['segment'],
                    't_rec_start': round(max(0.0, c['start'] + start_correction), 4),
