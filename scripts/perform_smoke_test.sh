@@ -470,13 +470,36 @@ cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
 # Stand-in for ShowSync/Keyframes: keyframes exits after STUB_KEYFRAMES_SLEEP
 # seconds (simulating Esc ending the take); everything else sleeps until killed.
+# The cleanup-time midi_log_to_mid.py conversion is also intercepted (it runs
+# under the same PERFORM_PYTHON): produce the output file, and keep it out of
+# apps.log so the app-launch assertions stay exact.
+case ${1:-} in
+    *midi_log_to_mid*)
+        printf 'convert %s -> %s\n' "$2" "$3" >> "$PERFORM_OUTDIR/convert.log"
+        echo stub-mid > "$3"
+        exit 0
+        ;;
+esac
 printf '%s\n' "$*" >> "$PERFORM_OUTDIR/apps.log"
 if [[ -n ${SHOWSYNC_MARKERS:-} ]]; then
     printf 'SHOWSYNC_MARKERS=%s SHOWSYNC_MARKERS_EPOCH=%s\n' \
         "$SHOWSYNC_MARKERS" "${SHOWSYNC_MARKERS_EPOCH:-}" >> "$PERFORM_OUTDIR/env.log"
 fi
 case ${1:-} in
-    *keyframes*) exec sleep "${STUB_KEYFRAMES_SLEEP:-300}" ;;
+    *keyframes*)
+        # Like real Keyframes with KEYFRAMES_MIDI_LOG set: a log_open
+        # reference line at open, then per-event appends.
+        if [[ -n ${KEYFRAMES_MIDI_LOG:-} ]]; then
+            printf 'KEYFRAMES_MIDI_LOG=%s\n' "$KEYFRAMES_MIDI_LOG" \
+                >> "$PERFORM_OUTDIR/env.log"
+            epoch=$(date +%s.%N)
+            printf '{"event": "log_open", "epoch": %s, "monotonic": 1.0}\n' \
+                "$epoch" >> "$KEYFRAMES_MIDI_LOG"
+            printf '{"epoch": %s, "monotonic": 1.5, "port": "stub", "type": "note_on", "channel": 0, "note": 40, "velocity": 100, "mapped": true}\n' \
+                "$epoch" >> "$KEYFRAMES_MIDI_LOG"
+        fi
+        exec sleep "${STUB_KEYFRAMES_SLEEP:-300}"
+        ;;
     *)           exec sleep 300 ;;
 esac
 EOF
@@ -594,6 +617,39 @@ grep -q "SHOWSYNC_MARKERS=$markers_file SHOWSYNC_MARKERS_EPOCH=[0-9]" \
     fail "markers: ShowSync was not given the sidecar + epoch env (env.log: $(cat "$OUT_NORMAL/env.log" 2>/dev/null))"
 echo "take markers: sidecar + ShowSync env OK"
 
+# 4a-midilog. Every take gets a <take>.midi.jsonl sidecar: Keyframes is
+#     launched with KEYFRAMES_MIDI_LOG naming it, it opens with a log_open
+#     reference line (epoch + monotonic) followed by events, and cleanup
+#     derives <take>.mid from it via midi_log_to_mid.py --t0 <rec epoch>.
+midi_log_file=$(compgen -G "$OUT_NORMAL/perform_*.midi.jsonl" | head -n1) ||
+    fail "midilog: no .midi.jsonl sidecar in $OUT_NORMAL"
+grep -q "KEYFRAMES_MIDI_LOG=$midi_log_file" "$OUT_NORMAL/env.log" ||
+    fail "midilog: Keyframes was not given KEYFRAMES_MIDI_LOG (env.log: $(cat "$OUT_NORMAL/env.log" 2>/dev/null))"
+python3 - "$midi_log_file" <<'EOF' || fail "midilog: sidecar content invalid"
+import json, sys
+records = [json.loads(line) for line in open(sys.argv[1])]
+ref = records[0]
+assert ref['event'] == 'log_open', ref
+assert isinstance(ref['epoch'], float) and isinstance(ref['monotonic'], float), ref
+events = records[1:]
+assert len(events) >= 1, records
+assert any(r.get('type') == 'note_on' for r in events), events
+for r in events:
+    assert isinstance(r['epoch'], float) and 'port' in r and 'type' in r, r
+EOF
+grep -q "MIDI log: .*\.midi\.jsonl" "$OUT_NORMAL/run.log" ||
+    fail "midilog: summary lacks the MIDI log line"
+mid_file=$(compgen -G "$OUT_NORMAL/perform_*.mid" | head -n1) ||
+    fail "midilog: no .mid derived from the sidecar"
+[[ -s $mid_file ]] || fail "midilog: derived .mid is empty"
+grep -q "MIDI file: .*\.mid" "$OUT_NORMAL/run.log" ||
+    fail "midilog: summary lacks the MIDI file line"
+grep -Eq "convert $midi_log_file -> .*\.mid" "$OUT_NORMAL/convert.log" ||
+    fail "midilog: converter was not invoked on the sidecar"
+compgen -G "$OUT_NORMAL/*.mid.log" >/dev/null &&
+    fail "midilog: successful conversion left its log behind"
+echo "midi log: sidecar + env + .mid derivative OK"
+
 # 4a-post. The shareable post-take outputs must exist by default with the
 #          expected streams (usb mode: mp4 = 1 video + 1 aac audio; mp3 =
 #          1 mp3 audio, no video) and be reported with paths in the log.
@@ -669,8 +725,12 @@ for audio in usb both system; do
         fail "Keyframes-only $audio: sidecar lacks a keyframes-only recording_start"
     grep -q '"event":"recording_stop"' "$markers_file" ||
         fail "Keyframes-only $audio: sidecar lacks recording_stop"
-    [[ -e $OUT_KEYFRAMES/env.log ]] &&
+    grep -q 'SHOWSYNC_MARKERS' "$OUT_KEYFRAMES/env.log" 2>/dev/null &&
         fail "Keyframes-only $audio exported SHOWSYNC_MARKERS to its apps"
+    # The MIDI event log IS wanted here: direct-MIDI takes are exactly
+    # where the sidecar matters most.
+    grep -q "KEYFRAMES_MIDI_LOG=.*\.midi\.jsonl" "$OUT_KEYFRAMES/env.log" ||
+        fail "Keyframes-only $audio: Keyframes was not given KEYFRAMES_MIDI_LOG"
     grep -q 'Capture health: [0-9]* frames' "$OUT_KEYFRAMES/run.log" ||
         fail "Keyframes-only summary lacks capture health"
     if [[ $audio == usb ]]; then

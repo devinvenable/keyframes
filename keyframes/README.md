@@ -122,6 +122,41 @@ python main.py --windowed --size 1920x1080
 # Press ESC to quit
 ```
 
+### MIDI event log (take sidecar)
+
+During `scripts/perform.sh` captures (which set `KEYFRAMES_MIDI_LOG`), or when
+run manually with `--midi-log <path>`, Keyframes appends **every incoming MIDI
+event** to a JSON Lines sidecar — ground truth of the performance (which keys
+fired when), and for sequenced material the clock stream *is* the beat grid, so
+later edits never have to re-derive tempo from audio. Off by default: normal
+playing writes no files.
+
+One JSON object per line. The first line is a self-describing reference:
+
+```json
+{"event": "log_open", "epoch": 1759600000.123, "monotonic": 5123.456}
+{"epoch": 1759600001.001, "monotonic": 5124.334, "port": "KeyStep 32", "type": "note_on", "channel": 0, "note": 60, "velocity": 100, "mapped": true}
+```
+
+- Every event carries `epoch` (wall clock) and `monotonic` timestamps plus the
+  source `port` (`"keyboard"` for computer-keyboard notes). Timestamps are
+  arrival times — USB/ALSA adds a few ms of latency, accepted by design.
+- **Alignment contract:** event `epoch` minus the `.markers` sidecar's
+  `recording_start` epoch = `t_rec`, seconds on the recorded video's timeline.
+- Real note-ons (velocity > 0) carry `mapped`: whether the note currently
+  triggers media (in range, on the listened channel, and mapped to a file).
+- All message types are logged (`control_change`, `program_change`,
+  `pitchwheel`, `clock`, ...). Clock ticks appear only when the connected
+  sequencer actually sends MIDI clock, and can dominate the file (24/beat).
+- Crash-safe: performance events are flushed per line, so a killed process
+  loses at most buffered clock ticks. Stale events drained at startup are
+  never logged.
+
+At take end, `perform.sh` derives a best-effort `<take>.mid`
+(`scripts/midi_log_to_mid.py`): a type-0 standard MIDI file at a **fixed
+arbitrary 120 BPM** (480 ticks/beat, so 1 tick = 1/960 s) with tick 0 at
+recording start, for DAW/Blender import. The jsonl remains the ground truth.
+
 ### Computer keyboard controls
 
 No MIDI hardware needed — your computer keyboard works as a piano:
