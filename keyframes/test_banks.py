@@ -163,11 +163,13 @@ def test_cli_hotkeys_grid_reset_and_switch_overlay(library, monkeypatch):
     monkeypatch.setattr(main.sys, 'argv', ['main.py', '--bank', 'other', '--windowed'])
     monkeypatch.setattr(main.mido, 'get_input_names', lambda: [])
     key = lambda k: pygame.event.Event(pygame.KEYDOWN, key=k, mod=0)
+    x, y = main.cell_rect(0, main.grid_layout(1, 0, (1280, 720)))
+    cell_pos = (x + 10, y + 10)
     batches = iter([
         [key(pygame.K_z)],  # startup flag really selects the other bank
         [key(pygame.K_TAB)],
-        [pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=(30, 70)),
-         pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=(30, 70))],
+        [pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=cell_pos),
+         pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=cell_pos)],
         [key(pygame.K_F5), key(pygame.K_z)],  # selection must not remap old cell
         [key(pygame.K_TAB), key(pygame.K_F6), key(pygame.K_z)],
         [pygame.event.Event(pygame.QUIT)],
@@ -197,6 +199,7 @@ def test_cli_hotkeys_grid_reset_and_switch_overlay(library, monkeypatch):
     main.main()
     assert performances[0] == ((10, 200, 20), False)
     assert performances[-1] == ((10, 200, 20), False)
+    assert grids[-2][1] == 0  # prove the click armed an actual cell
     assert grids[-1] == ((200, 10, 20), None, 48)
     assert 'Bank: default' in notices and 'Bank: other' in notices
     assert json.loads((root / 'mapping.json').read_text()) == {'48': 'shared.png'}
