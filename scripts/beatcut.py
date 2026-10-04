@@ -396,6 +396,7 @@ def main():
             f'calibration: {start_correction * 1000:+.1f}ms '
             f'(spread {spread * 1000:.1f}ms)'],
         'music_entry': entry,
+        'timeline_correction': round(start_correction, 5),
         'segments': [{**g, 'bpm': round(g['bpm'], 4)} for g in grids],
         'clips': [{'name': c['name'], 'kind': c['kind'], 'segment': c['segment'],
                    't_rec_start': round(max(0.0, c['start'] + start_correction), 4),
