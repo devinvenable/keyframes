@@ -175,10 +175,16 @@ def test_cli_hotkeys_grid_reset_and_switch_overlay(library, monkeypatch):
         [pygame.event.Event(pygame.QUIT)],
     ])
     monkeypatch.setattr(main.pygame.event, 'get', lambda: next(batches))
-    performances, grids, notices = [], [], []
+    performances, grids, notices, triggered = [], [], [], []
     original_frame = main.draw_performance_frame
     original_grid = main.render_grid
     original_text = main.draw_text_outlined
+    original_process = main.process_midi_messages
+
+    def process(*args, **kwargs):
+        state = original_process(*args, **kwargs)
+        triggered.append(state['surface'].get_at((0, 0))[:3])
+        return state
 
     def frame(screen, state, *args):
         if state['surface'] is not None:
@@ -196,11 +202,13 @@ def test_cli_hotkeys_grid_reset_and_switch_overlay(library, monkeypatch):
     monkeypatch.setattr(main, 'draw_performance_frame', frame)
     monkeypatch.setattr(main, 'render_grid', grid)
     monkeypatch.setattr(main, 'draw_text_outlined', text)
+    monkeypatch.setattr(main, 'process_midi_messages', process)
     main.main()
     assert performances[0] == ((10, 200, 20), False)
     assert performances[-1] == ((10, 200, 20), False)
     assert grids[-2][1] == 0  # prove the click armed an actual cell
     assert grids[-1] == ((200, 10, 20), None, 48)
+    assert triggered[3:5] == [(200, 10, 20), (10, 200, 20)]
     assert 'Bank: default' in notices and 'Bank: other' in notices
     assert json.loads((root / 'mapping.json').read_text()) == {'48': 'shared.png'}
     assert not set(main.BANK_KEYS) & set(main.KEY_TO_NOTE)
