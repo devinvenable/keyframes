@@ -260,6 +260,63 @@ take the next free key when one exists, otherwise remain unmapped.
 
 The note→file assignment is remembered in a sparse `mapping.json` manifest beside the `images/` folder (next to the executable in a packaged build). It is plain, human-readable JSON (`{"36": "sunrise.png"}`) you can hand-edit: only mapped notes appear. Each note and each media file can occur at most once. On launch, deleted files are removed; later-added files get the next free key if possible, otherwise remain visible but unmapped.
 
+## Media banks
+
+A bank is a named folder containing media and its own note assignments:
+
+```text
+keyframes/                  # or the folder beside Keyframes.exe
+  images/                   # original library: the implicit "default" bank
+  mapping.json              # default bank assignments
+  scenes.json               # global scene settings
+  banks/
+    insect-war-aged/
+      insect-war-03-tower-10s-aged.gif
+      ...
+      mapping.json          # this bank's assignments only
+      scenes.json           # optional override of global scene settings
+```
+
+Launch with `python main.py --bank insect-war-aged`. With no `--bank` flag
+(or with `--bank default`), the original `images/` and `mapping.json` are used.
+Bank names are folder names under `banks/`; `default` is reserved for the
+original library. An unknown launch name reports the available names.
+
+Press **F5** for the previous bank or **F6** for the next, in either performance
+or grid view. The order is `default`, then named banks alphabetically, wrapping
+at either end. A brief **Bank: name** overlay confirms the switch. These keys
+do not overlap the computer piano. The folder list is refreshed on each switch.
+
+Media, note assignments, thumbnails, and scene settings load before the new
+bank becomes active. A load failure leaves the previous bank active and shows
+an error. Switching clears grid selection, scrolling, previews, and repeat-hit
+counts. Existing playback stays visible until the next trigger, and an active
+scene keeps its media and runs to completion; new triggers resolve in the new
+bank. Loading is synchronous, so a large bank can briefly pause input/rendering.
+
+Grid assignment, unmapping, drag-to-replace, and automatic reconciliation all
+use the **active bank's** media folder and `mapping.json`. Scene settings stay
+in a separate `scenes.json`: mappings are always pure note-to-filename JSON.
+If the bank has no `scenes.json`, the global file applies. A bank can be empty
+or contain unmapped media; use the grid to assign keys.
+
+The included **insect-war-aged** bank contains nine looping animated GIFs on
+notes **48–56**, playable with **Z S X D C V G B H**, in this order: tower, duel,
+black-and-white loop, hover, loop, dogfight, feeding, push-in, charge. The source
+clips are `generated/insect-war/*_aged.mp4` in the project checkout; they remain
+unchanged. GIFs retain each clip's full duration and square aspect ratio at
+480×480, 15 fps, with an optimized 256-color palette and infinite looping.
+To reproduce a GIF from a source clip (use lowercase, hyphenated output names):
+
+```bash
+ffmpeg -i source_aged.mp4 -filter_complex \
+  '[0:v]fps=15,scale=480:480:flags=lanczos,split[a][b];[a]palettegen=max_colors=256[p];[b][p]paletteuse=dither=sierra2_4a' \
+  -loop 0 output-aged.gif
+```
+
+V1 switching uses the launch flag and hotkeys only. MIDI program-change bank
+selection is deferred to a later version; ShowSync behavior is unchanged.
+
 ## Configuration
 
 - `START_NOTE` and `NUM_KEYS` in `main.py` can be adjusted for your keyboard layout

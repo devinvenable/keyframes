@@ -44,6 +44,9 @@ MAPPING_PATH = str(APP_DIR / 'mapping.json')
 # rewrites mapping.json from the note->filename dict alone, so any config
 # block stored there would be silently dropped on the first reconcile.
 SCENES_CONFIG_PATH = str(APP_DIR / 'scenes.json')
+BANKS_DIR = APP_DIR / 'banks'
+BANK_KEYS = {pygame.K_F5: -1, pygame.K_F6: 1}
+BANK_NOTICE_SECONDS = 2.0
 
 IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.bmp')
 # .gif is a video here: cv2's ffmpeg backend decodes GIFs frame-by-frame, so
@@ -217,6 +220,7 @@ def draw_startup_help(screen, width, height):
         ("", font_small, (180, 180, 180)),
         ("Tab    Grid manager: assign keys and replace media", font_small, (180, 180, 180)),
         ("L    Toggle latch mode (last hit stays on screen)", font_small, (180, 180, 180)),
+        ("F5 / F6    Previous / next media bank", font_small, (180, 180, 180)),
         ("F11 or Alt+Enter   Toggle fullscreen / windowed", font_small, (180, 180, 180)),
         ("Esc    Quit", font_small, (180, 180, 180)),
         ("", font_small, (180, 180, 180)),
@@ -299,11 +303,12 @@ def inverted_surface(media):
     return inv
 
 
-def list_media_files():
+def list_media_files(media_dir=None):
     """Return the media filenames currently present in ``images/`` (unordered)."""
-    if not os.path.exists(IMAGES_DIR):
-        os.makedirs(IMAGES_DIR)
-    return [f for f in os.listdir(IMAGES_DIR)
+    media_dir = IMAGES_DIR if media_dir is None else media_dir
+    if not os.path.exists(media_dir):
+        os.makedirs(media_dir)
+    return [f for f in os.listdir(media_dir)
             if f.lower().endswith(IMAGE_EXTS + VIDEO_EXTS)]
 
 
@@ -416,13 +421,13 @@ def unmap_mapping(mapping, filename):
     return {note: name for note, name in mapping.items() if name != filename}
 
 
-def make_media_entry(name):
+def make_media_entry(name, media_dir=None):
     """Build a single note-media object for a filename in ``images/``.
 
     Carries a ``name`` field so the live click-to-replace path can find and
     reuse an already-loaded object for the same file (preserving the grid's
     id()-based dedup) instead of decoding it a second time."""
-    filepath = os.path.join(IMAGES_DIR, name)
+    filepath = os.path.join(IMAGES_DIR if media_dir is None else media_dir, name)
     ext = os.path.splitext(name)[1].lower()
     if ext in VIDEO_EXTS:
         return {'type': 'video', 'path': filepath, 'name': name,
@@ -431,26 +436,28 @@ def make_media_entry(name):
     return {'type': 'image', 'surface': img, 'name': name}
 
 
-def load_media(start_note, end_note):
+def load_media(start_note, end_note, media_dir=None, mapping_path=None):
     """Build the note -> media mapping, honoring the persistent manifest.
 
     The manifest is sparse: each media file has at most one note and unmapped
     files remain visible in the grid but do not trigger playback."""
-    all_files = list_media_files()
+    media_dir = IMAGES_DIR if media_dir is None else media_dir
+    mapping_path = MAPPING_PATH if mapping_path is None else mapping_path
+    all_files = list_media_files(media_dir)
     if not all_files:
         return None
 
-    manifest_exists = os.path.exists(MAPPING_PATH)
-    stored = load_mapping()
+    manifest_exists = os.path.exists(mapping_path)
+    stored = load_mapping(mapping_path)
     new_files = all_files
     if manifest_exists:
-        manifest_mtime = os.path.getmtime(MAPPING_PATH)
+        manifest_mtime = os.path.getmtime(mapping_path)
         new_files = [name for name in all_files
-                     if os.path.getmtime(os.path.join(IMAGES_DIR, name)) > manifest_mtime]
+                     if os.path.getmtime(os.path.join(media_dir, name)) > manifest_mtime]
     reconciled = reconcile_mapping(stored, all_files, start_note, end_note,
                                    seed=not manifest_exists, new_files=new_files)
     if reconciled != stored:
-        save_mapping(reconciled)
+        save_mapping(reconciled, mapping_path)
 
     # Only notes inside the active range drive playback; out-of-range entries are
     # preserved in the file but not loaded here.
@@ -460,7 +467,7 @@ def load_media(start_note, end_note):
     # A mapping is 1:1, but cache objects by filename for live reassignment.
     media_by_file = {}
     for name in set(in_range.values()):
-        media_by_file[name] = make_media_entry(name)
+        media_by_file[name] = make_media_entry(name, media_dir)
 
     note_to_media = {note: media_by_file[name] for note, name in in_range.items()}
 
@@ -470,6 +477,68 @@ def load_media(start_note, end_note):
     print(f"Video notes: {sorted(n for n, m in note_to_media.items() if m['type'] == 'video')}")
     return note_to_media
 
+
+
+class MediaBanks:
+    """Stage a bank before publishing it on the single UI/event thread.
+
+    MIDI worker threads only enqueue messages; they never read media or paths.
+    Existing editing helpers therefore see the committed active paths, while
+    staging uses explicit paths and cannot change the currently playing bank.
+    Scenes own their sources independently and are untouched by a bank switch.
+    """
+
+    def __init__(self, start_note, end_note):
+        self.start_note, self.end_note = start_note, end_note
+        self.default_paths = (IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH)
+        self.name = 'default'
+        self.notice = ''
+        self.notice_until = 0
+
+    def names(self):
+        root = Path(BANKS_DIR)
+        return ['default'] + (sorted(p.name for p in root.iterdir()
+                                    if p.is_dir() and p.name != 'default')
+                              if root.is_dir() else [])
+
+    def paths(self, name):
+        if name == 'default':
+            return self.default_paths
+        if name not in self.names():
+            raise ValueError(f"Unknown bank {name!r}; available: {', '.join(self.names())}")
+        folder = Path(BANKS_DIR) / name
+        scenes = folder / 'scenes.json'
+        return (str(folder), str(folder / 'mapping.json'),
+                str(scenes) if scenes.exists() else self.default_paths[2])
+
+    def load(self, name, *, startup=False):
+        global IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH
+        media_dir, mapping_path, scenes_path = self.paths(name)
+        media = load_media(self.start_note, self.end_note, media_dir, mapping_path)
+        # Keep the historical no-bank startup path (including lazy thumbnails).
+        cells = None if startup and name == 'default' else build_grid_cells(
+            media or {}, (GRID_THUMB_W, GRID_THUMB_H), media_dir)
+        config = load_scenes_config(scenes_path)
+        # Nothing below can fail while loading/decoding a bank. Publish only
+        # after every new cache/config is ready, before another event is handled.
+        IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH = media_dir, mapping_path, scenes_path
+        self.name = name
+        return media, cells, config
+
+    def cycle(self, direction):
+        names = self.names()
+        index = names.index(self.name) if self.name in names else 0
+        name = names[(index + direction) % len(names)]
+        loaded = self.load(name)
+        self.notice = f"Bank: {name}"
+        self.notice_until = time.monotonic() + BANK_NOTICE_SECONDS
+        print(self.notice)
+        return loaded
+
+    def draw_notice(self, screen, now):
+        if now < self.notice_until:
+            draw_text_outlined(screen, self.notice, pygame.font.SysFont(None, 36),
+                               (24, 60), color=(255, 220, 120), outline_w=1)
 
 
 def choose_landscape_display():
@@ -1720,7 +1789,7 @@ def make_thumbnail(media, thumb_size):
     return crop_to_fill(surface, thumb_size)
 
 
-def build_grid_cells(note_to_media, thumb_size):
+def build_grid_cells(note_to_media, thumb_size, media_dir=None):
     """Build one grid cell for every media file, with zero or one note label.
 
     Cells are ordered by their KEY (mapped cells first, in note order), then any
@@ -1729,7 +1798,7 @@ def build_grid_cells(note_to_media, thumb_size):
     in the SAME spot rather than jumping to an alphabetical position."""
     media_by_name = {media['name']: media for media in note_to_media.values()}
     note_by_name = {media['name']: note for note, media in note_to_media.items()}
-    all_files = list_media_files()
+    all_files = list_media_files(media_dir)
     mapped = sorted((n for n in all_files if n in note_by_name),
                     key=lambda n: note_by_name[n])
     unmapped = [n for n in order_media_files(all_files) if n not in note_by_name]
@@ -1737,7 +1806,7 @@ def build_grid_cells(note_to_media, thumb_size):
     for name in mapped + unmapped:
         media = media_by_name.get(name)
         if media is None:
-            media = make_media_entry(name)
+            media = make_media_entry(name, media_dir)
         note = note_by_name.get(name)
         cells.append({'media': media, 'type': media['type'],
                       'thumb': make_thumbnail(media, thumb_size),
@@ -2383,6 +2452,8 @@ def run_packaging_smoke_test():
 
 def main():
     parser = argparse.ArgumentParser(description="MIDI Note Image Display")
+    parser.add_argument('--bank', default='default', metavar='NAME',
+                        help="Media bank in banks/ (default: master images/ library)")
     parser.add_argument('--midi-file', '-f', help="Path to a MIDI file to play back")
     parser.add_argument('--loop', '-l', action='store_true', help="Loop MIDI file playback")
     parser.add_argument('--channel', '-c', type=int, choices=range(1, 17), metavar='1-16',
@@ -2428,6 +2499,11 @@ def main():
     start_note = args.start_note
     num_keys = args.num_keys
     end_note = start_note + num_keys - 1
+    banks = MediaBanks(start_note, end_note)
+    try:
+        banks.paths(args.bank)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # Parse minimum note duration
     min_note_beats = None
@@ -2453,11 +2529,12 @@ def main():
     pygame.display.set_caption("Keyframes")
 
     # Load media
-    note_to_media = load_media(start_note, end_note)
-    if note_to_media is None:
+    note_to_media, initial_cells, scenes_config = banks.load(args.bank, startup=True)
+    if note_to_media is None and args.bank == 'default' and len(banks.names()) == 1:
         show_instructions(screen, display_w, display_h)
         pygame.quit()
         return
+    note_to_media = note_to_media or {}
 
     # Set up MIDI sources: file playback, live input, and/or keyboard
     msg_queue = queue.Queue()
@@ -2497,13 +2574,13 @@ def main():
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). L: toggle latch. ESC to quit.")
     print("Tab: toggle grid/media-manager view (Up/Down or mouse wheel to scroll).")
     print("F1 or ?: show the on-screen help overlay again.")
+    print(f"Bank: {banks.name}. F5/F6: previous/next bank.")
 
     state = {'surface': None, 'video_player': None, 'note_active': None,
              'note_on_time': None, 'hold_until': None, 'zoom_scale': 1.0,
              'bend_zoom': 1.0, 'pan': 0.0, 'pan_cc_time': None, 'pan_ease': None,
              'inverted': False, 'surface_media': None, 'last_note': None,
              'active_scene': None}
-    scenes_config = load_scenes_config()
     if scenes_config['enabled']:
         print(f"Scenes enabled: {scenes_config['probability']:.0%} chance per "
               f"trigger ({', '.join(sorted(SCENE_REGISTRY))}) — see scenes.json")
@@ -2519,7 +2596,7 @@ def main():
 
     # Grid / media-manager view state
     grid_mode = False
-    grid_cells = None  # built lazily the first time the grid is opened
+    grid_cells = initial_cells  # default bank builds lazily on first grid open
     grid_scroll = 0
     flash_times = {}  # note -> monotonic time it was last triggered
     drop_flash = None  # {'note', 'until', 'ok'} border feedback for last drop
@@ -2588,6 +2665,26 @@ def main():
                     # which has its own on-screen controls header.
                     if not grid_mode:
                         show_help = update_help_visibility(show_help, reshow_key=True)
+                elif event.key in BANK_KEYS:
+                    try:
+                        loaded = banks.cycle(BANK_KEYS[event.key])
+                    except (OSError, ValueError, pygame.error) as exc:
+                        banks.notice = f"Bank switch failed: {exc}"
+                        banks.notice_until = time.monotonic() + BANK_NOTICE_SECONDS
+                        print(banks.notice)
+                        continue
+                    note_to_media, grid_cells, scenes_config = loaded
+                    note_to_media = note_to_media or {}
+                    if grid_preview:
+                        grid_preview['player'].release()
+                    grid_preview = grid_drag = selected_index = drop_flash = None
+                    grid_scroll = 0
+                    flash_times.clear()
+                    note_hit_counts.clear()
+                    prev_active = None
+                    # A repeated note in another bank is a fresh hit, not an
+                    # inversion of the previous bank's still image.
+                    state['last_note'] = None
                 elif event.key == pygame.K_l:
                     latch_enabled = toggle_latch_mode(latch_enabled)
                     if latch_enabled:
@@ -2759,6 +2856,8 @@ def main():
         # view only (grid view has its own controls header).
         if show_help and not grid_mode:
             draw_startup_help(screen, display_w, display_h)
+
+        banks.draw_notice(screen, now)
 
         pygame.display.flip()
         clock.tick(60)
