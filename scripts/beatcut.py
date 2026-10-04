@@ -8,6 +8,15 @@ phase between songs, so the grid is fit per phase-stable segment. Meter is
 assumed 4/4 (--beats-per-bar); the downbeat is chosen per segment as the beat
 phase carrying the most kick-band energy.
 
+Beat PHASE is anchored to kick-drum attacks: in four-on-the-floor material the
+kick is the quarter-note pulse, and the general onset population (hi-hats,
+stabs, delayed synth attacks) can sit a 16th off it and pull an IRLS fit onto
+the wrong phase. Kick onsets are extracted from a 40-130 Hz band envelope and
+weighted by attack sharpness (envelope derivative), because sustained bass
+shares the band at off-kick phases but swells instead of hitting. The general
+onsets remain the fallback where kick density is too low, seeded with the
+kick-derived phase so it carries through breakdowns.
+
 Outputs <out>/section_XXX*.mp4 (re-encoded for frame-accurate cuts, share-mp4
 settings + faststart) and <out>/manifest.json with the grids and cut times.
 
@@ -73,6 +82,45 @@ def calibrate_timeline(take, wav_path, rate=48000):
         return 0.0, 0.0
     median = float(np.median(offsets))
     return median, float(max(abs(o - median) for o in offsets))
+
+
+def kick_onsets(wav_path, lo_hz=40.0, hi_hz=130.0):
+    """Kick attack times + sharpness weights from the 40-130 Hz band.
+
+    Band-pass by FFT, square to a 1 kHz power envelope, then peak-pick the
+    POSITIVE DERIVATIVE of the amplitude envelope. The derivative is the
+    discriminator: bass lines share this band — often louder than the kick —
+    but swell over ~100ms where a kick rises in a few ms, so attack slope
+    separates them where peak energy cannot.
+    """
+    import soundfile
+    data, rate = soundfile.read(wav_path, dtype='float32')
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+    spectrum = np.fft.rfft(data)
+    bins = np.fft.rfftfreq(len(data), 1 / rate)
+    spectrum[(bins < lo_hz) | (bins > hi_hz)] = 0
+    band = np.fft.irfft(spectrum, len(data))
+    step = rate // 1000
+    frames = len(band) // step * step
+    envelope = (band[:frames] ** 2).reshape(-1, step).mean(axis=1)
+    envelope = np.convolve(envelope, np.full(10, .1), mode='same')
+    slope = np.diff(np.sqrt(envelope), prepend=0)
+    slope = np.convolve(np.maximum(slope, 0), np.full(5, .2), mode='same')
+    if not len(slope) or np.percentile(slope, 99) < 1e-8:
+        return np.empty(0), np.empty(0)
+    threshold = np.percentile(slope, 99) * .15
+    peaks = np.flatnonzero((slope >= np.roll(slope, 1)) &
+                           (slope > np.roll(slope, -1)) & (slope > threshold))
+    times, weights = [], []
+    for peak in peaks:
+        if times and peak / 1000 - times[-1] < .25:
+            if slope[peak] > weights[-1]:
+                times[-1], weights[-1] = peak / 1000, float(slope[peak])
+        else:
+            times.append(peak / 1000)
+            weights.append(float(slope[peak]))
+    return np.asarray(times), np.asarray(weights)
 
 
 def irls_fit(times, weights, period, offset, iterations=12):
@@ -185,13 +233,17 @@ def downbeat_phase(kick, period, offset, start, stop, beats_per_bar):
     return int(np.argmax(scores))
 
 
-def music_entry(times, residual, period):
-    """First onset that lands on the grid with sustained on-grid support after."""
-    inliers = times[np.abs(residual) < period * INLIER]
-    for t in inliers:
-        if ((inliers >= t) & (inliers < t + 8 * period)).sum() >= 4:
+def music_entry(times, period):
+    """First onset with sustained rhythmic support after it.
+
+    Deliberately no on-grid condition: the general onset population may sit a
+    16th off the kick-anchored grid, which says nothing about where music
+    starts — the sustained-support requirement already rejects stray noise.
+    """
+    for t in times:
+        if ((times >= t) & (times < t + 8 * period)).sum() >= 4:
             return float(t)
-    return float(inliers[0]) if len(inliers) else 0.0
+    return float(times[0]) if len(times) else 0.0
 
 
 def loud_entry(power, lo, hi, threshold=.15):
@@ -280,6 +332,7 @@ def main():
                         '-c:a', 'pcm_f32le', temp.name], check=True)
         envelope, power, kick = _features(temp.name, lambda: None)
         start_correction, spread = calibrate_timeline(take, temp.name)
+        kick_times, kick_weights = kick_onsets(temp.name)
     print(f'timeline calibration: analysis -> master {start_correction * 1000:+.1f}ms '
           f'(spread {spread * 1000:.1f}ms)')
     if spread > 0.005:
@@ -292,19 +345,41 @@ def main():
     _, times, weights = onsets
     weights = np.minimum(weights, np.percentile(weights, 90))
 
-    period, offset = global_grid(times, weights)
-    beats = np.rint((times - offset) / period)
-    residual = times - (offset + beats * period)
-    track = phase_track(times, weights, residual, duration)
-    segments = split_segments(track, times, residual, period, duration)
+    # Primary phase population: kick attacks. The general onsets only drive
+    # the grid when the whole take is kick-sparse (ambient material).
+    use_kick = len(kick_times) >= 100
+    if use_kick:
+        kick_weights = np.minimum(kick_weights, np.percentile(kick_weights, 90))
+        fit_times, fit_weights = kick_times, kick_weights
+    else:
+        print(f'only {len(kick_times)} kick onsets; anchoring to general onsets')
+        fit_times, fit_weights = times, weights
+
+    period, offset = global_grid(fit_times, fit_weights)
+    beats = np.rint((fit_times - offset) / period)
+    residual = fit_times - (offset + beats * period)
+    track = phase_track(fit_times, fit_weights, residual, duration)
+    segments = split_segments(track, fit_times, residual, period, duration)
 
     def fit_span(lo, hi):
-        sel = (times >= lo) & (times < hi)
-        fit = irls_fit(times[sel], weights[sel], period, offset) or (period, offset)
+        sel = (fit_times >= lo) & (fit_times < hi)
+        t, w = fit_times[sel], fit_weights[sel]
+        source = 'kick' if use_kick else 'onsets'
+        if use_kick and sel.sum() < 30:
+            # Too few kicks to fit (breakdown / ambient span): refit on the
+            # general onsets seeded with the kick-derived grid. IRLS only
+            # admits inliers near the seed phase, so if the general
+            # population sits off the kick phase it simply keeps the seed —
+            # the kick phase is carried through the gap either way.
+            source = 'onsets-kick-seeded'
+            gsel = (times >= lo) & (times < hi)
+            t, w = times[gsel], weights[gsel]
+        fit = irls_fit(t, w, period, offset) or (period, offset)
         p, o = fit
-        sel_in = sel & (np.abs(times - (o + np.rint((times - o) / p) * p)) < p * INLIER)
-        res = times[sel_in] - (o + np.rint((times[sel_in] - o) / p) * p)
+        sel_in = np.abs(t - (o + np.rint((t - o) / p) * p)) < p * INLIER
+        res = t[sel_in] - (o + np.rint((t[sel_in] - o) / p) * p)
         return {'start': lo, 'stop': hi, 'period': p, 'offset': o, 'bpm': 60 / p,
+                'phase_source': source,
                 'onsets_on_grid': int(sel_in.sum()),
                 'residual_p90_ms': float(np.quantile(np.abs(res), .9) * 1000)
                 if sel_in.sum() else None}
@@ -348,12 +423,20 @@ def main():
         g['downbeat_phase'] = downbeat_phase(kick, g['period'], g['offset'],
                                              g['start'], g['stop'],
                                              args.beats_per_bar)
+        sel = (kick_times >= g['start']) & (kick_times < g['stop'])
+        kres = kick_times[sel] - (g['offset'] + np.rint(
+            (kick_times[sel] - g['offset']) / g['period']) * g['period'])
+        kres = kres[np.abs(kres) < g['period'] * INLIER]
+        g['kick_residual_median_ms'] = (round(float(np.median(kres)) * 1000, 1)
+                                        if len(kres) else None)
         print(f'  segment {g["start"]:7.2f}-{g["stop"]:7.2f}s: '
               f'bpm={g["bpm"]:.4f} offset={g["offset"]:.4f} '
               f'downbeat=beat{g["downbeat_phase"]} '
-              f'p90|resid|={g["residual_p90_ms"]:.1f}ms n={g["onsets_on_grid"]}')
+              f'p90|resid|={g["residual_p90_ms"]:.1f}ms n={g["onsets_on_grid"]} '
+              f'[{g["phase_source"]}] kick-median='
+              f'{g["kick_residual_median_ms"]}ms')
 
-    entry = music_entry(times, residual, period)
+    entry = music_entry(times, period)
 
     # Phrase anchoring per segment: the first downbeat of the segment head
     # (first segment: at/after the music entry), plus — when the segment has
@@ -425,6 +508,9 @@ def main():
         'assumptions': [
             f'{args.beats_per_bar}/4 meter assumed; section = {args.measures} '
             f'measures = {section_beats} beats',
+            'beat phase anchored to kick-band (40-130Hz) attack onsets'
+            if use_kick else
+            'too few kick onsets; beat phase fit to general onset population',
             'downbeat chosen per segment by kick-band energy, not score data',
             'analysis timeline mapped to master by cross-correlation '
             f'calibration: {start_correction * 1000:+.1f}ms '
@@ -456,11 +542,23 @@ def main():
         print(f'  wrote {cut["name"]} '
               f'[{master_start:.3f} +{cut["end"] - cut["start"]:.3f}s]')
 
-    # Verification renders: click overlay on evenly spaced sample sections.
+    # Verification renders: click overlay on the first full section of each
+    # segment (covers the take's start and every re-anchor boundary), then
+    # the last section if the click budget allows.
     full_sections = [c for c in cuts if c['kind'] == 'section']
-    picks = [full_sections[i] for i in
-             sorted({0, len(full_sections) // 2, len(full_sections) - 1})][:args.clicks] \
-        if full_sections else []
+    picks, covered = [], set()
+    for cut in full_sections:
+        if cut['segment'] not in covered:
+            picks.append(cut)
+            covered.add(cut['segment'])
+    if full_sections and full_sections[-1] not in picks:
+        picks.append(full_sections[-1])
+    picks = picks[:args.clicks]
+    if len(picks) < args.clicks:
+        remaining = [c for c in full_sections if c not in picks]
+        stride = max(1, len(remaining) // max(1, args.clicks - len(picks)))
+        picks.extend(remaining[::stride][:args.clicks - len(picks)])
+    picks.sort(key=lambda c: c['start'])
     for cut in picks:
         grid = grids[cut['segment']]
         p, o, phase = grid['period'], grid['offset'], grid['downbeat_phase']
