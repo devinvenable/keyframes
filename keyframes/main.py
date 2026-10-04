@@ -1086,8 +1086,10 @@ class Scene:
 
     Lifecycle: constructed on the activating trigger with that media's frame
     source (static for images, live playback for videos and GIFs);
-    ``advance()`` on every later media-triggering note-on (Keyframes
-    is note-driven, so a "beat" is a trigger, not clock time); ``render()``
+    ``advance()`` on every later in-range note-on, mapped or not (Keyframes
+    is note-driven, so a "beat" is a key press, not clock time — ``media``
+    is None for an unmapped key and implementations must tolerate that);
+    ``render()``
     each frame while active; ``done()`` True once finished, after which the
     main loop drops it and normal full-screen behavior resumes. Scene state
     stays out of the main render path except via the single
@@ -1141,7 +1143,11 @@ class Scene:
             release_scene_source(source)
 
     def advance(self, media, now):
-        """React to the next note-on trigger while active."""
+        """React to the next note-on trigger while active.
+
+        ``media`` is None when the beat came from an unmapped key —
+        implementations use it only as an optional extra (e.g. timed rings
+        rotate it in as the new foreground) and must work without it."""
 
     def render(self, screen, target_size, now):
         raise NotImplementedError
@@ -1487,12 +1493,17 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
                             prev_still=None, target_size=None):
     """Advance the active scene, or roll the activation dice for a new one.
 
-    Called on every media-triggering note-on. While a scene is active each
-    trigger is one beat; an active scene always runs to completion (config
-    can't cancel it mid-flight). With no scene active, a roll under the
-    configured probability activates a randomly chosen registered scene on
-    this trigger's media. Normal state keeps updating underneath either way,
-    so when the scene ends the screen resumes with the latest trigger.
+    Called on every in-range note-on — ``media`` is None for a key with no
+    mapping. While a scene is active each trigger is one beat; an active
+    scene always runs to completion (config can't cancel it mid-flight).
+    Unmapped keys count as beats too: they advance the scene and clear a
+    finished one (otherwise a performer playing outside the mapped window
+    leaves a done scene's held frame stuck on screen indefinitely), but they
+    can never activate a scene — there is nothing to show. With no scene
+    active, a roll under the configured probability activates a randomly
+    chosen registered scene on this trigger's media. Normal state keeps
+    updating underneath either way, so when the scene ends the screen
+    resumes with the latest trigger.
 
     ``prev_still`` is what was on screen before this trigger (see
     displayed_media_source) — the new scene's optional background; a bare
@@ -1514,6 +1525,8 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
             # a visible flash between back-to-back scenes at high probability.
             ended_scene = scene
             current_state['active_scene'] = None
+        if media is None:
+            return  # an unmapped beat advanced/cleared; it can't activate
         if not scenes_config or not scenes_config.get('enabled', True):
             return
         if not SCENE_REGISTRY:
@@ -1684,50 +1697,58 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             prev_source = None
             if media and scenes_config and scenes_config.get('enabled', True):
                 prev_source = displayed_media_source(current_state)
-            is_repeat = note == current_state.get('last_note')
-            current_state['last_note'] = note
-            if is_repeat and media and media['type'] == 'image':
-                current_state['inverted'] = not current_state.get('inverted', False)
-            else:
-                current_state['inverted'] = False
-            # Stop any current video — unless the scene capture wrapped it:
-            # then ownership moves to prev_source (a scene adopts it as a
-            # still-playing background, or update_scene_on_trigger releases
-            # it), keeping its playback position instead of restarting.
-            player = current_state['video_player']
-            if player:
-                current_state['video_player'] = None
-                if not (isinstance(prev_source, AnimatedSceneSource)
-                        and prev_source.player is player):
-                    player.release()
-
-            # Clear any pending hold
-            current_state['hold_until'] = None
-
-            if media and media['type'] == 'video':
-                current_state['zoom_scale'] = 1.0
-                current_state['video_player'] = VideoPlayer(
-                    media['path'], target_size, loop=media.get('loop', False),
-                    display_mode=display_mode)
-                current_state['surface'] = None
-                current_state['surface_media'] = None
-                current_state['note_active'] = note
-                current_state['note_on_time'] = now
-            elif media and media['type'] == 'image':
-                current_state['zoom_scale'] = get_zoom_ring_scale(
-                    note, note_hit_counts, zoom_ring_enabled
-                )
-                current_state['surface'] = media['surface']
-                current_state['surface_media'] = media
-                current_state['note_active'] = note
-                current_state['note_on_time'] = now
-
-            # Scenes: a media-triggering note-on is one "beat" — it advances
-            # an active scene, or rolls the low-probability activation gate.
+            # An UNMAPPED (in-range) key changes nothing on the normal view:
+            # the current media keeps showing exactly as it is. Releasing the
+            # video / rewriting last_note here used to black the screen on
+            # every unmapped key — with a bank mapping a narrow note window,
+            # most of a live keyboard did that.
             if media:
-                update_scene_on_trigger(current_state, media, now, scenes_config,
-                                        prev_still=prev_source,
-                                        target_size=target_size)
+                is_repeat = note == current_state.get('last_note')
+                current_state['last_note'] = note
+                if is_repeat and media['type'] == 'image':
+                    current_state['inverted'] = not current_state.get('inverted', False)
+                else:
+                    current_state['inverted'] = False
+                # Stop any current video — unless the scene capture wrapped it:
+                # then ownership moves to prev_source (a scene adopts it as a
+                # still-playing background, or update_scene_on_trigger releases
+                # it), keeping its playback position instead of restarting.
+                player = current_state['video_player']
+                if player:
+                    current_state['video_player'] = None
+                    if not (isinstance(prev_source, AnimatedSceneSource)
+                            and prev_source.player is player):
+                        player.release()
+
+                # Clear any pending hold
+                current_state['hold_until'] = None
+
+                if media['type'] == 'video':
+                    current_state['zoom_scale'] = 1.0
+                    current_state['video_player'] = VideoPlayer(
+                        media['path'], target_size, loop=media.get('loop', False),
+                        display_mode=display_mode)
+                    current_state['surface'] = None
+                    current_state['surface_media'] = None
+                    current_state['note_active'] = note
+                    current_state['note_on_time'] = now
+                elif media['type'] == 'image':
+                    current_state['zoom_scale'] = get_zoom_ring_scale(
+                        note, note_hit_counts, zoom_ring_enabled
+                    )
+                    current_state['surface'] = media['surface']
+                    current_state['surface_media'] = media
+                    current_state['note_active'] = note
+                    current_state['note_on_time'] = now
+
+            # Scenes: EVERY in-range note-on is one "beat" — unmapped keys
+            # included (media None): they advance an active scene and clear a
+            # finished one, while only mapped keys can roll the activation
+            # gate. Without this, playing outside the mapped window left a
+            # done scene's held frame stuck on screen (task 231).
+            update_scene_on_trigger(current_state, media, now, scenes_config,
+                                    prev_still=prev_source,
+                                    target_size=target_size)
 
         elif (is_note_off and not latch_mode
               and note == current_state['note_active']):

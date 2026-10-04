@@ -317,6 +317,100 @@ def test_no_at_rest_frame_renders_across_a_scene_handoff():
     assert_scene_owns_frame(26.0)
 
 
+def run_sweep_to_done(q, state, media, config):
+    """Activate a four-bar sweep on note 60 at t=10 and drive it to done():
+    bars 2-4 on beats 11-13, finishing fade starts at 14, complete by 15.
+    Returns (state, scene). The last mapped trigger is note 62 (blue)."""
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('four-bar-sweep'):
+        state = trigger(q, state, media, 10.0, 60, config)
+    scene = state['active_scene']
+    with patch('main.random.random', return_value=0.9):
+        for now, note in ((11.0, 62), (12.0, 60), (13.0, 60), (14.0, 62)):
+            state = trigger(q, state, media, now, note, config)
+    assert scene.done(15.0)
+    return state, scene
+
+
+def test_unmapped_beat_clears_finished_scene_and_resumes_last_mapped_media():
+    """The live task-231 path: a bank maps a narrow note window, so most keys
+    are in-range but unmapped. After a sweep finishes, an UNMAPPED note-on
+    must clear the held frame and resume core full-screen behavior showing
+    the last MAPPED media — not black, and not the scene residue."""
+    screen = pygame.Surface((8, 8))
+    q = queue.Queue()
+    state = make_state()
+    red, blue = make_image((255, 0, 0)), make_image((0, 0, 255))
+    media = {60: {'type': 'image', 'surface': red, 'name': 'r.png'},
+             62: {'type': 'image', 'surface': blue, 'name': 'b.png'}}
+    config = {'enabled': True, 'probability': 0.5}
+    state, scene = run_sweep_to_done(q, state, media, config)
+    assert state['active_scene'] is scene
+
+    # Past the fade: an unmapped (but in-range) key arrives. Even with a roll
+    # that WOULD pass the gate, no scene may start — there is no media.
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('four-bar-sweep'):
+        state = trigger(q, state, media, 16.0, 40, config)
+    assert state['active_scene'] is None
+    # The normal view resumes with the last mapped trigger's media (blue,
+    # note 62 at t=14) — the unmapped key rewrote nothing.
+    assert state['last_note'] == 62
+    draw_performance_frame(screen, state, (8, 8), 16.1)
+    assert screen.get_at((4, 4))[:3] == (0, 0, 255)
+
+
+def test_resume_normal_on_failed_roll_then_flips_on_next_triggers():
+    """Render-level resume-normal guard at probability < 1: the trigger that
+    clears a done scene but FAILS its activation roll must render that very
+    trigger's media plain full-screen immediately, and later triggers keep
+    flipping media exactly as core behavior does."""
+    screen = pygame.Surface((8, 8))
+    q = queue.Queue()
+    state = make_state()
+    red, blue = make_image((255, 0, 0)), make_image((0, 0, 255))
+    media = {60: {'type': 'image', 'surface': red, 'name': 'r.png'},
+             62: {'type': 'image', 'surface': blue, 'name': 'b.png'}}
+    config = {'enabled': True, 'probability': 0.5}
+    state, scene = run_sweep_to_done(q, state, media, config)
+
+    # Held final frame (solid white) until the clearing trigger arrives.
+    draw_performance_frame(screen, state, (8, 8), 15.5)
+    assert screen.get_at((4, 4))[:3] == (255, 255, 255)
+
+    # Clearing trigger, roll fails (0.9 >= 0.5): core behavior NOW.
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 16.0, 60, config)
+    assert state['active_scene'] is None
+    draw_performance_frame(screen, state, (8, 8), 16.1)
+    assert screen.get_at((4, 4))[:3] == (255, 0, 0)
+
+    # And it keeps flipping per event, as core behavior must.
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 17.0, 62, config)
+    draw_performance_frame(screen, state, (8, 8), 17.1)
+    assert screen.get_at((4, 4))[:3] == (0, 0, 255)
+
+
+def test_unmapped_beats_advance_an_active_sweep():
+    """Every in-range note-on is a beat: keys without media still step the
+    sweep's bars, so playing outside the mapped window never stalls a scene
+    mid-flight (frozen bars were half of the task-231 residue)."""
+    q = queue.Queue()
+    state = make_state()
+    media = {60: {'type': 'image', 'surface': make_image(), 'name': 'r.png'}}
+    config = {'enabled': True, 'probability': 1.0}
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('four-bar-sweep'):
+        state = trigger(q, state, media, 10.0, 60, config)
+    scene = state['active_scene']
+    assert scene.bars_placed == 1
+    state = trigger(q, state, media, 11.0, 40, config)  # unmapped
+    assert scene.bars_placed == 2
+    state = trigger(q, state, media, 12.0, 41, config)  # unmapped
+    assert scene.bars_placed == 3
+
+
 def test_no_new_scene_can_stack_on_an_active_one():
     media = {'type': 'image', 'surface': make_image(), 'name': 'a.png'}
     config = {'enabled': True, 'probability': 1.0}

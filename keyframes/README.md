@@ -179,6 +179,14 @@ flash. On any media-triggering note-on there is a small random chance (5% by
 default) that a scene activates; once active it runs to completion, then
 disappears and normal full-screen behavior resumes with the latest trigger.
 
+A scene "beat" is *any* in-range note-on, mapped or not — a key with no
+media still advances an active scene and clears a finished one (so playing
+outside a bank's mapped note window can never leave a finished scene's held
+frame stuck on screen), but only a mapped key can roll the activation gate,
+since activation needs media to show. Unmapped keys also leave the normal
+view untouched: whatever is on screen keeps showing (a playing video keeps
+playing) — they never blank it.
+
 **Four-bar sweep** (the first scene): the screen divides into 4 full-height
 vertical bars and the image from the note that activated the scene steps
 across them — the *same* image, one bar per beat, where a "beat" is simply

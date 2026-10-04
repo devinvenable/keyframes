@@ -313,6 +313,69 @@ def test_ended_scene_releases_its_decoders(gif_path):
     assert fg_player.cap is None  # ended scene's decoder freed
 
 
+def test_unmapped_note_keeps_current_video_playing(gif_path):
+    """An in-range note-on with no mapping must leave the normal view alone:
+    the playing video keeps its player (same object, decoder open) instead of
+    being released to a black screen (task 231 — a bank maps a narrow note
+    window, so most live keys are unmapped)."""
+    q = queue.Queue()
+    state = scene_state()
+    media = {60: gif_media(gif_path)}
+    config = {'enabled': True, 'probability': 0.5}
+
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 10.0, 60, config)
+        player = state['video_player']
+        assert player is not None
+        state = trigger(q, state, media, 11.0, 40, config)  # unmapped
+    assert state['video_player'] is player
+    assert player.cap is not None
+    assert state['last_note'] == 60  # unmapped keys rewrite nothing
+    screen = pygame.Surface(SIZE)
+    main.draw_performance_frame(screen, state, SIZE, 11.1, 'fill')
+    assert pygame.image.tobytes(screen, 'RGB') != bytes(len(
+        pygame.image.tobytes(screen, 'RGB')))  # not an all-black frame
+
+
+def test_unmapped_beat_clears_done_scene_and_video_resumes(gif_path):
+    """The exact live task-231 path with an all-video bank: a four-bar sweep
+    finishes, then an UNMAPPED note-on arrives. It must clear the held frame
+    (even though it could never start a scene itself) and the core view must
+    resume with the last MAPPED trigger's video still playing — not black."""
+    q = queue.Queue()
+    state = scene_state()
+    media = {60: gif_media(gif_path), 62: gif_media(gif_path)}
+    config = {'enabled': True, 'probability': 0.5}
+
+    with patch('main.random.random', return_value=0.1), \
+            patch('main.random.choice', return_value='four-bar-sweep'):
+        state = trigger(q, state, media, 10.0, 60, config)
+    scene = state['active_scene']
+    assert isinstance(scene, main.FourBarSweepScene)
+    with patch('main.random.random', return_value=0.9):
+        for now, note in ((11.0, 62), (12.0, 60), (13.0, 60), (14.0, 62)):
+            state = trigger(q, state, media, now, note, config)
+    assert scene.done(15.0)
+    last_player = state['video_player']  # note 62's player, updating underneath
+    assert last_player is not None
+
+    # Unmapped key past the fade: clears the scene, starts nothing — even
+    # with a roll that would pass the gate — and the video survives.
+    with patch('main.random.random', return_value=0.1), \
+            patch('main.random.choice', return_value='four-bar-sweep'):
+        state = trigger(q, state, media, 16.0, 40, config)
+    assert state['active_scene'] is None
+    assert state['video_player'] is last_player
+    assert last_player.cap is not None
+    screen = pygame.Surface(SIZE)
+    main.draw_performance_frame(screen, state, SIZE, 16.1, 'fill')
+    frame = pygame.image.tobytes(screen, 'RGB')
+    assert frame != bytes(len(frame))  # full-screen video, not black
+    held = pygame.Surface(SIZE)
+    held.fill((255, 255, 255))
+    assert frame != pygame.image.tobytes(held, 'RGB')  # not the held fade
+
+
 # --- timed rings rotation / native decode -------------------------------------
 
 def test_timed_rings_rotation_installs_a_live_source(gif_path):
