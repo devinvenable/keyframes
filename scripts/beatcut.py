@@ -298,26 +298,60 @@ def main():
     track = phase_track(times, weights, residual, duration)
     segments = split_segments(track, times, residual, period, duration)
 
-    grids = []
-    for lo, hi in segments:
+    def fit_span(lo, hi):
         sel = (times >= lo) & (times < hi)
-        fit = irls_fit(times[sel], weights[sel], period, offset)
-        if fit is None:
-            print(f'  segment {lo:.1f}-{hi:.1f}s: too little support, '
-                  'inheriting global grid')
-            fit = (period, offset)
+        fit = irls_fit(times[sel], weights[sel], period, offset) or (period, offset)
         p, o = fit
         sel_in = sel & (np.abs(times - (o + np.rint((times - o) / p) * p)) < p * INLIER)
         res = times[sel_in] - (o + np.rint((times[sel_in] - o) / p) * p)
-        phase = downbeat_phase(kick, p, o, lo, hi, args.beats_per_bar)
-        grids.append({'start': lo, 'stop': hi, 'period': p, 'offset': o,
-                      'bpm': 60 / p, 'downbeat_phase': phase,
-                      'onsets_on_grid': int(sel_in.sum()),
-                      'residual_p90_ms': float(np.quantile(np.abs(res), .9) * 1000)
-                      if sel_in.sum() else None})
-        print(f'  segment {lo:7.2f}-{hi:7.2f}s: bpm={60 / p:.4f} offset={o:.4f} '
-              f'downbeat=beat{phase} p90|resid|='
-              f'{grids[-1]["residual_p90_ms"]:.1f}ms n={sel_in.sum()}')
+        return {'start': lo, 'stop': hi, 'period': p, 'offset': o, 'bpm': 60 / p,
+                'onsets_on_grid': int(sel_in.sum()),
+                'residual_p90_ms': float(np.quantile(np.abs(res), .9) * 1000)
+                if sel_in.sum() else None}
+
+    def boundary_gap(a, b, at):
+        """Disagreement (s) between two grids' nearest beat at a boundary."""
+        beat_a = a['offset'] + round((at - a['offset']) / a['period']) * a['period']
+        beat_b = b['offset'] + round((at - b['offset']) / b['period']) * b['period']
+        return abs(beat_a - beat_b)
+
+    grids = [fit_span(lo, hi) for lo, hi in segments]
+    # The bucket tracker over-splits: support gaps let sub-threshold wander
+    # accumulate into an apparent step. Keep a boundary only when the grids
+    # fit independently on each side genuinely disagree there. 8ms sits
+    # between IRLS fit noise (~1-3ms) and a real live re-anchor (14ms+).
+    index = 0
+    while index + 1 < len(grids):
+        a, b = grids[index], grids[index + 1]
+        if boundary_gap(a, b, b['start']) < .008:
+            grids[index:index + 2] = [fit_span(a['start'], b['stop'])]
+        else:
+            index += 1
+    # A short or thinly-supported segment (a beat-sparse transition) cannot
+    # anchor a phrase grid; let the better-matching neighbor cut across it.
+    index = 0
+    while len(grids) > 1 and index < len(grids):
+        g = grids[index]
+        if g['stop'] - g['start'] >= 30 and g['onsets_on_grid'] >= 60:
+            index += 1
+            continue
+        before = grids[index - 1] if index > 0 else None
+        after = grids[index + 1] if index + 1 < len(grids) else None
+        if before is not None and (after is None or
+                boundary_gap(before, g, g['start'])
+                <= boundary_gap(g, after, g['stop'])):
+            before['stop'] = g['stop']
+        else:
+            after['start'] = g['start']
+        grids.pop(index)
+    for g in grids:
+        g['downbeat_phase'] = downbeat_phase(kick, g['period'], g['offset'],
+                                             g['start'], g['stop'],
+                                             args.beats_per_bar)
+        print(f'  segment {g["start"]:7.2f}-{g["stop"]:7.2f}s: '
+              f'bpm={g["bpm"]:.4f} offset={g["offset"]:.4f} '
+              f'downbeat=beat{g["downbeat_phase"]} '
+              f'p90|resid|={g["residual_p90_ms"]:.1f}ms n={g["onsets_on_grid"]}')
 
     entry = music_entry(times, residual, period)
 
