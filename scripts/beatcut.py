@@ -19,6 +19,7 @@ import math
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 import numpy as np
 
@@ -36,11 +37,42 @@ def ffprobe_json(path, *args):
     return json.loads(out)
 
 
-def audio_start_time(path):
-    info = ffprobe_json(path, '-select_streams', 'a:0',
-                        '-show_entries', 'stream=start_time')
-    value = info['streams'][0].get('start_time')
-    return float(value) if value not in (None, 'N/A') else 0.0
+def calibrate_timeline(take, wav_path, rate=48000):
+    """Measured offset mapping analysis time to ffmpeg -ss master time.
+
+    Cross-correlates short seek-decoded windows of the master against the
+    analysis wav at three anchors. Returns (median offset, max deviation):
+    master_time = analysis_time + offset. Trusting container start_time is
+    not enough — live captures can drift between sample count and pts.
+    """
+    import soundfile
+    info = soundfile.info(wav_path)
+    duration = info.frames / info.samplerate
+    offsets = []
+    for fraction in (.2, .5, .8):
+        ss = fraction * duration
+        with tempfile.NamedTemporaryFile(suffix='.wav') as probe:
+            subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+                            '-ss', f'{ss:.6f}', '-i', str(take), '-map', '0:a:0',
+                            '-t', '1.5', '-ac', '1', '-ar', str(rate),
+                            '-c:a', 'pcm_f32le', probe.name], check=True)
+            needle, _ = soundfile.read(probe.name)
+        lo = max(0.0, ss - .3)
+        window, _ = soundfile.read(wav_path, start=int(lo * info.samplerate),
+                                   frames=int(2.1 * info.samplerate))
+        if window.ndim > 1:
+            window = window.mean(axis=1)
+        if info.samplerate != rate:
+            raise SystemExit('unexpected analysis wav rate')
+        needle = needle[:rate]
+        if len(window) < len(needle) + 100 or float(np.abs(needle).max()) < 1e-5:
+            continue
+        corr = np.correlate(window, needle, mode='valid')
+        offsets.append(ss - (lo + int(np.argmax(corr)) / rate))
+    if not offsets:
+        return 0.0, 0.0
+    median = float(np.median(offsets))
+    return median, float(max(abs(o - median) for o in offsets))
 
 
 def irls_fit(times, weights, period, offset, iterations=12):
@@ -237,14 +269,22 @@ def main():
     section_beats = args.measures * args.beats_per_bar
 
     print(f'analyzing {take.name} ...')
-    start_correction = audio_start_time(take)  # analysis t -> master t + this
-    import tempfile
     with tempfile.NamedTemporaryFile(suffix='.wav', delete_on_close=False) as temp:
         temp.close()
+        # aresample pins the decoded samples to the container timestamps
+        # (live captures drift tens of ppm between sample count and pts), so
+        # analysis time and ffmpeg -ss cut time share one timeline.
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
-                        '-i', str(take), '-map', '0:a:0', '-c:a', 'pcm_f32le',
-                        temp.name], check=True)
+                        '-i', str(take), '-map', '0:a:0',
+                        '-af', 'aresample=async=1000:first_pts=0',
+                        '-c:a', 'pcm_f32le', temp.name], check=True)
         envelope, power, kick = _features(temp.name, lambda: None)
+        start_correction, spread = calibrate_timeline(take, temp.name)
+    print(f'timeline calibration: analysis -> master {start_correction * 1000:+.1f}ms '
+          f'(spread {spread * 1000:.1f}ms)')
+    if spread > 0.005:
+        print('WARNING: nonuniform timeline drift; cuts may be off by up to '
+              f'{spread * 1000:.0f}ms')
     duration = len(power) / 1000
     onsets = _onsets(envelope, power)
     if onsets is None:
@@ -352,8 +392,9 @@ def main():
             f'{args.beats_per_bar}/4 meter assumed; section = {args.measures} '
             f'measures = {section_beats} beats',
             'downbeat chosen per segment by kick-band energy, not score data',
-            'analysis timeline mapped to master with audio start_time '
-            f'{start_correction:+.3f}s'],
+            'analysis timeline mapped to master by cross-correlation '
+            f'calibration: {start_correction * 1000:+.1f}ms '
+            f'(spread {spread * 1000:.1f}ms)'],
         'music_entry': entry,
         'segments': [{**g, 'bpm': round(g['bpm'], 4)} for g in grids],
         'clips': [{'name': c['name'], 'kind': c['kind'], 'segment': c['segment'],
