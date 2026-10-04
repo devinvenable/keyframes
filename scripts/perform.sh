@@ -46,7 +46,16 @@
 #         <take>.markers sidecar (JSON Lines) stamping recording start/stop
 #         and — via ShowSync — each song start with its name, bpm and tempo
 #         ramp events, all with t_rec offsets relative to the recorded
-#         video's t=0 so cuts can be snapped to beats; plus —
+#         video's t=0 so cuts can be snapped to beats; a
+#         <take>.midi.jsonl sidecar (JSON Lines, via KEYFRAMES_MIDI_LOG)
+#         where Keyframes logs every incoming MIDI event with epoch +
+#         monotonic timestamps, port name and a mapped flag on note-ons —
+#         ground truth of the performance (alignment contract: event epoch
+#         minus the .markers recording_start epoch = t_rec; MIDI clock
+#         ticks appear only when the sequencer/KeyStep actually sends
+#         clock); a best-effort <take>.mid derived from the jsonl at take
+#         end (type-0 SMF, FIXED 120 BPM / 480 tpb so 1 tick = 1/960 s,
+#         tick 0 = recording start) for DAW/Blender import; plus —
 #         produced automatically after the master is finalized, unless
 #         --no-postprocess / PERFORM_NO_POSTPROCESS=1 —
 #           perform_*_share.mp4  full take, h264 + aac 160k, +faststart
@@ -714,6 +723,9 @@ main() {
     lockfile="$outdir/.perform.lock"
     out="$outdir/perform_$(date +%Y%m%d_%H%M%S).mkv"
     markers="${out%.mkv}.markers" rec_epoch=""
+    # cleanup() converts the MIDI sidecar after main()'s locals are gone,
+    # so the log path and the python that runs the converter are globals.
+    midi_log="${out%.mkv}.midi.jsonl" midi_python="$python"
     ffmpeg_pid="" showsync_pid="" keyframes_pid="" BABYSITTER_PID=""
     xrun_start="" xrun_end=""
     video_encoder="" postprocess_enabled=$(( ! no_post ))
@@ -783,6 +795,24 @@ main() {
             echo "Recording saved: $out"
             [[ -n $dur ]] && echo "Duration: ${dur%.*}s"
             [[ -s ${markers:-} ]] && echo "Take markers: $markers"
+            # MIDI take sidecar (T234): report the jsonl and derive the
+            # best-effort <take>.mid from it — tick 0 = recording_start, so
+            # a DAW import lines up with the footage. The jsonl is already
+            # safe on disk (Keyframes flushes per event); conversion failure
+            # only warns and never touches it.
+            if [[ -s ${midi_log:-} ]]; then
+                echo "MIDI log: $midi_log"
+                midfile="${out%.mkv}.mid"
+                if "${midi_python:-python3}" "$REPO_ROOT/scripts/midi_log_to_mid.py" \
+                        "$midi_log" "$midfile" --t0 "$rec_epoch" \
+                        >/dev/null 2>"$midfile.log"; then
+                    rm -f "$midfile.log"
+                    echo "MIDI file: $midfile (120 BPM fixed tempo)"
+                else
+                    echo "WARNING: .mid conversion failed (see $midfile.log) —" >&2
+                    echo "         the JSONL sidecar is intact: $midi_log" >&2
+                fi
+            fi
             report_capture_health "$out"
             # PipeWire xrun delta over the take: tells graph-level dropouts
             # (nodes losing cycles) apart from ShowSync-level underruns
@@ -906,8 +936,12 @@ main() {
     # process for wait/cleanup. Deliberately NOT RT-elevated.
     # PERFORM_KEYFRAMES_ARGS: extra args for keyframes/main.py (e.g.
     # "--bank insect-war-aged"), word-split on purpose.
+    # KEYFRAMES_MIDI_LOG: Keyframes appends every incoming MIDI event to the
+    # take's <take>.midi.jsonl sidecar (same per-process pattern as
+    # SHOWSYNC_MARKERS above); cleanup derives <take>.mid from it.
     # shellcheck disable=SC2086
-    nice -n 5 "$python" "$REPO_ROOT/keyframes/main.py" ${PERFORM_KEYFRAMES_ARGS:-} &
+    KEYFRAMES_MIDI_LOG="$midi_log" \
+        nice -n 5 "$python" "$REPO_ROOT/keyframes/main.py" ${PERFORM_KEYFRAMES_ARGS:-} &
     keyframes_pid=$!
 
     # Wait for Keyframes to exit (Esc) — Ctrl+C lands in the trap instead.

@@ -1599,6 +1599,70 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
         screen.fill((0, 0, 0))
 
 
+def resolve_midi_log_path(cli_value, environ=None):
+    """Sidecar path for the MIDI event log, or None when logging is off.
+    The --midi-log flag wins; otherwise KEYFRAMES_MIDI_LOG (set by
+    perform.sh during captures) activates it. Normal playing outside a
+    capture gets no stray files."""
+    if environ is None:
+        environ = os.environ
+    return cli_value or environ.get('KEYFRAMES_MIDI_LOG') or None
+
+
+class MidiEventLogger:
+    """Append every incoming MIDI event to a JSONL sidecar, one object per
+    line, flushed per event so the file is intact even if the process is
+    killed mid-take. Opens with a self-describing reference line (event
+    "log_open") carrying the same epoch+monotonic pair every event gets:
+    sidecar epoch minus the take's recording_start epoch (from the .markers
+    sidecar) = t_rec on the recording timeline.
+
+    Write failures (disk full, path vanished) are swallowed after a single
+    warning — logging must never take down a live performance."""
+
+    def __init__(self, path):
+        self.path = path
+        self._file = open(path, 'a', encoding='utf-8')
+        self._warned = False
+        self._write({'event': 'log_open', 'epoch': time.time(),
+                     'monotonic': time.monotonic()})
+
+    def log_message(self, msg, port, mapped=None):
+        """Record one mido message from input `port` (a name string).
+        `mapped` is set only for real note-ons (velocity > 0): whether the
+        note currently triggers media (in range, on the listened channel,
+        and mapped to a file — post-task-231 semantics)."""
+        record = {'epoch': time.time(), 'monotonic': time.monotonic(),
+                  'port': port}
+        fields = msg.dict()
+        fields.pop('time', None)  # mido delta time, always 0 on live input
+        record.update(fields)
+        if mapped is not None:
+            record['mapped'] = mapped
+        self._write(record)
+
+    def _write(self, record):
+        try:
+            self._file.write(json.dumps(record) + '\n')
+            # Flush per event so a kill never loses performance events —
+            # EXCEPT clock ticks (24/beat, ~40/s): those ride the stdio
+            # buffer and land with the next non-clock event or close. At
+            # worst a kill drops a fraction of a beat of grid, never a note.
+            if record.get('type') != 'clock':
+                self._file.flush()
+        except (OSError, ValueError):
+            if not self._warned:
+                self._warned = True
+                print(f"WARNING: MIDI log write failed — further events "
+                      f"will be lost ({self.path})")
+
+    def close(self):
+        try:
+            self._file.close()
+        except OSError:
+            pass
+
+
 def drain_startup_midi(ports, settle_seconds=0.25, sleep=time.sleep,
                        clock=time.monotonic):
     """Read and discard everything already pending on freshly opened input
@@ -1626,7 +1690,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                           min_note_beats=None, zoom_ring_enabled=False,
                           note_hit_counts=None, assign_callback=None,
                           latch_mode=True, display_mode='fill',
-                          scenes_config=None):
+                          scenes_config=None, midi_logger=None,
+                          midi_source=None):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
@@ -1647,6 +1712,17 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
     now = time.monotonic()
 
     for msg in messages:
+        # Take sidecar: every incoming event is logged BEFORE any filtering
+        # (channel, range, type) — the log is ground truth of what arrived,
+        # not of what triggered. Only real note-ons get the mapped flag.
+        if midi_logger:
+            mapped = None
+            if msg.type == 'note_on' and msg.velocity > 0:
+                mapped = ((channel is None or msg.channel == channel)
+                          and start_note <= msg.note <= end_note
+                          and note_to_media.get(msg.note) is not None)
+            midi_logger.log_message(msg, midi_source, mapped)
+
         # Handle MIDI clock regardless of channel filter
         if msg.type == 'clock' and clock_tracker:
             clock_tracker.tick()
@@ -2502,6 +2578,12 @@ def main():
                         help="How media is scaled to the screen: 'fill' scales to "
                              "cover and center-crops (default); 'fit' shows the "
                              "entire media with black letterbox/pillarbox bars")
+    parser.add_argument('--midi-log', type=str, default=None, metavar='PATH',
+                        help="Append every incoming MIDI event to this JSONL "
+                             "sidecar (epoch+monotonic timestamps, port, "
+                             "mapped flag on note-ons). Also activated by "
+                             "KEYFRAMES_MIDI_LOG — set by perform.sh so each "
+                             "take gets <take>.midi.jsonl")
     parser.add_argument('--packaging-smoke-test', action='store_true',
                         help=argparse.SUPPRESS)
     parser.add_argument('--size', type=str, default='1280x720', metavar='WxH|PRESET',
@@ -2591,6 +2673,18 @@ def main():
         stale = drain_startup_midi(inports)
         if stale:
             print(f"Discarded {stale} stale MIDI event(s) queued before startup.")
+
+    # Take sidecar: opened AFTER the startup drain, so pre-launch stale
+    # events can never appear as performance events in the log.
+    midi_logger = None
+    midi_log_path = resolve_midi_log_path(args.midi_log)
+    if midi_log_path:
+        try:
+            midi_logger = MidiEventLogger(midi_log_path)
+            print(f"MIDI event log: {midi_log_path}")
+        except OSError as exc:
+            print(f"WARNING: cannot open MIDI event log {midi_log_path}: {exc}")
+    queue_source = f"file:{args.midi_file}" if args.midi_file else 'keyboard'
 
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). L: toggle latch. ESC to quit.")
     print("Tab: toggle grid/media-manager view (Up/Down or mouse wheel to scroll).")
@@ -2809,7 +2903,7 @@ def main():
                                       clock_tracker, min_note_beats, args.zoom_ring,
                                       note_hit_counts, assign_if_selected,
                                       latch_enabled, args.display_mode,
-                                      scenes_config)
+                                      scenes_config, midi_logger, queue_source)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
@@ -2817,7 +2911,7 @@ def main():
                                           clock_tracker, min_note_beats, args.zoom_ring,
                                           note_hit_counts, assign_if_selected,
                                           latch_enabled, args.display_mode,
-                                          scenes_config)
+                                          scenes_config, midi_logger, inport.name)
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()
@@ -2884,6 +2978,8 @@ def main():
         clock.tick(60)
 
     stop_event.set()
+    if midi_logger:
+        midi_logger.close()
     if state['video_player']:
         state['video_player'].release()
     if state['active_scene']:
