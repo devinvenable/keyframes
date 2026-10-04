@@ -904,7 +904,10 @@ main() {
     # audio for CPU — a late video frame is fine, an audio underrun is not
     # (canon midi:I39). nice execs through, so $! still names the python
     # process for wait/cleanup. Deliberately NOT RT-elevated.
-    nice -n 5 "$python" "$REPO_ROOT/keyframes/main.py" &
+    # PERFORM_KEYFRAMES_ARGS: extra args for keyframes/main.py (e.g.
+    # "--bank insect-war-aged"), word-split on purpose.
+    # shellcheck disable=SC2086
+    nice -n 5 "$python" "$REPO_ROOT/keyframes/main.py" ${PERFORM_KEYFRAMES_ARGS:-} &
     keyframes_pid=$!
 
     # Wait for Keyframes to exit (Esc) — Ctrl+C lands in the trap instead.
