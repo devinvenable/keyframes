@@ -1,0 +1,188 @@
+[
+  {
+    "name": "laser-wide",
+    "frame_count": 180,
+    "size": [
+      1920,
+      1080
+    ],
+    "alpha_pixels_first": 0,
+    "alpha_pixels_last": 86120,
+    "movie_alpha_mean_error": 0.001722608024691358,
+    "media": [
+      {
+        "codec_name": "prores",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuva444p12le",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      },
+      {
+        "codec_name": "h264",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      }
+    ]
+  },
+  {
+    "name": "laser-square",
+    "frame_count": 180,
+    "size": [
+      1080,
+      1080
+    ],
+    "alpha_pixels_first": 0,
+    "alpha_pixels_last": 52015,
+    "movie_alpha_mean_error": 0.0025934499314128946,
+    "media": [
+      {
+        "codec_name": "prores",
+        "width": 1080,
+        "height": 1080,
+        "pix_fmt": "yuva444p12le",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      },
+      {
+        "codec_name": "h264",
+        "width": 1080,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      }
+    ]
+  },
+  {
+    "name": "fly-wide",
+    "frame_count": 180,
+    "size": [
+      1920,
+      1080
+    ],
+    "alpha_pixels_first": 40315,
+    "alpha_pixels_last": 0,
+    "movie_alpha_mean_error": 0.0024990354938271603,
+    "media": [
+      {
+        "codec_name": "prores",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuva444p12le",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      },
+      {
+        "codec_name": "h264",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      }
+    ]
+  },
+  {
+    "name": "fly-square",
+    "frame_count": 180,
+    "size": [
+      1080,
+      1080
+    ],
+    "alpha_pixels_first": 27667,
+    "alpha_pixels_last": 0,
+    "movie_alpha_mean_error": 0.003769718792866941,
+    "media": [
+      {
+        "codec_name": "prores",
+        "width": 1080,
+        "height": 1080,
+        "pix_fmt": "yuva444p12le",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      },
+      {
+        "codec_name": "h264",
+        "width": 1080,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      }
+    ]
+  },
+  {
+    "name": "orbit-wide",
+    "frame_count": 180,
+    "size": [
+      1920,
+      1080
+    ],
+    "alpha_pixels_first": 82655,
+    "alpha_pixels_last": 82528,
+    "movie_alpha_mean_error": 0.004359085648148148,
+    "media": [
+      {
+        "codec_name": "prores",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuva444p12le",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      },
+      {
+        "codec_name": "h264",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      }
+    ]
+  },
+  {
+    "name": "orbit-square",
+    "frame_count": 180,
+    "size": [
+      1080,
+      1080
+    ],
+    "alpha_pixels_first": 47007,
+    "alpha_pixels_last": 47252,
+    "movie_alpha_mean_error": 0.0062877229080932785,
+    "media": [
+      {
+        "codec_name": "prores",
+        "width": 1080,
+        "height": 1080,
+        "pix_fmt": "yuva444p12le",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      },
+      {
+        "codec_name": "h264",
+        "width": 1080,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "30/1",
+        "duration": "6.000000",
+        "nb_read_frames": "180"
+      }
+    ]
+  }
+]

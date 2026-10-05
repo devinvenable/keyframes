@@ -1,0 +1,460 @@
+[
+  {
+    "path": "/home/devin/src/blender/laser/gear thing 3d.blend",
+    "frames": [
+      1,
+      259
+    ],
+    "objects": [
+      {
+        "name": "Camera",
+        "type": "CAMERA",
+        "action": "CameraAction"
+      },
+      {
+        "name": "Gear.009",
+        "type": "MESH",
+        "action": "Gear.009Action"
+      },
+      {
+        "name": "Gear.011",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Gear.012",
+        "type": "MESH",
+        "action": "Gear.012Action"
+      },
+      {
+        "name": "Gear.013",
+        "type": "MESH",
+        "action": "Gear.013Action"
+      },
+      {
+        "name": "Gear.014",
+        "type": "MESH",
+        "action": "Gear.014Action"
+      },
+      {
+        "name": "Gear.016",
+        "type": "MESH",
+        "action": "Gear.016Action"
+      },
+      {
+        "name": "Gear.017",
+        "type": "MESH",
+        "action": "Gear.017Action"
+      },
+      {
+        "name": "Gear.018",
+        "type": "MESH",
+        "action": "Gear.018Action"
+      },
+      {
+        "name": "Gear.019",
+        "type": "MESH",
+        "action": "Gear.019Action"
+      },
+      {
+        "name": "Light",
+        "type": "LIGHT",
+        "action": null
+      },
+      {
+        "name": "Point",
+        "type": "LIGHT",
+        "action": null
+      }
+    ],
+    "images": [
+      "//../../../Documents/Blender/hdris/005/005.hdr",
+      "//headless_girl.mp4",
+      "//inyoface.mp4",
+      "",
+      ""
+    ],
+    "actions": [
+      "CameraAction",
+      "Gear.009Action",
+      "Gear.012Action",
+      "Gear.013Action",
+      "Gear.014Action",
+      "Gear.016Action",
+      "Gear.017Action",
+      "Gear.018Action",
+      "Gear.019Action",
+      "Shader NodetreeAction",
+      "Shader NodetreeAction.001"
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/laser/gear thing.blend",
+    "frames": [
+      1,
+      259
+    ],
+    "objects": [
+      {
+        "name": "Camera",
+        "type": "CAMERA",
+        "action": "CameraAction"
+      },
+      {
+        "name": "Gear.009",
+        "type": "MESH",
+        "action": "Gear.009Action"
+      },
+      {
+        "name": "Gear.011",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Gear.012",
+        "type": "MESH",
+        "action": "Gear.012Action"
+      },
+      {
+        "name": "Gear.013",
+        "type": "MESH",
+        "action": "Gear.013Action"
+      },
+      {
+        "name": "Gear.014",
+        "type": "MESH",
+        "action": "Gear.014Action"
+      },
+      {
+        "name": "Gear.016",
+        "type": "MESH",
+        "action": "Gear.016Action"
+      },
+      {
+        "name": "Gear.017",
+        "type": "MESH",
+        "action": "Gear.017Action"
+      },
+      {
+        "name": "Gear.018",
+        "type": "MESH",
+        "action": "Gear.018Action"
+      },
+      {
+        "name": "Gear.019",
+        "type": "MESH",
+        "action": "Gear.019Action"
+      },
+      {
+        "name": "Light",
+        "type": "LIGHT",
+        "action": null
+      },
+      {
+        "name": "Plane",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Point",
+        "type": "LIGHT",
+        "action": null
+      }
+    ],
+    "images": [
+      "//headless_girl.mp4",
+      "//inyoface.mp4",
+      "//../nextup/orbita_4k.exr",
+      ""
+    ],
+    "actions": [
+      "CameraAction",
+      "Gear.009Action",
+      "Gear.012Action",
+      "Gear.013Action",
+      "Gear.014Action",
+      "Gear.016Action",
+      "Gear.017Action",
+      "Gear.018Action",
+      "Gear.019Action",
+      "Shader NodetreeAction",
+      "Shader NodetreeAction.001"
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/laser/just lights.blend",
+    "frames": [
+      1,
+      250
+    ],
+    "objects": [
+      {
+        "name": "Camera",
+        "type": "CAMERA",
+        "action": null
+      },
+      {
+        "name": "Light",
+        "type": "LIGHT",
+        "action": null
+      },
+      {
+        "name": "Plane",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Sphere",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Spot",
+        "type": "LIGHT",
+        "action": null
+      },
+      {
+        "name": "Spot.001",
+        "type": "LIGHT",
+        "action": null
+      },
+      {
+        "name": "Spot.002",
+        "type": "LIGHT",
+        "action": null
+      },
+      {
+        "name": "Spot.003",
+        "type": "LIGHT",
+        "action": null
+      },
+      {
+        "name": "Sun",
+        "type": "LIGHT",
+        "action": null
+      }
+    ],
+    "images": [
+      ""
+    ],
+    "actions": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/lazer 2.blend",
+    "frames": [
+      1,
+      120
+    ],
+    "objects": [
+      {
+        "name": "Camera",
+        "type": "CAMERA",
+        "action": null
+      },
+      {
+        "name": "Cube",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Plane",
+        "type": "MESH",
+        "action": "PlaneAction"
+      },
+      {
+        "name": "Plane.001",
+        "type": "MESH",
+        "action": "PlaneAction.002"
+      }
+    ],
+    "images": [
+      "//clockdivider-long2.png",
+      "",
+      "//twirl.mp4"
+    ],
+    "actions": [
+      "PlaneAction",
+      "PlaneAction.002"
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/laser/lazer.blend",
+    "frames": [
+      1,
+      250
+    ],
+    "objects": [
+      {
+        "name": "BezierCurve",
+        "type": "CURVE",
+        "action": null
+      },
+      {
+        "name": "Camera",
+        "type": "CAMERA",
+        "action": null
+      },
+      {
+        "name": "Cube",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Light",
+        "type": "LIGHT",
+        "action": null
+      }
+    ],
+    "images": [
+      ""
+    ],
+    "actions": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/public domain 10.blend",
+    "frames": [
+      1,
+      120
+    ],
+    "objects": [
+      {
+        "name": "Background",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Camera",
+        "type": "CAMERA",
+        "action": null
+      },
+      {
+        "name": "Plane",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Plane.001",
+        "type": "MESH",
+        "action": "Plane.001Action"
+      },
+      {
+        "name": "Plane.002",
+        "type": "MESH",
+        "action": null
+      }
+    ],
+    "images": [
+      "//../davidsong/0226_Experiments_in_the_Revival_of_Organisms_20_36_46_00.m4v",
+      "//../davidsong/new/blue-glass-8x.png",
+      "//clock2.mp4",
+      "//fairtime.mp4",
+      "//headless_girl.mp4",
+      ""
+    ],
+    "actions": [
+      "Plane.001Action",
+      "Shader NodetreeAction",
+      "Shader NodetreeAction.001",
+      "Shader NodetreeAction.002",
+      "Shader NodetreeAction.003"
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/laser/public domain 11.blend",
+    "frames": [
+      1,
+      120
+    ],
+    "objects": [
+      {
+        "name": "Background",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Camera",
+        "type": "CAMERA",
+        "action": null
+      },
+      {
+        "name": "Plane",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Plane.001",
+        "type": "MESH",
+        "action": "Plane.001Action"
+      },
+      {
+        "name": "Plane.002",
+        "type": "MESH",
+        "action": null
+      }
+    ],
+    "images": [
+      "//../davidsong/0226_Experiments_in_the_Revival_of_Organisms_20_36_46_00.m4v",
+      "//../davidsong/new/blue-glass-8x.png",
+      "//clocky.mp4",
+      "//headless_girl.mp4",
+      "",
+      "//twirl.mp4"
+    ],
+    "actions": [
+      "Plane.001Action",
+      "Shader NodetreeAction",
+      "Shader NodetreeAction.001",
+      "Shader NodetreeAction.002",
+      "Shader NodetreeAction.003"
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/laser/public domain 12.blend",
+    "frames": [
+      1,
+      120
+    ],
+    "objects": [
+      {
+        "name": "Background",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Camera",
+        "type": "CAMERA",
+        "action": null
+      },
+      {
+        "name": "Plane",
+        "type": "MESH",
+        "action": null
+      },
+      {
+        "name": "Plane.001",
+        "type": "MESH",
+        "action": "Plane.001Action"
+      },
+      {
+        "name": "Plane.002",
+        "type": "MESH",
+        "action": null
+      }
+    ],
+    "images": [
+      "//../davidsong/0226_Experiments_in_the_Revival_of_Organisms_20_36_46_00.m4v",
+      "//../davidsong/new/att.mp4",
+      "//../davidsong/new/att.mp4",
+      "//../davidsong/new/att.mp4",
+      "//../davidsong/new/blue-glass-8x.png",
+      ""
+    ],
+    "actions": [
+      "Plane.001Action",
+      "Shader NodetreeAction",
+      "Shader NodetreeAction.001",
+      "Shader NodetreeAction.002",
+      "Shader NodetreeAction.003"
+    ]
+  }
+]
