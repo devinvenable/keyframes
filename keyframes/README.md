@@ -288,6 +288,55 @@ ends the active scene falls straight through to the activation roll, so a
 new scene can start on the very note that ended the old one — no one-frame
 full-screen flash between back-to-back scenes.
 
+## Overlays (periodic alpha titles)
+
+Overlays are transparent title animations composited **on top of** whatever
+is showing — the normal view *or* an active scene — never replacing either
+and never touching scene/trigger logic. Unlike scenes, which are note-driven,
+overlays run on the **wall clock**: after a random interval (45–120 s by
+default) the next overlay appears, plays its animation a few loops (2–3 by
+default), disappears, and the next interval starts. Variants rotate
+round-robin in name order, or randomly per cycle with `shuffle`.
+
+Overlays ship disabled. To enable: edit `overlays.json` and set
+`"enabled": true`.
+
+```json
+{
+  "enabled": false,
+  "dir": "overlays",
+  "fps": 30,
+  "interval_min_s": 45,
+  "interval_max_s": 120,
+  "loops_min": 2,
+  "loops_max": 3,
+  "shuffle": false
+}
+```
+
+All keys are optional; missing or invalid values fall back to the defaults
+above. A bank may carry its own `overlays.json` (same fallback rule as
+`scenes.json`); a bank switch adopts the new settings but never cancels a
+showing already on screen.
+
+Overlay media lives in `overlays/` (or `dir`, resolved relative to the app
+folder): **each subdirectory is one variant, holding an RGBA PNG sequence**
+sorted by filename (symlinked directories work — the six Clock Divider
+titles are installed as symlinks to `generated/clockdivider/<variant>/png/`).
+PNG sequences are the one reliable alpha source: pygame cannot decode ProRes
+4444 and cv2 drops alpha on most video codecs. Frames composite fit-inside
+at native aspect, centered, never cropped — square titles sit centered on a
+16:9 screen, wide ones fill it edge to edge.
+
+Performance: frames are decoded lazily on a 2-thread pool into a small
+in-order ring buffer — nothing is preloaded (a naive preload is ~1.5 GB per
+1080p variant) and resident decode memory is hard-capped at 160 MB (~66 MB
+actual at 1080p). One thread decodes a 1080p RGBA PNG in ~36 ms, slower than
+the 33 ms frame interval at 30 fps, but cv2 releases the GIL so two workers
+sustain ~18 ms effective. The overlay is wall-clock paced at its own fps; a
+frame the pool hasn't finished yet holds the previous one — the base layer
+never waits on the decoder.
+
 ## Media folder
 
 Drop any images or videos into the `images/` directory — any filenames, any order. Supported formats:
@@ -312,12 +361,15 @@ keyframes/                  # or the folder beside Keyframes.exe
   images/                   # original library: the implicit "default" bank
   mapping.json              # default bank assignments
   scenes.json               # global scene settings
+  overlays.json             # global overlay settings
+  overlays/                 # overlay variants (RGBA PNG sequence per subdir)
   banks/
     insect-war-aged/
       insect-war-03-tower-10s-aged.gif
       ...
       mapping.json          # this bank's assignments only
       scenes.json           # optional override of global scene settings
+      overlays.json         # optional override of global overlay settings
 ```
 
 Launch with `python main.py --bank insect-war-aged`. With no `--bank` flag

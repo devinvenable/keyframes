@@ -47,3 +47,6 @@ recordings/
 generated/
 keyframes/retired/
 keyframes/mapping.json.bak-*
+
+# Overlay media (installed locally, e.g. symlinks to generated/clockdivider renders)
+keyframes/overlays/

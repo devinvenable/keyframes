@@ -44,6 +44,9 @@ MAPPING_PATH = str(APP_DIR / 'mapping.json')
 # rewrites mapping.json from the note->filename dict alone, so any config
 # block stored there would be silently dropped on the first reconcile.
 SCENES_CONFIG_PATH = str(APP_DIR / 'scenes.json')
+# Overlay settings are a sibling config for the same reason — mapping.json is
+# reserved for the note->filename manifest alone (save_mapping() rewrites it).
+OVERLAYS_CONFIG_PATH = str(APP_DIR / 'overlays.json')
 BANKS_DIR = APP_DIR / 'banks'
 BANK_KEYS = {pygame.K_F5: -1, pygame.K_F6: 1}
 BANK_NOTICE_SECONDS = 2.0
@@ -491,6 +494,8 @@ class MediaBanks:
     def __init__(self, start_note, end_note):
         self.start_note, self.end_note = start_note, end_note
         self.default_paths = (IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH)
+        self.default_overlays = OVERLAYS_CONFIG_PATH
+        self.overlays_config = None  # published by load()
         self.name = 'default'
         self.notice = ''
         self.notice_until = 0
@@ -511,17 +516,30 @@ class MediaBanks:
         return (str(folder), str(folder / 'mapping.json'),
                 str(scenes) if scenes.exists() else self.default_paths[2])
 
+    def overlays_path(self, name):
+        """Per-bank overlays.json when present, else the global one — the
+        same fallback rule paths() applies to scenes.json."""
+        if name != 'default':
+            candidate = Path(BANKS_DIR) / name / 'overlays.json'
+            if candidate.exists():
+                return str(candidate)
+        return self.default_overlays
+
     def load(self, name, *, startup=False):
-        global IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH
+        global IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH, OVERLAYS_CONFIG_PATH
         media_dir, mapping_path, scenes_path = self.paths(name)
+        overlays_path = self.overlays_path(name)
         media = load_media(self.start_note, self.end_note, media_dir, mapping_path)
         # Keep the historical no-bank startup path (including lazy thumbnails).
         cells = None if startup and name == 'default' else build_grid_cells(
             media or {}, (GRID_THUMB_W, GRID_THUMB_H), media_dir)
         config = load_scenes_config(scenes_path)
+        overlays_config = load_overlays_config(overlays_path)
         # Nothing below can fail while loading/decoding a bank. Publish only
         # after every new cache/config is ready, before another event is handled.
         IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH = media_dir, mapping_path, scenes_path
+        OVERLAYS_CONFIG_PATH = overlays_path
+        self.overlays_config = overlays_config
         self.name = name
         return media, cells, config
 
@@ -1464,6 +1482,379 @@ class TimedConcentricRingsScene(ConcentricRingsScene):
         return now - self.activated_at >= self.DURATION_SECONDS
 
 
+# ---------------------------------------------------------------------------
+# Periodic alpha overlays — transparent title animations composited ON TOP of
+# whatever is showing (the normal view or an active scene). Unlike scenes,
+# which are note-driven, overlays activate on the WALL CLOCK: after a random
+# interval the next variant plays a few loops and disappears. The whole
+# feature hangs off the single current_state['overlay'] hook, rendered last
+# in draw_performance_frame; it never touches scene or trigger logic.
+
+DEFAULT_OVERLAYS_CONFIG = {
+    'enabled': False,
+    'dir': 'overlays',
+    'fps': 30.0,
+    'interval_min_s': 45.0,
+    'interval_max_s': 120.0,
+    'loops_min': 2,
+    'loops_max': 3,
+    'shuffle': False,
+}
+# Hard ceiling for decoded overlay frames resident in RAM: the in-order ring
+# plus one in-flight frame per decode worker. Frames are decoded lazily from
+# the PNG sequence — nothing is preloaded (a naive preload of one 1080p
+# variant is ~1.5GB). 1080p RGBA is ~8.3MB/frame -> ~66MB steady state; 4K is
+# ~33MB/frame and the ring floor of 2 still fits under the cap.
+OVERLAY_MAX_CACHE_BYTES = 160 * 1024 * 1024
+OVERLAY_DECODE_WORKERS = 2
+OVERLAY_RING_MIN = 2
+OVERLAY_RING_MAX = 6
+
+
+def load_overlays_config(path=None):
+    """Read overlays.json, tolerating a missing or malformed file.
+
+    Same contract as load_scenes_config(): always returns a fully-populated
+    dict (DEFAULT_OVERLAYS_CONFIG keys), with wrong-typed or out-of-range
+    values falling back to defaults so a hand-edit typo can't brick startup.
+    An inverted interval or loop range is clamped to the min."""
+    if path is None:
+        path = OVERLAYS_CONFIG_PATH
+    config = dict(DEFAULT_OVERLAYS_CONFIG)
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            raw = json.load(fh)
+    except (FileNotFoundError, ValueError, OSError):
+        return config
+    if not isinstance(raw, dict):
+        return config
+    for key in ('enabled', 'shuffle'):
+        if isinstance(raw.get(key), bool):
+            config[key] = raw[key]
+    directory = raw.get('dir')
+    if isinstance(directory, str) and directory.strip():
+        config['dir'] = directory
+    for key in ('interval_min_s', 'interval_max_s', 'fps'):
+        value = raw.get(key)
+        if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and value > 0):
+            config[key] = float(value)
+    for key in ('loops_min', 'loops_max'):
+        value = raw.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+            config[key] = value
+    config['interval_max_s'] = max(config['interval_min_s'],
+                                   config['interval_max_s'])
+    config['loops_max'] = max(config['loops_min'], config['loops_max'])
+    return config
+
+
+def resolve_overlays_dir(dir_value):
+    """Overlay media directory as a Path; relative values live under APP_DIR."""
+    path = Path(dir_value or DEFAULT_OVERLAYS_CONFIG['dir'])
+    return path if path.is_absolute() else APP_DIR / path
+
+
+def discover_overlays(dir_value):
+    """Overlay variants: each subdirectory holding a PNG sequence is one.
+
+    RGBA PNG sequences are the one reliable alpha source (pygame can't
+    decode ProRes 4444 and cv2 drops alpha on most video codecs). Frames
+    sort by filename; symlinked directories work. A missing dir just means
+    no overlays — the feature idles rather than erroring."""
+    root = resolve_overlays_dir(dir_value)
+    variants = []
+    if not root.is_dir():
+        return variants
+    for entry in sorted(root.iterdir(), key=lambda p: p.name):
+        if not entry.is_dir():
+            continue
+        frames = sorted(str(p) for p in entry.iterdir()
+                        if p.is_file() and p.suffix.lower() == '.png')
+        if frames:
+            variants.append({'name': entry.name, 'frames': frames})
+    return variants
+
+
+def compute_overlay_placement(native_size, target_size):
+    """Fit-inside box for an overlay frame: scaled (up or down) to touch the
+    screen inside its native aspect and centered — overlays are never
+    cropped, so a square title sits centered on a 16:9 screen while a wide
+    one fills it edge to edge. Returns ((w, h), (x, y))."""
+    fw, fh = native_size
+    tw, th = target_size
+    if fw <= 0 or fh <= 0 or tw <= 0 or th <= 0:
+        return (0, 0), (0, 0)
+    scale = min(tw / fw, th / fh)
+    w = max(1, int(round(fw * scale)))
+    h = max(1, int(round(fh * scale)))
+    return (w, h), ((tw - w) // 2, (th - h) // 2)
+
+
+def overlay_ring_frames(frame_bytes):
+    """Ring size whose worst-case residency (ring + one in-flight frame per
+    worker) stays under OVERLAY_MAX_CACHE_BYTES, clamped to [2, 6]."""
+    if frame_bytes <= 0:
+        return OVERLAY_RING_MIN
+    budget = OVERLAY_MAX_CACHE_BYTES // frame_bytes - OVERLAY_DECODE_WORKERS
+    return max(OVERLAY_RING_MIN, min(OVERLAY_RING_MAX, budget))
+
+
+class OverlayDecoder:
+    """Decodes a PNG sequence (repeated ``loops`` times) on a small thread
+    pool, delivering RGBA frames strictly in order through a bounded ring.
+
+    Why a pool: one thread decodes a 1080p RGBA PNG in ~36ms on the dev box
+    — slower than the 33ms frame interval at 30fps — but cv2 releases the
+    GIL, so two workers sustain ~18ms/frame effective throughput. Workers
+    claim frame indices under the ring-depth backpressure gate, decode
+    outside the lock, and park results keyed by index; get_nowait() emits
+    them in order. The ring plus in-flight frames is the entire memory
+    footprint (see overlay_ring_frames). The render thread only ever calls
+    get_nowait(): a frame that isn't decoded yet returns None and the caller
+    holds its previous surface — the base layer NEVER waits on the pool."""
+
+    def __init__(self, frames, loops, out_size,
+                 workers=OVERLAY_DECODE_WORKERS, ring_frames=None):
+        self._paths = list(frames)
+        self._total = len(self._paths) * max(1, loops)
+        self._out_size = out_size
+        if ring_frames is None:
+            ring_frames = overlay_ring_frames(out_size[0] * out_size[1] * 4)
+        self._ring = max(1, ring_frames)
+        self._cond = threading.Condition()
+        self._next_claim = 0   # next frame index a worker may take
+        self._next_emit = 0    # next frame index the consumer wants
+        self._ready = {}       # decoded, waiting for in-order emission
+        self._stopped = False
+        self._threads = [threading.Thread(target=self._run, daemon=True)
+                         for _ in range(max(1, workers))]
+        for thread in self._threads:
+            thread.start()
+
+    def _decode(self, path):
+        """One frame: PNG file -> PREMULTIPLIED RGBA bytes at the output
+        size. Premultiplying here (off the render thread) lets render blit
+        with BLEND_PREMULTIPLIED, measurably cheaper at 1080p than a
+        straight per-pixel-alpha blit. Returns None for an unreadable file
+        (the frame is skipped)."""
+        frame = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+        if frame is None:
+            return None
+        if frame.dtype != np.uint8:
+            frame = (frame >> 8).astype(np.uint8) if frame.dtype == np.uint16 \
+                else frame.astype(np.uint8)
+        if frame.ndim == 2:
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGRA)
+        elif frame.shape[2] == 3:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+        tw, th = self._out_size
+        if (frame.shape[1], frame.shape[0]) != (tw, th):
+            frame = cv2.resize(frame, (tw, th), interpolation=cv2.INTER_AREA)
+        rgba = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGBA)
+        # Premultiply: c' = c * (a+1) >> 8 (exact at a=255, 0 at a=0).
+        alpha = rgba[:, :, 3:4].astype(np.uint16) + 1
+        rgba[:, :, :3] = (rgba[:, :, :3].astype(np.uint16) * alpha) >> 8
+        return rgba.tobytes()
+
+    def _run(self):
+        while True:
+            with self._cond:
+                while (not self._stopped and self._next_claim < self._total
+                       and self._next_claim - self._next_emit >= self._ring):
+                    self._cond.wait()
+                if self._stopped or self._next_claim >= self._total:
+                    return
+                index = self._next_claim
+                self._next_claim += 1
+            data = self._decode(self._paths[index % len(self._paths)])
+            with self._cond:
+                if self._stopped:
+                    return
+                self._ready[index] = data
+                self._cond.notify_all()
+
+    def get_nowait(self):
+        """The next in-order frame's RGBA bytes, or None if not decoded yet.
+        Unreadable frames were parked as None and are skipped here."""
+        with self._cond:
+            while self._next_emit in self._ready:
+                data = self._ready.pop(self._next_emit)
+                self._next_emit += 1
+                self._cond.notify_all()
+                if data is not None:
+                    return data
+            return None
+
+    def finished(self):
+        """True once every frame has been emitted (or skipped)."""
+        with self._cond:
+            return self._next_emit >= self._total and not self._ready
+
+    def release(self):
+        # Join briefly so no worker is still inside cv2 when the interpreter
+        # tears down (aborts the process). At a showing's natural end the
+        # workers have already exited; a mid-show release (quit, early stop)
+        # waits at most about one decode.
+        with self._cond:
+            self._stopped = True
+            self._ready.clear()
+            self._cond.notify_all()
+        for thread in self._threads:
+            thread.join(timeout=1.0)
+
+
+class OverlayPlayback:
+    """One showing of an overlay: N loops of its PNG sequence, wall-clock
+    paced at the media's fps, composited fit-inside and centered.
+
+    Pacing follows VideoPlayer: a new frame is consumed only when due by
+    ``now``; a frame the decoder hasn't finished yet holds the previous
+    surface and retries next tick (task-222 pattern), so decoder stalls can
+    never stutter the base layer. After a stall the due-clock resyncs
+    instead of bursting. done() flips once the final frame has been shown
+    for its full interval — the overlay then disappears entirely (no held
+    frame), unlike a finished scene."""
+
+    def __init__(self, name, frames, loops, target_size, now,
+                 fps=None, clock=time.monotonic, decoder_factory=None):
+        self.name = name
+        self.clock = clock
+        fps = fps if fps and fps > 0 else DEFAULT_OVERLAYS_CONFIG['fps']
+        self.interval = 1.0 / fps
+        self.surface = None
+        self._due = now
+        self._finished = False
+        self.decoder = None
+        self.size = (0, 0)
+        first = cv2.imread(frames[0], cv2.IMREAD_UNCHANGED) if frames else None
+        if first is None:
+            # Unreadable media fails closed: born done, the scheduler drops
+            # it and simply schedules the next interval.
+            self._finished = True
+            return
+        native = (first.shape[1], first.shape[0])
+        self.size, _ = compute_overlay_placement(native, target_size)
+        factory = decoder_factory or OverlayDecoder
+        self.decoder = factory(frames, loops, self.size)
+
+    def done(self, now=None):
+        return self._finished
+
+    def render(self, screen, target_size, now):
+        if self._finished:
+            return
+        if now >= self._due:
+            if self.decoder.finished():
+                self._finished = True
+                return
+            data = self.decoder.get_nowait()
+            if data is not None:
+                surface = pygame.image.frombuffer(data, self.size, 'RGBA')
+                if pygame.display.get_init() and pygame.display.get_surface():
+                    surface = surface.convert_alpha()
+                self.surface = surface
+                self._due += self.interval
+                if self._due < now:
+                    # Behind after a stall (grid view, slow disk): resync
+                    # rather than burst through the backlog.
+                    self._due = now + self.interval
+            # else: frame not decoded yet — hold the previous surface and
+            # leave _due alone so the next tick retries immediately.
+        if self.surface is not None:
+            x = (target_size[0] - self.size[0]) // 2
+            y = (target_size[1] - self.size[1]) // 2
+            # Frames arrive premultiplied from the decoder (see _decode).
+            screen.blit(self.surface, (x, y),
+                        special_flags=pygame.BLEND_PREMULTIPLIED)
+
+    def release(self):
+        if self.decoder is not None:
+            self.decoder.release()
+
+
+class OverlayScheduler:
+    """Wall-clock periodic activation of overlays.
+
+    After a random interval in [interval_min_s, interval_max_s] the next
+    variant plays loops_min..loops_max loops and disappears; the following
+    interval starts when it ends. Variants rotate round-robin in name order
+    (re-shuffled each full cycle when ``shuffle``). Lives in
+    current_state['overlay'] and renders LAST in draw_performance_frame —
+    on top of the normal view or an active scene, never replacing either.
+    A bank switch reconfigures scheduling, but an active showing always
+    runs to completion (matching scenes' can't-cancel-mid-flight rule)."""
+
+    def __init__(self, config, variants, now, rng=None,
+                 clock=time.monotonic, playback_factory=None):
+        self.rng = rng if rng is not None else random.Random()
+        self.clock = clock
+        self.playback_factory = playback_factory or OverlayPlayback
+        self.active = None
+        self.config = dict(DEFAULT_OVERLAYS_CONFIG)
+        self.variants = []
+        self._order = []
+        self._pos = 0
+        self._next_at = None
+        self.reconfigure(config, variants, now)
+
+    def _armed(self):
+        return bool(self.config.get('enabled') and self.variants)
+
+    def _interval(self):
+        lo = self.config['interval_min_s']
+        hi = max(lo, self.config['interval_max_s'])
+        return lo + self.rng.random() * (hi - lo)
+
+    def reconfigure(self, config, variants, now):
+        """Adopt a new config/media set (bank switch). Round-robin order
+        resets; an active showing keeps playing and its end schedules the
+        next activation under the new settings."""
+        self.config = config if config else dict(DEFAULT_OVERLAYS_CONFIG)
+        self.variants = list(variants)
+        self._order = []
+        self._pos = 0
+        self._next_at = (now + self._interval()
+                         if self._armed() and self.active is None else None)
+
+    def _next_variant(self):
+        if self._pos >= len(self._order):
+            self._order = list(range(len(self.variants)))
+            if self.config.get('shuffle'):
+                self.rng.shuffle(self._order)
+            self._pos = 0
+        variant = self.variants[self._order[self._pos]]
+        self._pos += 1
+        return variant
+
+    def render(self, screen, target_size, now):
+        if self.active is not None:
+            if not self.active.done(now):
+                self.active.render(screen, target_size, now)
+                return
+            self.active.release()
+            self.active = None
+            self._next_at = now + self._interval() if self._armed() else None
+        if self._next_at is None or now < self._next_at:
+            return
+        self._next_at = None
+        if not self._armed():
+            return
+        loops = self.rng.randint(self.config['loops_min'],
+                                 max(self.config['loops_min'],
+                                     self.config['loops_max']))
+        variant = self._next_variant()
+        self.active = self.playback_factory(
+            variant['name'], variant['frames'], loops, target_size, now,
+            fps=self.config.get('fps'), clock=self.clock)
+        self.active.render(screen, target_size, now)
+
+    def release(self):
+        if self.active is not None:
+            self.active.release()
+            self.active = None
+
+
 def displayed_media_source(current_state):
     """A frame source for what is on screen right now, or None if nothing is.
 
@@ -1569,16 +1960,19 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
     scene or media. Dropping the scene here instead let the at-rest
     full-screen view (a DIFFERENT, later-triggered key: normal state keeps
     updating underneath) flash in the gap between the final fade completing
-    on wall-clock and the next trigger arriving."""
+    on wall-clock and the next trigger arriving.
+
+    The periodic alpha overlay (current_state['overlay'], an
+    OverlayScheduler) draws LAST, on top of whichever base just rendered —
+    normal view or scene — and never replaces either."""
+    if now is None:
+        now = time.monotonic()
     scene = current_state.get('active_scene')
     if scene is not None:
-        if now is None:
-            now = time.monotonic()
         scene.render(screen, target_size, now)
-        return
-    zoom = effective_zoom_scale(current_state)
-    pan = current_state.get('pan', 0.0)
-    if current_state['video_player']:
+    elif current_state['video_player']:
+        zoom = effective_zoom_scale(current_state)
+        pan = current_state.get('pan', 0.0)
         frame_surface = current_state['video_player'].get_frame()
         if frame_surface:
             screen.blit(
@@ -1589,6 +1983,8 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
         else:
             screen.fill((0, 0, 0))
     elif current_state['surface']:
+        zoom = effective_zoom_scale(current_state)
+        pan = current_state.get('pan', 0.0)
         surface = current_state['surface']
         if current_state.get('inverted') and current_state.get('surface_media'):
             surface = inverted_surface(current_state['surface_media'])
@@ -1597,6 +1993,9 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
         screen.blit(scaled, (0, 0))
     else:
         screen.fill((0, 0, 0))
+    overlay = current_state.get('overlay')
+    if overlay is not None:
+        overlay.render(screen, target_size, now)
 
 
 def resolve_midi_log_path(cli_value, environ=None):
@@ -2701,6 +3100,19 @@ def main():
               f"trigger ({', '.join(sorted(SCENE_REGISTRY))}) — see scenes.json")
     else:
         print("Scenes disabled (scenes.json)")
+    overlays_config = banks.overlays_config or load_overlays_config()
+    overlay_variants = discover_overlays(overlays_config['dir'])
+    state['overlay'] = OverlayScheduler(overlays_config, overlay_variants,
+                                        time.monotonic())
+    if overlays_config['enabled'] and overlay_variants:
+        print(f"Overlays enabled: {len(overlay_variants)} variant(s), every "
+              f"{overlays_config['interval_min_s']:.0f}-"
+              f"{overlays_config['interval_max_s']:.0f}s — see overlays.json")
+    elif overlays_config['enabled']:
+        print("Overlays enabled but no media found in "
+              f"{resolve_overlays_dir(overlays_config['dir'])}")
+    else:
+        print("Overlays disabled (overlays.json)")
     note_hit_counts = {}
     latch_enabled = not args.no_latch
     latch_notice_until = 0
@@ -2789,6 +3201,11 @@ def main():
                         print(banks.notice)
                         continue
                     note_to_media, grid_cells, scenes_config = loaded
+                    overlays_config = banks.overlays_config
+                    state['overlay'].reconfigure(
+                        overlays_config,
+                        discover_overlays(overlays_config['dir']),
+                        time.monotonic())
                     note_to_media = note_to_media or {}
                     if grid_preview:
                         grid_preview['player'].release()
@@ -2984,6 +3401,8 @@ def main():
         state['video_player'].release()
     if state['active_scene']:
         state['active_scene'].release()
+    if state.get('overlay'):
+        state['overlay'].release()
     if grid_preview:
         grid_preview['player'].release()
     pygame.quit()

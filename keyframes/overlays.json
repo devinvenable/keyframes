@@ -1,0 +1,10 @@
+{
+  "enabled": false,
+  "dir": "overlays",
+  "fps": 30,
+  "interval_min_s": 45,
+  "interval_max_s": 120,
+  "loops_min": 2,
+  "loops_max": 3,
+  "shuffle": false
+}
