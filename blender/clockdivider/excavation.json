@@ -1,0 +1,1354 @@
+[
+  {
+    "path": "/home/devin/src/blender/00 Residential Buildings Set Array.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/01 Residential Buildings Set.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/02 Residential Buildings Set BI Version.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/03 Residential Buildings Set Blender Game Engine Version.blend",
+    "texts": [
+      {
+        "name": "Text.001",
+        "body": "Text",
+        "font": "<builtin>",
+        "font_name": "Bfont"
+      }
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/04 Residential Buildings Set Cycles Version.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/green machine.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/laser noise stuff I guess.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/laser noise.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/public domain 10.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/public domain 10redo.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/red moon.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/red to blue moon.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/sci guys.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/the coolest.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/106bpm/three pane.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Baby cry.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Baby head Mod.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Baby head.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Baby water.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Jelly/Qualle.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Jelly/gantz-super-suit-advanced.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Jelly/jellyfish-from-the-ocean-to-you.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Jelly/pinkjelly.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/LowPoly Character-RIGGED.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/PROPHET5rev3 hacked.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/PROPHET5rev3.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Prophet Revisited.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/4d_vid.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/brushes/SophieJantak_watercolourbrushes.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/brushes/gp_brushes_and_materials.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/christmas playback.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/christmas.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/colorgirl.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/female-character.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/fish/panda.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/fish/shubunkin-common-goldfish.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/fog.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/funkyface.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/geometry test.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/gift-boxes-with-christmas-ornaments.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/imported Christmas Scene.blend",
+    "texts": [
+      {
+        "name": "Text.018",
+        "body": "Miller",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.017",
+        "body": "Grayson",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.016",
+        "body": "Don",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.015",
+        "body": "Stephanie",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.014",
+        "body": "Tommy",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.013",
+        "body": "Babs",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.012",
+        "body": "Evan",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.011",
+        "body": "Noah",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.010",
+        "body": "Sheridan",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.009",
+        "body": "Scarlett",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.008",
+        "body": "Alexandria",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.007",
+        "body": "Jerrel",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.006",
+        "body": "Jupitera",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.005",
+        "body": "Jonah",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.004",
+        "body": "Lene'",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.002",
+        "body": "Cheryl",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text.001",
+        "body": "Tarynn",
+        "font": "/home/devin/src/blender/Random/RothenburgDecorative.ttf",
+        "font_name": "Rothenburg Decorative Regular"
+      },
+      {
+        "name": "Text",
+        "body": "Merry Christmas Family!",
+        "font": "/home/devin/src/blender/Random/Beyond Wonderland/Beyond Wonderland.ttf",
+        "font_name": "Beyond Wonderland Regular"
+      }
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/Random/lighttest.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/lowPoly/airplane.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/lowPoly/blue-low-poly-car.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/lowPoly/christmas-tree deconstruct.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/lowPoly/christmas-tree.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/lowPoly/funko-pop-princess.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/lowPoly/low-poly-farmer.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/lowPoly/low-poly-hand.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/many girls.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/monkey physics.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/next physics.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/panda1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/panda2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/phi-thuy\u1ec1n-19.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/scaling rudolph.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Random/volumetric lighting.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/RiggedWalkingMan.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/Sandals.blend",
+    "texts": [
+      {
+        "name": "Text.002",
+        "body": "US 6,5",
+        "font": "<builtin>",
+        "font_name": "Bfont.001"
+      },
+      {
+        "name": "Text.001",
+        "body": "23",
+        "font": "<builtin>",
+        "font_name": "Bfont.001"
+      },
+      {
+        "name": "Text",
+        "body": "EU",
+        "font": "<builtin>",
+        "font_name": "Bfont.001"
+      }
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/SimpleBody.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/WestPark/sahip.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/WestPark/space-spy4.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/WhipperNude.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/baby plays with fire.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/ball test.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/barroom.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/bear video.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/beer buildings.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/beer1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/bits.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/boolean animation.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/bottles.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/boxes.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/brick-appartments.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/bumpy.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/camera on curve look at block.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/carnival.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/chris.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/circlepath.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/city-1.blend",
+    "texts": [
+      {
+        "name": "Text.009",
+        "body": "The Googs!",
+        "font": "/home/devin/src/blender/fonts/BemboStd.otf",
+        "font_name": "BemboStd"
+      },
+      {
+        "name": "Text.006",
+        "body": "4.60 de",
+        "font": "/home/devin/src/blender/fonts/OCRAStd.otf",
+        "font_name": "OCRAStd"
+      },
+      {
+        "name": "Text.005",
+        "body": "3.44 pr",
+        "font": "/home/devin/src/blender/fonts/OCRAStd.otf",
+        "font_name": "OCRAStd"
+      },
+      {
+        "name": "Text.004",
+        "body": "2.73 rg",
+        "font": "/home/devin/src/blender/fonts/OCRAStd.otf",
+        "font_name": "OCRAStd"
+      },
+      {
+        "name": "Text.003",
+        "body": "Odgamnit Consulting LLC.",
+        "font": "/home/devin/src/blender/fonts/BemboStd.otf",
+        "font_name": "BemboStd"
+      },
+      {
+        "name": "Text.002",
+        "body": "Barf's Beer Den",
+        "font": "/home/devin/src/blender/fonts/MesquiteStd.otf",
+        "font_name": "MesquiteStd"
+      },
+      {
+        "name": "Text.001",
+        "body": "Moron Financial",
+        "font": "/home/devin/src/blender/fonts/AGaramondPro-Bold.otf",
+        "font_name": "AGaramondPro-Bold"
+      },
+      {
+        "name": "Text",
+        "body": "///FAT GORDON'S GASOLINE AND BEEF JERKY///",
+        "font": "/home/devin/src/blender/fonts/UniversLTStd-BoldObl.otf",
+        "font_name": "UniversLTStd"
+      }
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/clip.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/code/googly.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/code/knipple1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/code/nah.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/colorone.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/commodore64.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/composite work.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/crazy feeling video 2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/curving.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/cylinder1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/dancing_mushroom/dancing_mushroom.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/davidsong/1-edgeloops.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/davidsong/2-eye.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/davidsong/3-nose.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/davidsong/4-mouth.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/davidsong/6-Final.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/davidsong/MaleHead_Part5.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/davidsong/spin head.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/3camera.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/clip1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/delusions remix.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/delusions video.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/fourteen.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/master_gothic2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/master_gothic3.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/nine.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/delusions/one camera.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/dolphin.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/experiment2d3d.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/extruding.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/face water attempt.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/face.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/faceproject/boolean animation.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/faceproject/head 2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/faceproject/head-base-mesh-v12.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/faceproject/head-base-mesh-v13.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/faceproject/head-base-mesh-v14.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/faceproject/head-base-mesh-v15.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/faceproject/texture.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/fedora.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/final video projected.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/first2D.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/found_telescope.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/frankie .blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/furst.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gare-de-blenderville.blend",
+    "texts": [
+      {
+        "name": "Text.001",
+        "body": "BLENDERVILLE",
+        "font": "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        "font_name": "Ubuntu"
+      },
+      {
+        "name": "Text",
+        "body": "BLENDERVILLE",
+        "font": "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        "font_name": "Ubuntu"
+      }
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/gearbundle.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/glass hat cartoon.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/glass hat.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/glow_emmission_shader_bloom_eevee.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gothic/Rose Window BS.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gothic/interesting 2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gothic/interesting.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gothic/video edit.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gpt/Video1/cube1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gpt/Video1/face.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gpt/Video1/first.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gpt/Video1/quick1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gpt/Video1/quick2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gpt/Video1/quick3.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gpt/Video1/quick4.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/gpt/Video1/youtube.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/great color.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/greek.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/guy with bones.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/head 2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/head shape.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/hmmVideo.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/hologram.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/image extrude experiment.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/instructional1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/jello movie.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/jello1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/gear thing 3d.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/gear thing.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/just lights.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/lazer 2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/lazer.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/public domain 10.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/public domain 11.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/laser/public domain 12.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/light cube.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/lowpoly_brain.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/male model.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/man in kitchen.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/man walking draw.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/man.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/master_gothic.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/model.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/money.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/more bear.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/move bottles.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/moviemix.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/multi building from scratch.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/music-visualization-city.blend",
+    "texts": [
+      {
+        "name": "Text.012",
+        "body": "Civilization Building",
+        "font": "C:/Windows/Fonts/AdobeArabic-Bold.otf",
+        "font_name": "AdobeArabic-Bold"
+      },
+      {
+        "name": "Text.011",
+        "body": "SUPER BOYS",
+        "font": "C:/Windows/Fonts/ariblk.ttf",
+        "font_name": "Arial-Black"
+      },
+      {
+        "name": "Text.008",
+        "body": "TITAN",
+        "font": "<builtin>",
+        "font_name": "Bfont.004"
+      },
+      {
+        "name": "Text.007",
+        "body": "HALLUCI GEN",
+        "font": "C:/Windows/Fonts/GamecubenDualset-L85D.ttf",
+        "font_name": "GAMECUBENDualSet"
+      },
+      {
+        "name": "Text.006",
+        "body": "JAVA LOUNGE",
+        "font": "<builtin>",
+        "font_name": "Bfont.004"
+      },
+      {
+        "name": "Text.005",
+        "body": "Whiterun",
+        "font": "<builtin>",
+        "font_name": "Bfont.004"
+      },
+      {
+        "name": "Text.003",
+        "body": "M\nA\nX\nY",
+        "font": "<builtin>",
+        "font_name": "Bfont.004"
+      },
+      {
+        "name": "Text.002",
+        "body": "J\nU\nM\nP\nJ\nE\nT",
+        "font": "C:/Windows/Fonts/GamecubenDualset-L85D.ttf",
+        "font_name": "GAMECUBENDualSet"
+      },
+      {
+        "name": "Text",
+        "body": "Bake music to this empty object",
+        "font": "<builtin>",
+        "font_name": "Bfont.004"
+      }
+    ]
+  },
+  {
+    "path": "/home/devin/src/blender/musichistory.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/musicloops.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/musicloops2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/myclyander.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/new rack and pinon.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/newtest.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/newtest2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/newtest3.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/nextup/Mechanical City 0.15.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/nextup/gear thing.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/one yey.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/orchid-full.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/orchid-insta.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/orchid.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/parallax.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/peter sketch.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/point cloud1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/proximity test.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 10.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 3.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 4.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 5.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 6.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 7.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 8.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain 9.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/public domain.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/py_animate.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/can  track.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/clip1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/clip2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/hdri-alone.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/hi res jelly.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/jelly_do_over.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/mix-setup-2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/mix-setup.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/movieeditor.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/solved.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/standing tall.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/the-video.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/tracking2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/refinery/walk.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/render city.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/rigged_woman.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/robott.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/rocz3d_fedora.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/room with door ajar.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/saved miller.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/schoolBus.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/septuapus.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/shader tests.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/simple bone.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sketches.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sleek transition.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sleek.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sleek10.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sleek2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sleek3d.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sleek77.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/spaceball.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/squeeze bear.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sulfer_clouds.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sunglasses modeling.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/sunglasses.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/super cool ball test 2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/super cool ball test.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/suspended clip 2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/suspended clip.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/swamp/evolve.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/swamp/head around.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/swamp/stress.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/test surface.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/test.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/textures experiment.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/toon move bottles.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/another try.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/cubes-in-living-room.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/fire.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/flipped.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/mask1.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/mask2.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/mask3.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/mostly there.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/move.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/tracking.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/working.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tracking/yardtoy.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/tutorial.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/two.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/untitled.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/variety-of-eyes.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/video blip for David.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/video edit.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/video frag.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/video wip.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/water sim.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/water.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/weird shapes.blend",
+    "texts": []
+  },
+  {
+    "path": "/home/devin/src/blender/\u0414\u0435\u0442\u0441\u043a\u0430\u044f \u043f\u043b\u043e\u0449\u0430\u0434\u043a\u0430.blend",
+    "texts": []
+  }
+]
