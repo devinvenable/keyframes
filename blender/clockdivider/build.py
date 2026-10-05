@@ -25,6 +25,7 @@ s = bpy.context.scene
 s.render.engine = 'CYCLES'
 s.cycles.samples = 64
 s.cycles.use_denoising = False
+s.render.use_persistent_data = True
 prefs = bpy.context.preferences.addons['cycles'].preferences
 try:
     prefs.compute_device_type = 'OPTIX'
@@ -68,8 +69,12 @@ links.new(rl.outputs['Alpha'],maximum.inputs[0]); links.new(sep.outputs['Green']
 alpha=n.new('CompositorNodeSetAlpha'); alpha.inputs['Type'].default_value='Replace Alpha'
 links.new(glow.outputs['Image'],alpha.inputs['Image']); links.new(maximum.outputs[0],alpha.inputs['Alpha'])
 output=n.new('NodeGroupOutput'); links.new(alpha.outputs[0],output.inputs['Image'])
+title = bpy.data.collections.new('Clock Divider - title')
+s.collection.children.link(title)
+title.asset_mark()
+title.asset_data.description = 'Reusable bitmap-faithful phosphor wire title with native animation'
 rig = bpy.data.objects.new('TITLE • animated transform',None)
-s.collection.objects.link(rig)
+title.objects.link(rig)
 
 def material(name,color):
     m = bpy.data.materials.new(name)
@@ -93,7 +98,7 @@ def stroke(name,coords,mat,radius=.012):
     c.resolution_u=1; c.bevel_depth=radius; c.bevel_resolution=1
     sp=c.splines.new('POLY'); sp.points.add(len(coords)-1)
     for pt,co in zip(sp.points,coords): pt.co=(*co,1)
-    o=bpy.data.objects.new(name,c); s.collection.objects.link(o); o.parent=rig
+    o=bpy.data.objects.new(name,c); title.objects.link(o); o.parent=rig
     c.materials.append(mat)
     strokes.append(c)
     return c

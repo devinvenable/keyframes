@@ -6,7 +6,7 @@ Start with `generated/clockdivider/laser-wide/laser-wide-preview.mp4`, then
 Final renders are also copied to `/home/devin/src/2026/midi/generated/clockdivider/`
 so they survive removal of the task worktree. Generated media is intentionally ignored
 by Git; the six compact `.blend` scenes, source artwork, traced outlines and scripts
-are versioned here.
+are versioned under `blender/clockdivider/`.
 
 | Treatment | Motion | Duration / rate | Sizes |
 | --- | --- | --- | --- |
@@ -24,7 +24,7 @@ letters, as a real 3D object would.
 Read-only headless excavation inspected curve datablocks in **275 `.blend` files**
 under `~/src/blender`, with no read failures. None contains text matching Clock Divider
 or cloc.kdivider. This establishes what remains in these saved files, not what may
-have existed in earlier unsaved work. `excavation.json` records all file paths and text
+have existed in earlier unsaved work. `excavation.json` records all file paths, text counts and matching
 bodies; `workshop.json` records the eight laser workshop scenes and their actions.
 
 `laser/lazer 2.blend` (frames 1–120) has two animated planes (`PlaneAction` and
@@ -48,7 +48,7 @@ existing artwork; the scenes have no external font or image dependency.
 
 ## Rebuild and edit
 
-Requires Blender **5.1+** and FFmpeg with `prores_ks` and `libx264`. Python's standard
+Tested with Blender **5.1.2** and FFmpeg 7.1.1; requires FFmpeg with `prores_ks` and `libx264`. Python's standard
 library is enough to orchestrate rendering. Pillow is only needed to retrace the PNGs
 or run the artifact QA script. GPU rendering prefers an OptiX RTX 3060, then any
 available OptiX device; otherwise it falls back to CPU.
@@ -79,14 +79,15 @@ All runs are background Blender processes; no running desktop session is control
 
 Every `.blend` contains reusable native POLY curve datablocks for front outlines,
 rear outlines and depth connections, plus an animated `TITLE • animated transform`
-parent. Append that hierarchy to a new scene, or reuse `outlines.json` /
+parent. The `Clock Divider - title` collection is marked as an asset; append that
+collection into a new scene to bring the complete title hierarchy, or reuse `outlines.json` /
 `outlines-tall.json` to construct new treatments without retracing. Laser drawing uses
 keyframed `bevel_factor_end`; motion uses native transform keyframes. There are no
 frame handlers, external add-ons or auto-run scripts required to play the scenes.
 
 The material is approximately sRGB `#00FF66`, with dimmer depth lines. Only contours
 and depth edges are present—no distracting triangulation diagonals. Cycles renders
-64 samples with Standard color management. The compositor adds a restrained fog glow
+64 samples with persistent scene data with Standard color management. The compositor adds a restrained fog glow
 and extends alpha to include that glow. The background remains transparent.
 
 ## Formats and verification
@@ -111,3 +112,9 @@ that the laser starts empty and grows, and that fly-past finishes outside the ca
 and the 480px-wide proofs for small-size letter and depth readability.
 
 The application and its overlay playback code are unchanged.
+
+Verification completed 2026-10-04: all 1,080 RGBA frames and all 12 videos passed.
+Decoded MOV alpha mean error ranged from 0.0017 to 0.0063 on the 0–255 scale.
+All six native scene checks passed, including the marked title collection, laser
+completion, camera exit and turntable closure. A deliberately opaque RGBA sequence
+failed the QA transparency assertion as expected. Committed evidence is in `review/`.

@@ -1,0 +1,50 @@
+[
+  {
+    "scene": "fly-square.blend",
+    "curves": 292,
+    "width": 1080,
+    "height": 1080,
+    "frames": 180,
+    "output": "//../../generated/clockdivider/fly-square/png/frame_"
+  },
+  {
+    "scene": "fly-wide.blend",
+    "curves": 244,
+    "width": 1920,
+    "height": 1080,
+    "frames": 180,
+    "output": "//../../generated/clockdivider/fly-wide/png/frame_"
+  },
+  {
+    "scene": "laser-square.blend",
+    "curves": 292,
+    "width": 1080,
+    "height": 1080,
+    "frames": 180,
+    "output": "//../../generated/clockdivider/laser-square/png/frame_"
+  },
+  {
+    "scene": "laser-wide.blend",
+    "curves": 244,
+    "width": 1920,
+    "height": 1080,
+    "frames": 180,
+    "output": "//../../generated/clockdivider/laser-wide/png/frame_"
+  },
+  {
+    "scene": "orbit-square.blend",
+    "curves": 292,
+    "width": 1080,
+    "height": 1080,
+    "frames": 180,
+    "output": "//../../generated/clockdivider/orbit-square/png/frame_"
+  },
+  {
+    "scene": "orbit-wide.blend",
+    "curves": 244,
+    "width": 1920,
+    "height": 1080,
+    "frames": 180,
+    "output": "//../../generated/clockdivider/orbit-wide/png/frame_"
+  }
+]
