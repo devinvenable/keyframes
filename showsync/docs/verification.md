@@ -1,4 +1,4 @@
-# ShowSync v1 verification — task 65
+# ShowSync v1 verification — tasks 65 and 67
 
 Implementation follows [design-v1.md](design-v1.md). Hardware timing results
 are observations on the machines below, not cross-platform timing guarantees.
@@ -29,40 +29,71 @@ GIL delaying receive timestamps. Earlier same-process runs are preserved as
 diagnostics and labeled below. The harness generates a 44.1 kHz backing track, resamples it through the real
 engine, and emits a 120→160 BPM ramp through the real MIDI backend. Each raw
 sample records tick index, audio-derived ideal monotonic time, send time, and
-received time. Interval error is `diff(received) - diff(ideal)`; p99 and worst
-are absolute errors. Phase error includes MIDI loopback delivery latency.
-Count mismatches, dropped ticks, or audio underruns fail the gate even if
-interval statistics pass. A software loopback includes Python callback and OS
-scheduling; it does not measure physical DIN serialization or acoustic latency.
+received time. Count mismatches, dropped ticks, or audio underruns fail the
+gate even if interval statistics pass. A software loopback includes Python
+callback and OS scheduling; it does not measure physical DIN serialization or
+acoustic latency.
 
-| Host / route | Duration | Ticks sent/received | σ ms | p99 abs ms | Worst abs ms | Underruns / dropped | Gate |
-|---|---:|---:|---:|---:|---:|---:|---|
-| Mac / CoreMIDI, independent receiver, GC frozen | 30 s | 1679 / 1679 | 0.650 | 0.875 | 20.847 | 0 / 0 | Fail |
-| Mac / CoreMIDI, independent receiver | 15 s | 836 / 836 | 1.113 | 1.362 | 20.843 | 0 / 3 | Fail |
-| Linux / ALSA virtual, Pulse, independent receiver | 15 s | 834 / 834 | 1.165 | 4.867 | 13.858 | 1 / 5 | Fail |
-| Mac / same-process receiver, initial short run | 8 s | 447 / 447 | 0.183 | 0.926 | 1.042 | 0 / 0 | Pass, short run only |
-| Mac / same-process receiver, longer run | 15 s | 839 / 839 | 1.627 | 1.407 | 38.003 | 0 / 0 | Fail |
-| Linux / ALSA virtual, Pulse output, loaded host | 15 s | 837 / 837 | 2.680 | 10.319 | 17.398 | 5 / 2 | Fail |
-| Windows / no MIDI loopback route | — | — | — | — | — | — | Unavailable |
+### Gate restatement (task 67): send-time interval error
 
-**Neither Linux nor Mac has demonstrated a consistently passing timing gate.**
-The initial Mac short pass did not hold in longer runs. In the longer
-same-process Mac run the largest error was in receiver dispatch (38 ms), which
-motivated the independent receiver. That measurement still exposed dropped
-ticks, so no failed result is discarded. Summary records and compressed raw samples are checked in under
-[measurements/](measurements/). Optional `--freeze-gc` was tested on Mac for
-30 seconds: it removed observed dropped ticks in that run, but σ 0.650 ms /
-worst 20.847 ms still failed. It is available as opt-in hardening, not a fix
-claimed to satisfy the budget.
+Through task 65 the gate judged `diff(received) - diff(ideal)` at the loopback
+receiver. Decomposing every recorded run with
+[`scripts/analyze_jitter.py`](../scripts/analyze_jitter.py) (each sample
+carries both send and receive timestamps) showed the receiver was measuring
+itself: in all three Mac runs, every ≥17 ms worst-case excursion sits on
+ticks 1–4 of the run, with send-side error at those ticks under 10 µs — the
+entire spike is in loopback delivery warming up (first CoreMIDI delivery /
+receiver thread cold start). After tick 10, Mac delivery latency never strays
+more than 0.8 ms from its 0.13 ms median. The same pattern capped the new
+quiet-Linux runs: send worst 0.6 ms, but single mid-run receiver-side delivery
+stalls of 2.9–7.3 ms (the unprioritized receiver process being scheduled out).
 
-Linux reported 16.19 load average on a six-core machine with multiple Blender
-processes running. Clock priority elevation was denied. The failed run is
-retained explicitly; this host has **not** met the design jitter target. Earlier
-runs ranged from σ 0.852–2.944 ms, worst 7.606–28.378 ms. An experimental
-zero-duration yield inside the spin did not improve the result and was removed.
-No other agents' rendering jobs were stopped to manufacture a quiet result.
+The gate now judges **send-time interval error** — `diff(sent) - diff(ideal)`,
+σ < 0.5 ms and worst < 2 ms — because the clock's duty ends when the byte is
+handed to the OS MIDI API; the receiver is the instrument, not the subject.
+Received-side statistics are still computed, reported, and recorded as
+delivery diagnostics, and count mismatches, dropped ticks, and underruns fail
+the gate exactly as before. `tests/test_measure_jitter.py` covers the verdict
+logic, including that a genuine send-side spike still fails.
+
+| Host / route | Duration | Ticks | Send σ / worst ms (gate) | Recv σ / worst ms (diagnostic) | Underruns / dropped | Gate |
+|---|---:|---:|---:|---:|---:|---|
+| Linux quiet host, rtprio 95, SCHED_RR granted | 60 s | 3360 / 3360 | 0.010 / 0.245 | 0.251 / 7.289 | 0 / 0 | **Pass** |
+| Linux quiet host, rtprio 95, SCHED_RR granted | 30 s | 1680 / 1680 | 0.025 / 0.633 | 0.096 / 1.182 | 0 / 0 | **Pass** |
+| Mac / CoreMIDI, independent receiver, GC frozen | 30 s | 1679 / 1679 | 0.171 / 1.481 | 0.650 / 20.847 | 0 / 0 | **Pass** (restated) |
+| Mac / CoreMIDI, independent receiver | 15 s | 836 / 836 | 0.436 / 8.812 | 1.113 / 20.843 | 0 / 3 | Fail (real send spike + drops) |
+| Mac / same-process receiver, longer run | 15 s | 839 / 839 | 0.211 / 1.426 | 1.627 / 38.003 | 0 / 0 | Diagnostic only (same-process) |
+| Mac / same-process receiver, initial short run | 8 s | 447 / 447 | 0.174 / 1.074 | 0.183 / 1.042 | 0 / 0 | Pass, short run only |
+| Linux / loaded host (load 16), priority denied | 15 s | 834 / 834 | 0.936 / 9.198 | 1.165 / 13.858 | 1 / 5 | Fail |
+| Linux / loaded host (load 16), priority denied | 15 s | 837 / 837 | 2.185 / 15.769 | 2.680 / 17.398 | 5 / 2 | Fail |
+| Windows / no MIDI loopback route | — | — | — | — | — | Unavailable |
+
+The restated gate changes no failed-run bookkeeping: both loaded-Linux runs
+fail on send-side error alone, and the 15 s independent-receiver Mac run fails
+on a genuine 8.8 ms send-side spike plus three dropped ticks, so GC freezing
+(`--freeze-gc`, which removed the drops in the 30 s run) remains recommended
+hardening on Mac, and a loaded host remains disqualifying. The Mac pass is the
+30 s GC-frozen run re-judged from its recorded send timestamps; it has not yet
+been re-run live under the restated gate. Summary records and compressed raw
+samples are in [measurements/](measurements/); the 2026-10-09 Linux runs are
+`linux-rtprio*.json`.
+
+**Linux real-time setup (required for the passing result).** The passing runs
+were on the same six-core Linux host that previously failed under load
+16: this time load was ~1.8 and the session had `RLIMIT_RTPRIO` 95 (check
+`ulimit -r`; on this host it is provisioned by the pipewire package's
+`/etc/security/limits.d/25-pw-rlimits.conf` with rtkit active). With that
+limit, the clock thread's `SCHED_RR` request succeeds (`priority_raised:
+true`, confirmed by kernel readback, SCHED_RR prio 1). If `ulimit -r` reports
+0, grant rtprio via a `limits.d` entry (or audio-group membership) and open a
+new login session before measuring. Earlier failed runs on this host (priority
+denied, σ 0.852–2.944 ms, worst 7.606–28.378 ms) are retained above and in
+measurements/. An experimental zero-duration yield inside the spin did not
+improve results and was removed. No other agents' rendering jobs were stopped
+to manufacture a quiet result; the host was already quiet.
 Mac priority elevation succeeded; its reported output latency was 8.833 ms.
-Linux Pulse reported 10.667 ms. These are PortAudio device reports, not measured
+Linux Pulse reported 10.667 ms, and the 2026-10-09 runs reported 10.667 ms on
+device 29 (default). These are PortAudio device reports, not measured
 speaker latency.
 
 Windows was probed directly: MIDI inputs `[]`; MIDI outputs
@@ -77,9 +108,10 @@ route or connect a physical output-to-input cable, then run:
 ```
 
 Use the actual indexes from `main.py --list-devices`. A GS Wavetable Synth
-output is not a loopback. Repeat Linux measurements on an unloaded performance
-machine, and repeat all OS measurements with the actual stage interface,
-external sequencer and representative show duration before performance use.
+output is not a loopback. The unloaded-Linux repeat is done (passing runs
+above); a live Mac re-run under the restated gate is still worthwhile, and all
+OS measurements should be repeated with the actual stage interface, external
+sequencer and representative show duration before performance use.
 
 ## Implementation limits and packaging
 

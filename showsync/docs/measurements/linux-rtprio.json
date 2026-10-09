@@ -1,0 +1,23 @@
+{
+  "platform": "Linux-6.14.0-37-generic-x86_64-with-glibc2.41",
+  "python": "3.13.3",
+  "receiver": "separate process (independent GIL)",
+  "midi_route": "RtMidiIn Client:showsync-jitter-3304e6ac 128:0",
+  "sent_ticks": 1680,
+  "received_ticks": 1680,
+  "audio_underruns": 0,
+  "dropped_ticks": 0,
+  "priority_raised": true,
+  "audio_device": "29",
+  "audio_latency": 0.010666666666666666,
+  "send_sigma_ms": 0.02537147939855043,
+  "send_p99_abs_ms": 0.1045209169387818,
+  "send_worst_abs_ms": 0.6332211196422577,
+  "interval_sigma_ms": 0.09603372535274396,
+  "interval_p99_abs_ms": 0.3616166114807134,
+  "interval_worst_abs_ms": 1.1816956102848053,
+  "phase_mean_ms": 0.1799464225769043,
+  "phase_p99_abs_ms": 0.5006984341889624,
+  "passed": true,
+  "raw_samples": "raw/linux-rtprio.json.gz"
+}
