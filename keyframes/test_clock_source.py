@@ -188,6 +188,26 @@ def test_main_reselects_fallback_after_cue_disappears_and_returns(
     monkeypatch.setattr(main, 'MidiInputs', lambda *args: proxy)
     monkeypatch.setattr(main, 'CUE_PORT_RESCAN_S', 0)
     monkeypatch.setattr(main, 'drain_startup_midi', lambda ports: 0)
+    tracker = main.MidiClockTracker(fallback_bpm=137)
+    monkeypatch.setattr(main, 'MidiClockTracker', lambda **kwargs: tracker)
+    configure = main.configure_clock_source
+
+    def configure_with_old_tempo(*args, **kwargs):
+        # A prior source's tempo must not survive loss/replacement. Prime
+        # stale samples at each change, then observe the real frame output.
+        tracker._bpm = 200
+        tracker._clock_times = [1, 2, 3, 4, 5, 6]
+        return configure(*args, **kwargs)
+
+    monkeypatch.setattr(main, 'configure_clock_source', configure_with_old_tempo)
+    observed_bpm = []
+    draw = main.draw_performance_frame
+
+    def record_bpm(*args, **kwargs):
+        observed_bpm.append(tracker.bpm)
+        return draw(*args, **kwargs)
+
+    monkeypatch.setattr(main, 'draw_performance_frame', record_bpm)
     events = iter([[], [], [pygame.event.Event(pygame.QUIT)]])
     monkeypatch.setattr(pygame.event, 'get', lambda: next(events))
     main.main()
@@ -195,3 +215,4 @@ def test_main_reselects_fallback_after_cue_disappears_and_returns(
     selections = [r['ports'] for r in records if r.get('event') == 'clock_source']
     assert selections == [[CUE], [], [renamed]]
     assert [r['port'] for r in records if r.get('type') == 'clock'] == [CUE, renamed]
+    assert observed_bpm == [137, 137, 137]

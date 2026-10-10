@@ -154,9 +154,13 @@ class MidiClockTracker:
 
     def __init__(self, fallback_bpm=DEFAULT_BPM):
         self.fallback_bpm = fallback_bpm
+        self._max_samples = 48  # 2 beats worth of clocks
+        self.reset()
+
+    def reset(self):
+        """Forget the previous port's tempo when the selected source changes."""
         self._clock_times = []
         self._bpm = None
-        self._max_samples = 48  # 2 beats worth of clocks
 
     def tick(self):
         """Call on each MIDI clock message."""
@@ -3956,8 +3960,11 @@ def main():
                         if names != last_port_names:
                             note_sources = configure_note_source(
                                 names, args.note_source, midi_logger)
+                            previous_clock_sources = clock_sources
                             clock_sources = configure_clock_source(
                                 names, args.clock_source, midi_logger)
+                            if clock_sources != previous_clock_sources:
+                                clock_tracker.reset()
                             last_port_names = names
                     else:
                         print(f"WARNING: {record['message']}", flush=True)
@@ -4006,8 +4013,11 @@ def main():
                     print(f"WARNING: cue port refresh failed: {exc}")
                 names = [port.name for port in inports]
                 if frozenset(names) != frozenset(name for name, _ in live_sources):
+                    previous_clock_sources = clock_sources
                     clock_sources = configure_clock_source(
                         names, args.clock_source, midi_logger)
+                    if clock_sources != previous_clock_sources:
+                        clock_tracker.reset()
             if PAN_AUTO_RECENTER:
                 update_pan_recenter(state, now)
             cur_active = state['note_active']

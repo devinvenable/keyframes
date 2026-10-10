@@ -164,7 +164,7 @@ Use `--clock-source cues` for **ShowSync Cues**, or `--clock-source usb` for
 KeyStep USB. The requested source comes first, followed by the remaining
 sources in **tbox > cues > usb** order. Selection uses successfully opened
 ports, not tick activity: a silent but open preferred port stays selected.
-If none is available, no live ticks are accepted and startup uses `--bpm`.
+If none is available, no live ticks are accepted and Keyframes uses `--bpm`.
 TBOX port 2, unknown controllers, and raw `RtMidiOut Client` ports are never
 clock fallbacks. `--port` still determines which hardware inputs can open.
 
@@ -172,6 +172,8 @@ Startup output and `clock_source` sidecar records include the requested and
 effective source, selected port, fallback order, and warning. Selection is
 refreshed when the worker reports changed ports (including after restart),
 or when the legacy in-process cue rescan changes the opened ports.
+Changing the selected port clears the old tempo samples and uses `--bpm`
+until enough ticks arrive from the new source.
 Other inputs' clock ticks are removed before the processing cap and raw
 event logging; every read still counts toward the bounded read cap.
 `clock_source_filtered` summaries count ignored ticks at most once per five
