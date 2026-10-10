@@ -542,3 +542,30 @@ def test_overlay_disappears_after_loops_and_reschedules(tmp_path, display):
     assert display.get_at((1, 4)) == RED  # gone — base view restored
     assert sched._next_at == pytest.approx(now + 5.0)  # next interval armed
     sched.release()
+
+
+# ------------------------------------------- decoder worker crash (task 266) --
+def test_decode_exception_cannot_wedge_the_showing(tmp_path, monkeypatch, capsys):
+    """A frame whose DECODE RAISES (not merely imread->None: a truncated or
+    malformed PNG can throw from resize/cvtColor) must be skipped like an
+    unreadable one. Before task 266 the exception silently killed the worker
+    with its frame index claimed: get_nowait() waited on that index forever,
+    finished() never flipped, ring backpressure wedged the other workers, and
+    the overlay held its last frame on top of the show indefinitely — read as
+    a Keyframes lockup on stage (overlays were enabled during the 2026-10-10
+    live freezes)."""
+    variant = make_variant(tmp_path, 'wedge', [GREEN, BLUE, RED])
+    poison = variant['frames'][1]
+    real_imread = main.cv2.imread
+
+    def exploding_imread(path, flags=None):
+        if path == poison:
+            raise RuntimeError('corrupt frame')
+        return real_imread(path, flags)
+
+    monkeypatch.setattr(main.cv2, 'imread', exploding_imread)
+    decoder = OverlayDecoder(variant['frames'], 1, (2, 2))
+    frames = drain(decoder)  # asserts 'decoder stalled' on regression
+    decoder.release()
+    assert len(frames) == 2  # poisoned frame skipped, the rest emitted
+    assert 'overlay frame decode failed' in capsys.readouterr().out

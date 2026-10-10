@@ -1804,6 +1804,7 @@ class OverlayDecoder:
         self._next_emit = 0    # next frame index the consumer wants
         self._ready = {}       # decoded, waiting for in-order emission
         self._stopped = False
+        self._decode_warned = False
         self._threads = [threading.Thread(target=self._run, daemon=True)
                          for _ in range(max(1, workers))]
         for thread in self._threads:
@@ -1844,7 +1845,23 @@ class OverlayDecoder:
                     return
                 index = self._next_claim
                 self._next_claim += 1
-            data = self._decode(self._paths[index % len(self._paths)])
+            # A worker must NEVER die with an index claimed: its frame would
+            # then never park, get_nowait() would wait on that index forever,
+            # finished() would never flip, and the showing (plus the ring
+            # backpressure stalling the other workers) wedges — the overlay
+            # holds its last frame on top of the show indefinitely, reading
+            # as a Keyframes lockup (task 266; overlays were enabled during
+            # the live freezes). Any decode failure parks None, which
+            # get_nowait() already skips.
+            try:
+                data = self._decode(self._paths[index % len(self._paths)])
+            except Exception as exc:
+                if not self._decode_warned:
+                    self._decode_warned = True
+                    print(f"WARNING: overlay frame decode failed "
+                          f"({self._paths[index % len(self._paths)]}): {exc} "
+                          f"— frame skipped")
+                data = None
             with self._cond:
                 if self._stopped:
                     return
@@ -2193,6 +2210,61 @@ def draw_performance_frame(screen, current_state, target_size, now=None,
         overlay.render(screen, target_size, now)
 
 
+# --- Render-stall watchdog (task 266) ----------------------------------------
+# Keyframes has frozen intermittently during live runs with no evidence left
+# behind: the process stays alive, so live.sh's crash supervisor never fires
+# and there is no stack to read. When KEYFRAMES_STALL_LOG names a file, a
+# faulthandler watchdog is armed and re-armed every frame; if any frame takes
+# longer than this, every thread's stack is dumped to that file automatically
+# — whatever call wedged the loop (an unbounded MIDI drain, a blocking ALSA
+# call in the cue rescan, an overlay/decoder deadlock) is named in the dump.
+# SIGUSR1 dumps on demand, so a live wedge can also be probed from outside
+# (`pkill -USR1 -f keyframes/main.py`) before killing the process. The
+# re-arm is one C call per frame and nothing is armed when the env var is
+# unset — zero cost for normal runs. 10s is far above any legitimate frame
+# (a worst-case bank switch building video thumbnails), so a dump means a
+# genuine wedge, and the process is left running (no exit) — live.sh's
+# supervisor semantics stay untouched; the performer recovers with pkill.
+STALL_DUMP_SECONDS = 10.0
+
+
+def resolve_stall_log_path(environ=None):
+    """Stall-watchdog dump path from KEYFRAMES_STALL_LOG, or None when off."""
+    if environ is None:
+        environ = os.environ
+    return environ.get('KEYFRAMES_STALL_LOG') or None
+
+
+def arm_stall_watchdog(path, timeout=STALL_DUMP_SECONDS):
+    """Arm the render-stall watchdog; returns a per-frame re-arm callable.
+
+    The callable must be invoked once per render frame: each call pushes the
+    dump deadline ``timeout`` seconds out, so a dump fires only when the loop
+    genuinely stops turning. Returns None (watchdog off) if the log file
+    cannot be opened — diagnostics must never gate a live show."""
+    import faulthandler
+    import signal
+    try:
+        fh = open(path, 'a', encoding='utf-8')
+        fh.write(f"=== keyframes stall watchdog armed: pid={os.getpid()} "
+                 f"timeout={timeout:.0f}s epoch={time.time():.3f} ===\n")
+        fh.flush()
+    except OSError as exc:
+        print(f"WARNING: cannot open stall log {path}: {exc} — watchdog off")
+        return None
+    if hasattr(signal, 'SIGUSR1'):
+        # On-demand dump from outside: pkill -USR1 -f keyframes/main.py
+        faulthandler.register(signal.SIGUSR1, file=fh, all_threads=True)
+
+    def rearm():
+        faulthandler.dump_traceback_later(timeout, file=fh)
+
+    rearm()
+    print(f"Stall watchdog armed: all-thread stack dump to {path} if a "
+          f"frame exceeds {timeout:.0f}s (SIGUSR1 dumps on demand)")
+    return rearm
+
+
 def resolve_midi_log_path(cli_value, environ=None):
     """Sidecar path for the MIDI event log, or None when logging is off.
     The --midi-log flag wins; otherwise KEYFRAMES_MIDI_LOG (set by
@@ -2235,19 +2307,24 @@ class MidiEventLogger:
             record['mapped'] = mapped
         self._write(record)
 
+    def log_event(self, event, **fields):
+        """Record a non-message diagnostic event (e.g. 'midi_flood') with the
+        same epoch+monotonic pair message records carry."""
+        record = {'event': event, 'epoch': time.time(),
+                  'monotonic': time.monotonic()}
+        record.update(fields)
+        self._write(record)
+
     def log_suppressed_echo(self, msg, port, echo_of_port):
         """Record a note event dropped as a cross-port hardware echo: the
         same key press/release already processed from `echo_of_port` within
         NOTE_ECHO_WINDOW_S. The raw arrival was already logged by
         log_message; this marks the suppression decision itself, so a live
         take shows exactly which copies the trigger path acted on."""
-        record = {'epoch': time.time(), 'monotonic': time.monotonic(),
-                  'event': 'note_echo_suppressed', 'port': port,
-                  'echo_of_port': echo_of_port}
         fields = msg.dict()
-        fields.pop('time', None)
-        record.update(fields)
-        self._write(record)
+        fields.pop('time', None)  # mido delta time, always 0 on live input
+        self.log_event('note_echo_suppressed', port=port,
+                       echo_of_port=echo_of_port, **fields)
 
     def _write(self, record):
         try:
@@ -2293,6 +2370,87 @@ def drain_startup_midi(ports, settle_seconds=0.25, sleep=time.sleep,
         sleep(0.01)
 
 
+# --- MIDI flood containment (task 266) ---------------------------------------
+# mido's iter_pending() yields for as long as messages keep arriving and its
+# rtmidi queue is unbounded, so a MIDI loop/flood (the I51 TBOX wedge class:
+# e.g. the KeyStep unconditionally echoing USB-in clock to DIN OUT, returning
+# via the thru box) could trap the single render/event thread inside the
+# per-frame drain forever — frozen visuals, dead input, process alive. The
+# drain is therefore bounded: at most MIDI_FLOOD_READ_CAP messages are pulled
+# off one source per frame, and when a pull exceeds MIDI_FLOOD_PROCESS_CAP
+# only performance-relevant types are processed — flood-class traffic (clock
+# first and foremost) is discarded and counted. 512 processed/frame at 60fps
+# is ~30k msg/s, an order of magnitude above a saturated DIN line (~3k/s);
+# hitting the cap at all means loop/flood, and stale flood traffic is
+# worthless to live visuals. Notes, cues (CC/PC), pitch/mod and transport are
+# preserved within the cap — silently eating a note-off or a ShowSync cue
+# mid-set would be its own stage bug.
+MIDI_FLOOD_PROCESS_CAP = 512
+MIDI_FLOOD_READ_CAP = 4096
+MIDI_FLOOD_WARN_SECONDS = 5.0
+# Types that survive a flood frame (in arrival order, up to the process cap).
+MIDI_FLOOD_PRESERVED_TYPES = frozenset((
+    'note_on', 'note_off', 'control_change', 'program_change', 'pitchwheel',
+    'start', 'stop', 'continue'))
+
+
+def read_midi_messages(msg_source, process_cap=MIDI_FLOOD_PROCESS_CAP,
+                       read_cap=MIDI_FLOOD_READ_CAP):
+    """Pull a bounded batch off one message source.
+
+    Returns ``(messages, dropped)`` where ``dropped`` is a ``{type: count}``
+    dict of flood-discarded messages (empty on the normal path). The source
+    is never drained past ``read_cap`` in one call, so the render loop stays
+    alive no matter the arrival rate; a backlog beyond the cap is shed over
+    the following frames at read_cap per frame."""
+    pulled = []
+    if isinstance(msg_source, queue.Queue):
+        while len(pulled) < read_cap:
+            try:
+                pulled.append(msg_source.get_nowait())
+            except queue.Empty:
+                break
+    else:
+        for msg in msg_source.iter_pending():
+            pulled.append(msg)
+            if len(pulled) >= read_cap:
+                break
+    if len(pulled) <= process_cap:
+        return pulled, {}
+    messages, dropped = [], {}
+    for msg in pulled:
+        if (msg.type in MIDI_FLOOD_PRESERVED_TYPES
+                and len(messages) < process_cap):
+            messages.append(msg)
+        else:
+            dropped[msg.type] = dropped.get(msg.type, 0) + 1
+    return messages, dropped
+
+
+def note_midi_flood(current_state, dropped, midi_source, midi_logger=None,
+                    now=None, warn_interval=MIDI_FLOOD_WARN_SECONDS):
+    """Record a flood-discard batch: cumulative stats, a rate-limited stderr
+    warning, and (when the take sidecar is on) a 'midi_flood' log event — the
+    evidence trail for the next live lockup investigation."""
+    if not dropped:
+        return
+    if now is None:
+        now = time.monotonic()
+    stats = current_state.setdefault(
+        'midi_flood', {'dropped': {}, 'total': 0, 'warn_at': 0.0})
+    for mtype, count in dropped.items():
+        stats['dropped'][mtype] = stats['dropped'].get(mtype, 0) + count
+        stats['total'] += count
+    if midi_logger:
+        midi_logger.log_event('midi_flood', port=midi_source, dropped=dict(dropped))
+    if now - stats['warn_at'] >= warn_interval:
+        stats['warn_at'] = now
+        summary = ', '.join(f"{t}={n}" for t, n in sorted(stats['dropped'].items()))
+        print(f"WARNING: MIDI flood on {midi_source!r}: discarded "
+              f"{stats['total']} message(s) so far ({summary}) — "
+              f"processing capped at {MIDI_FLOOD_PROCESS_CAP}/frame")
+
+
 def process_midi_messages(msg_source, start_note, end_note, note_to_media, target_size,
                           current_state, channel=None, clock_tracker=None,
                           min_note_beats=None, zoom_ring_enabled=False,
@@ -2309,15 +2467,10 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
     if note_hit_counts is None:
         note_hit_counts = {}
 
-    messages = []
-    if isinstance(msg_source, queue.Queue):
-        while not msg_source.empty():
-            messages.append(msg_source.get_nowait())
-    else:
-        for msg in msg_source.iter_pending():
-            messages.append(msg)
+    messages, flood_dropped = read_midi_messages(msg_source)
 
     now = time.monotonic()
+    note_midi_flood(current_state, flood_dropped, midi_source, midi_logger, now)
 
     for msg in messages:
         # Take sidecar: every incoming event is logged BEFORE any filtering
@@ -3364,6 +3517,11 @@ def main():
             print(f"WARNING: cannot open MIDI event log {midi_log_path}: {exc}")
     queue_source = f"file:{args.midi_file}" if args.midi_file else 'keyboard'
 
+    stall_rearm = None
+    stall_log_path = resolve_stall_log_path()
+    if stall_log_path:
+        stall_rearm = arm_stall_watchdog(stall_log_path)
+
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). L: toggle latch. ESC to quit.")
     print("Tab: toggle grid/media-manager view (Up/Down or mouse wheel to scroll).")
     print("F1 or ?: show the on-screen help overlay again.")
@@ -3473,6 +3631,11 @@ def main():
     last_cue_scan = time.monotonic()
     running = True
     while running:
+        if stall_rearm:
+            # One cheap C call: pushes the all-thread stack dump deadline out
+            # another STALL_DUMP_SECONDS. If this loop ever stops turning,
+            # the dump fires and names the wedged call.
+            stall_rearm()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -3720,6 +3883,9 @@ def main():
         clock.tick(60)
 
     stop_event.set()
+    if stall_rearm:
+        import faulthandler
+        faulthandler.cancel_dump_traceback_later()
     if midi_logger:
         midi_logger.close()
     if state['video_player']:
