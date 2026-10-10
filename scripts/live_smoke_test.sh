@@ -146,10 +146,10 @@ clear_ctl
 SETTLE_OVERRIDE=1 run_live "$SETLIST"
 wait_launches 1 "^keyframes" || true
 check "showsync launched" grep -q "^showsync .*set.yaml" "$STUB_LOG"
-# Rig topology v3 (D15): the KeyStep transport belongs to Devin's rig, so
-# live.sh must never opt ShowSync into it — pure caller opt-in.
-check "no --midi-transport injected by default" \
-    bash -c '! grep -q -- "--midi-transport" "$1"' _ "$STUB_LOG"
+# Restored working config (D17, supersedes D15): KeyStep Play/Stop drive the
+# set hands-free, so live.sh injects --midi-transport unless the caller did.
+check "showsync gets --midi-transport by default" \
+    grep -q "^showsync .*--midi-transport" "$STUB_LOG"
 check "keyframes launched" grep -q "^keyframes" "$STUB_LOG"
 check "showsync starts before keyframes" \
     bash -c 'head -n1 "$1" | grep -q "^showsync"' _ "$STUB_LOG"

@@ -11,8 +11,8 @@
 # Usage: scripts/live.sh [options] [showsync args...] setlist.yaml
 #   --bank NAME       Keyframes media bank (default: default)
 #   --headless        run ShowSync without the editor window (projector
-#                     only). Pair with --autostart [SECONDS] — nothing else
-#                     starts a headless set.
+#                     only). Pair with --autostart [SECONDS] or rely on the
+#                     default --midi-transport (KeyStep Play starts the set).
 #                     NOTE: headless has no Skip/Restart controls — see the
 #                     recovery notes in docs/live-show-runbook.md.
 #   --no-restart      disable the crash supervisor (a crashed app stays down)
@@ -20,12 +20,9 @@
 #   --clock-offset, --editor-screen, --midi-transport, --audio-device, ...).
 #
 # Behavior:
-#   * --midi-transport is NOT added by default (rig topology v3, decision
-#     D15): the KeyStep is the transport master of DEVIN'S rig, started and
-#     stopped constantly mid-song — if ShowSync listened, every Play would
-#     restart the set from the top. The set starts via --autostart or the
-#     editor UI; pass --midi-transport yourself for a hands-free set where
-#     a pedal/controller Play really should drive the backing tracks.
+#   * --midi-transport is added for ShowSync unless the caller passed it:
+#     the KeyStep's hardware Play/Stop drive the set hands-free (restored
+#     working config per decision D17; supersedes the brief D15 removal).
 #   * Startup order: ShowSync first (clock master; audio + MIDI open and the
 #     editor, if any, appears), then fullscreen Keyframes, which pins itself
 #     above normal windows. The projector raises itself over Keyframes for
@@ -222,6 +219,11 @@ main() {
 
     local python=${LIVE_PYTHON:-"$REPO_ROOT/venv/bin/python"}
     [ -x "$python" ] || python=$(command -v python3)
+
+    # Hands-free start/stop from the KeyStep's hardware transport.
+    if [[ " ${showsync_args[*]} " != *" --midi-transport"* ]]; then
+        showsync_args+=(--midi-transport)
+    fi
 
     # Keep the ShowSync editor off the visuals monitor where fullscreen
     # always-on-top Keyframes would cover it.
