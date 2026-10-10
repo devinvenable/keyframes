@@ -93,6 +93,18 @@ LATCH_NOTICE_SECONDS = 1.5
 # center and below is 1.0 (no zoom). Composes multiplicatively with the ring.
 MAX_PITCH_BEND_ZOOM = 4.0
 MOD_WHEEL_CC = 1
+# One physical key press can reach us on TWO ports at once: the KeyStep's USB
+# port directly, and its DIN OUT mirrored through the thru box into a TBOX
+# input — and no-args startup auto-opens both. The duplicate note-on toggled
+# the same-note invert a second time within milliseconds, parking every press
+# on the negative copy ("hammering the key never toggles", task 269). A
+# note_on for the same (note, channel) arriving from a DIFFERENT source inside
+# this window is that hardware echo and is dropped; same-port repeats pass at
+# any speed, so genuine fast retriggers are untouched. 50ms rides out a
+# skipped render frame between polling the two ports; two performers hitting
+# the same note on the same channel on different ports inside 50ms is not a
+# real rig scenario (ShowSync egress carries no notes).
+NOTE_ECHO_WINDOW_S = 0.05
 # ShowSync -> Keyframes per-song visual control (docs/visual-control-midi.md).
 # Program Change selects a bank by index into the deterministic bank order
 # (program 0 = default, 1..N = banks/ folder names sorted). The scene CCs sit
@@ -2223,6 +2235,20 @@ class MidiEventLogger:
             record['mapped'] = mapped
         self._write(record)
 
+    def log_suppressed_echo(self, msg, port, echo_of_port):
+        """Record a note event dropped as a cross-port hardware echo: the
+        same key press/release already processed from `echo_of_port` within
+        NOTE_ECHO_WINDOW_S. The raw arrival was already logged by
+        log_message; this marks the suppression decision itself, so a live
+        take shows exactly which copies the trigger path acted on."""
+        record = {'epoch': time.time(), 'monotonic': time.monotonic(),
+                  'event': 'note_echo_suppressed', 'port': port,
+                  'echo_of_port': echo_of_port}
+        fields = msg.dict()
+        fields.pop('time', None)
+        record.update(fields)
+        self._write(record)
+
     def _write(self, record):
         try:
             self._file.write(json.dumps(record) + '\n')
@@ -2341,6 +2367,28 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
 
         is_note_on = msg.type == 'note_on' and msg.velocity > 0
         is_note_off = msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0)
+
+        # Cross-port echo suppression (see NOTE_ECHO_WINDOW_S): the same key
+        # press mirrored onto a second open port must not be processed twice —
+        # it double-toggled the invert and double-advanced scene beats.
+        # Applied to every in-range note-on, mapped or not (unmapped beats
+        # drive scenes too), and symmetrically to note-offs so the mirrored
+        # release is dropped as a unit — each kind gets its own window, since
+        # a held note's release pair arrives long after its press pair. The
+        # original's timestamp is kept when dropping, so an echo can never
+        # extend its own window. Suppressions are logged for live debugging.
+        if is_note_on or is_note_off:
+            echoes = current_state.setdefault('note_echoes', {})
+            echo_key = ('on' if is_note_on else 'off', note,
+                        getattr(msg, 'channel', None))
+            prior = echoes.get(echo_key)
+            if (prior is not None and midi_source is not None
+                    and prior[1] != midi_source
+                    and now - prior[0] < NOTE_ECHO_WINDOW_S):
+                if midi_logger:
+                    midi_logger.log_suppressed_echo(msg, midi_source, prior[1])
+                continue
+            echoes[echo_key] = (now, midi_source)
 
         if is_note_on:
             if assign_callback and assign_callback(note):
