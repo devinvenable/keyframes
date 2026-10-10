@@ -1078,7 +1078,8 @@ def release_scene_source(source):
         source.release()
 
 
-def scene_media_source(media, target_size=None, clock=time.monotonic):
+def scene_media_source(media, target_size=None, clock=time.monotonic,
+                       inverted=False):
     """A frame source for any media entry: images static, videos/GIFs live.
 
     Video playback inside a scene behaves exactly as in the normal view —
@@ -1086,9 +1087,19 @@ def scene_media_source(media, target_size=None, clock=time.monotonic):
     freeze on their last frame. ``target_size`` pre-crops decoded frames in
     cv2 (cheap) so per-layer crops are near-identity; None decodes at native
     size. Returns None if a video can't produce a first frame (the scene
-    then simply doesn't start)."""
+    then simply doesn't start).
+
+    ``inverted`` picks a still's colour-negative copy — the same rule
+    displayed_media_source applies: a scene layer must show what the
+    audience would see for that trigger. Without it, a scene activated by a
+    same-note repeat composites the normal still over a capture of the same
+    normal still, and a rings scene between two identical images renders
+    pixel-identical to the plain view — the negative flash silently
+    disappears for the scene's whole life (task 250). Videos ignore the
+    flag (retriggering a video never inverts it)."""
     if media['type'] == 'image':
-        return SceneMediaSource(media['surface'])
+        surface = inverted_surface(media) if inverted else media['surface']
+        return SceneMediaSource(surface)
     player = VideoPlayer(media['path'], target_size,
                          loop=media.get('loop', False), clock=clock)
     source = AnimatedSceneSource(player)
@@ -1160,12 +1171,15 @@ class Scene:
         for source in (self.image_source, self.background_source):
             release_scene_source(source)
 
-    def advance(self, media, now):
+    def advance(self, media, now, inverted=False):
         """React to the next note-on trigger while active.
 
         ``media`` is None when the beat came from an unmapped key —
         implementations use it only as an optional extra (e.g. timed rings
-        rotate it in as the new foreground) and must work without it."""
+        rotate it in as the new foreground) and must work without it.
+        ``inverted`` says whether this trigger's display of ``media`` is the
+        colour-negative copy (a same-note repeat of a still) — layers built
+        from the beat must match what the audience would see."""
 
     def render(self, screen, target_size, now):
         raise NotImplementedError
@@ -1236,7 +1250,7 @@ class FourBarSweepScene(Scene):
         self.finishing = False
         self._bar_cache = {}  # (size, tint) -> cropped (and tinted) bar surface
 
-    def advance(self, media, now):
+    def advance(self, media, now, inverted=False):
         if self.finishing:
             return
         if self.bars_placed < self.NUM_BARS:
@@ -1366,7 +1380,7 @@ class ConcentricRingsScene(Scene):
             self.activated_at = previous.activated_at
             self.expansion_origin = previous.expansion_origin
 
-    def advance(self, media, now):
+    def advance(self, media, now, inverted=False):
         self.beats += 1
         self.swapped = not self.swapped
 
@@ -1463,11 +1477,12 @@ class TimedConcentricRingsScene(ConcentricRingsScene):
         if isinstance(previous, ConcentricRingsScene):
             self.expansion_origin = previous.expansion_origin
 
-    def advance(self, media, now):
+    def advance(self, media, now, inverted=False):
         # Decode at a size we already render at, when known — same reasoning
         # as activation's target_size pre-crop.
         size_hint = next(iter(self._cache), None)
-        source = scene_media_source(media, size_hint) if media else None
+        source = (scene_media_source(media, size_hint, inverted=inverted)
+                  if media else None)
         if source is None:
             return
         release_scene_source(self.background_source)
@@ -1900,13 +1915,24 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
     displayed_media_source) — the new scene's optional background; a bare
     surface or a SceneMediaSource. This function takes ownership of it:
     it is released on every path that doesn't hand it to a new scene.
+    A new scene's foreground (and a beat handed to an active scene) uses the
+    copy of the still this trigger actually displays — the colour-negative
+    on a same-note repeat that toggled 'inverted'. Otherwise a scene
+    activated by same-key hammering composites the normal still over a
+    capture of the same normal still and renders pixel-identical to the
+    plain view, visibly killing the negative flash for the scene's whole
+    life (task 250).
     ``target_size`` lets a video activation decode pre-cropped to the
     screen; an ended scene's decoders are always released here."""
     ended_scene = None
+    # The trigger path toggled 'inverted' before calling here, so this is
+    # what the audience would see for this trigger: scene layers built from
+    # it must use the same copy (normal or negative) of the still.
+    inverted = bool(current_state.get('inverted'))
     try:
         scene = current_state.get('active_scene')
         if scene is not None:
-            scene.advance(media, now)
+            scene.advance(media, now, inverted=inverted)
             if not scene.done(now):
                 return
             # The scene ended ON this trigger: clear it and fall through to the
@@ -1925,7 +1951,7 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
         roll = (rng if rng is not None else random.random)()
         if roll >= scenes_config.get('probability', DEFAULT_SCENE_PROBABILITY):
             return
-        source = scene_media_source(media, target_size)
+        source = scene_media_source(media, target_size, inverted=inverted)
         if source is None:
             return
         scene_cls = SCENE_REGISTRY[random.choice(sorted(SCENE_REGISTRY))]

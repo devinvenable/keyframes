@@ -14,6 +14,7 @@ import pygame
 
 from main import (
     DEFAULT_SCENE_PROBABILITY,
+    inverted_surface,
     ConcentricRingsScene,
     FourBarSweepBlackScene,
     FourBarSweepScene,
@@ -823,3 +824,129 @@ def test_timed_rings_ends_on_first_trigger_past_duration():
     assert state['active_scene'] is scene  # mid-flight trigger: still alive
     update_scene_on_trigger(state, media, 17.0, config, rng=lambda: 1.0)
     assert state['active_scene'] is None  # past 6s: this trigger ended it
+
+
+# --- same-note negative flash through scenes (task 250) -----------------------
+# A scene activated by a same-note repeat used to build its foreground from
+# media['surface'] (always the normal copy) while its background captured the
+# same normal still — fg == bg, so a rings scene rendered pixel-identical to
+# the plain view and the negative strobe visibly died for the scene's whole
+# life (16 beats / 6 s at a time while hammering one key).
+
+def frame_bytes(state, now, size=(8, 8)):
+    screen = pygame.Surface(size)
+    with patch('time.monotonic', return_value=now):
+        draw_performance_frame(screen, state, size, now)
+    return pygame.image.tobytes(screen, 'RGB')
+
+
+def test_scene_foreground_uses_negative_copy_on_inverted_repeat():
+    """Activating on a repeat that toggled 'inverted' must put the negative
+    copy in the scene foreground — what the audience sees for that trigger —
+    never the normal still over a capture of the same normal still."""
+    q = queue.Queue()
+    state = make_state()
+    media = {60: {'type': 'image', 'surface': make_image(), 'name': 'a.png'}}
+    config = {'enabled': True, 'probability': 1.0}
+    prime = {'enabled': True, 'probability': 0.05}
+
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 10.0, 60, prime)  # first hit: normal
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('concentric-rings'):
+        state = trigger(q, state, media, 11.0, 60, config)  # repeat: inverted
+
+    scene = state['active_scene']
+    assert isinstance(scene, ConcentricRingsScene)
+    assert state['inverted']
+    assert scene.image is inverted_surface(media[60])
+    assert scene.background is media[60]['surface']
+
+
+def test_rings_scene_on_same_note_repeats_keeps_strobe_visible():
+    """While a beat-driven rings scene runs on same-key hammering, every beat
+    must still visibly change the frame (ring parity swaps between the normal
+    and negative copies). Before the fix fg == bg made all 16 beats render
+    the plain still — byte-identical frames, a dead strobe."""
+    q = queue.Queue()
+    state = make_state()
+    media = {60: {'type': 'image', 'surface': make_image(), 'name': 'a.png'}}
+    config = {'enabled': True, 'probability': 1.0}
+    prime = {'enabled': True, 'probability': 0.05}
+
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 10.0, 60, prime)
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('concentric-rings'):
+        state = trigger(q, state, media, 11.0, 60, config)
+    scene = state['active_scene']
+
+    prev = frame_bytes(state, 11.05)
+    with patch('main.random.random', return_value=0.9):
+        for i in range(8):
+            now = 11.2 + i * 0.2
+            state = trigger(q, state, media, now, 60, config)
+            assert state['active_scene'] is scene  # still mid-flight
+            cur = frame_bytes(state, now + 0.05)
+            assert cur != prev
+            prev = cur
+
+
+def test_timed_rings_rotation_on_same_note_repeats_keeps_strobe_visible():
+    """Timed rings rotate the beat's media in as the new foreground; on
+    same-key hammering consecutive rotations must alternate the normal and
+    negative copies, keeping the rings (and the strobe) visible. Before the
+    fix every rotation re-blitted the normal copy — identical layers, a
+    static frame for the full 6 seconds."""
+    q = queue.Queue()
+    state = make_state()
+    media = {60: {'type': 'image', 'surface': make_image(), 'name': 'a.png'}}
+    config = {'enabled': True, 'probability': 1.0}
+    prime = {'enabled': True, 'probability': 0.05}
+
+    with patch('main.random.random', return_value=0.9):
+        state = trigger(q, state, media, 10.0, 60, prime)
+    with patch('main.random.random', return_value=0.0), \
+            pick_scene('concentric-rings-timed'):
+        state = trigger(q, state, media, 11.0, 60, config)
+    scene = state['active_scene']
+
+    prev = frame_bytes(state, 11.05)
+    with patch('main.random.random', return_value=0.9):
+        for i in range(8):
+            now = 11.2 + i * 0.2  # all within the 6s lifetime
+            state = trigger(q, state, media, now, 60, config)
+            assert state['active_scene'] is scene
+            # The rotated-in foreground must match this beat's display copy.
+            expected = (inverted_surface(media[60]) if state['inverted']
+                        else media[60]['surface'])
+            assert scene.image is expected
+            cur = frame_bytes(state, now + 0.05)
+            assert cur != prev
+            prev = cur
+
+
+def test_same_note_soak_at_low_probability_never_freezes_the_strobe():
+    """Soak per the live repro: hammer ONE mapped still at p=0.05 with real
+    random scene choice. Whatever activates, the trigger-time frame must keep
+    changing — no 3-in-a-row identical frames anywhere in the run. Before the
+    fix, every rings activation whose repeat toggled back to normal froze the
+    frame for its whole life (~16 identical frames at a stretch)."""
+    q = queue.Queue()
+    state = make_state()
+    media = {60: {'type': 'image', 'surface': make_image(), 'name': 'a.png'}}
+    config = {'enabled': True, 'probability': 0.05}
+
+    import random as _random
+    rng = _random.Random(2501)
+    frozen_run = 0
+    prev = None
+    with patch('main.random.random', side_effect=rng.random), \
+            patch('main.random.choice', side_effect=rng.choice):
+        for i in range(400):
+            now = 10.0 + i * 0.12
+            state = trigger(q, state, media, now, 60, config)
+            cur = frame_bytes(state, now + 0.05)
+            frozen_run = frozen_run + 1 if cur == prev else 0
+            assert frozen_run < 2, f"strobe frozen for 3+ frames at hit {i}"
+            prev = cur
