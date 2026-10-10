@@ -278,7 +278,7 @@ def test_cli_clock_offset_override_is_temporary(monkeypatch):
     save = Mock()
     engine = Mock()
     monkeypatch.setattr(cli, 'AudioEngine', Mock())
-    monkeypatch.setattr(cli, 'open_midi_port', Mock())
+    monkeypatch.setattr(cli, 'open_egress', Mock())
     monkeypatch.setattr(cli, 'ClockEngine', engine)
     monkeypatch.setattr(cli, 'clock_offset_ms', lambda: 17)
     monkeypatch.setattr(cli, 'last_setlist', lambda: None)

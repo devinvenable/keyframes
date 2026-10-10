@@ -260,3 +260,52 @@ def test_invalid_midi_options_have_context(tmp_path, options, message):
     with pytest.raises(SetlistError, match=message) as exc:
         load_setlist(path)
     assert 'song 1 (Song)' in str(exc.value)
+
+
+def write_set(tmp_path, data):
+    (tmp_path / 'song.wav').touch()
+    path = tmp_path / 'set.yaml'
+    path.write_text(yaml.safe_dump(dict(songs=[dict(name='Song', file='song.wav', bpm=120)],
+                                        **data)))
+    return path
+
+
+def test_midi_outputs_parse_names_substrings_and_indices(tmp_path):
+    path = write_set(tmp_path, dict(midi_outputs=['Midi Out 1', 'Midi Out 2', 2]))
+    result = load_setlist(path, duration_probe=lambda _: 60)
+    assert result.midi_outputs == ('Midi Out 1', 'Midi Out 2', 2)
+
+
+def test_midi_outputs_default_is_empty(tmp_path):
+    path = write_set(tmp_path, {})
+    assert load_setlist(path, duration_probe=lambda _: 60).midi_outputs == ()
+
+
+@pytest.mark.parametrize('outputs, message', [
+    ('Midi Out 1', 'midi_outputs must be a nonempty list'),
+    ([], 'midi_outputs must be a nonempty list'),
+    ([''], r'midi_outputs\[0\]'),
+    ([-1], r'midi_outputs\[0\]'),
+    ([True], r'midi_outputs\[0\]'),
+    ([{'port': 1}], r'midi_outputs\[0\]'),
+])
+def test_invalid_midi_outputs_have_context(tmp_path, outputs, message):
+    path = write_set(tmp_path, dict(midi_outputs=outputs))
+    with pytest.raises(SetlistError, match=message):
+        load_setlist(path, duration_probe=lambda _: 60)
+
+
+def test_midi_outputs_survive_document_roundtrip(tmp_path):
+    from showsync.document import Document
+    path = write_set(tmp_path, dict(midi_outputs=['Midi Out 1', 'KeyStep']))
+    document = Document.load(path, probe=lambda _: 60)
+    assert document.setlist().midi_outputs == ('Midi Out 1', 'KeyStep')
+    document.save()
+    assert load_setlist(path, duration_probe=lambda _: 60).midi_outputs \
+        == ('Midi Out 1', 'KeyStep')
+
+
+def test_midi_port_accepts_substring(tmp_path):
+    path = write(tmp_path, dict(name='Song', file='song.wav', bpm=120,
+                                midi=dict(file='part.mid', port='midi out 2')))
+    assert load_setlist(path, duration_probe=lambda _: 60).songs[0].midi_port == 'midi out 2'

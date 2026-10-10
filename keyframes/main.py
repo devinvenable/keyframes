@@ -3044,24 +3044,38 @@ def draw_grid_preview(screen, cells, scroll_y, preview):
     screen.blit(frame, (x, y))
 
 
+# ShowSync's virtual egress port (showsync/egress.py VIRTUAL_PORT_NAME). It
+# carries the full clock/transport/visual-cue egress with no hardware return
+# loop, so it is ALWAYS listened to when present — on top of the --port
+# filter and despite the virtual-port skip below (which stays for everything
+# else: Midi Through et al. would echo our own traffic).
+SHOWSYNC_CUE_PORT = 'ShowSync Cues'
+
+
 def select_midi_ports(available_ports, port_filter=None):
     """Select MIDI ports. If port_filter is given, return all substring matches.
-    Otherwise auto-select all hardware ports (skip virtual ones)."""
+    Otherwise auto-select all hardware ports (skip virtual ones).
+    A port named like ShowSync's cue port is always included either way."""
     if not available_ports:
         return []
+    cue_ports = [p for p in available_ports if SHOWSYNC_CUE_PORT.lower() in p.lower()]
+
+    def with_cues(selected):
+        return selected + [p for p in cue_ports if p not in selected]
 
     if port_filter:
         matches = [p for p in available_ports if port_filter.lower() in p.lower()]
-        return matches
+        return with_cues(matches)
 
     # Auto-select: prefer hardware ports (skip common virtual/software ports)
     virtual_keywords = ['through', 'virtual', 'midi through', 'rtpmidi']
     hardware = [p for p in available_ports
-                if not any(kw in p.lower() for kw in virtual_keywords)]
+                if p not in cue_ports
+                and not any(kw in p.lower() for kw in virtual_keywords)]
     if hardware:
-        return hardware
+        return with_cues(hardware)
 
-    return [available_ports[0]]
+    return with_cues([available_ports[0]] if not cue_ports else [])
 
 
 def run_packaging_smoke_test():

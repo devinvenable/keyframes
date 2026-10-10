@@ -102,10 +102,16 @@ def main():
     parser.add_argument('--output-port')
     parser.add_argument('--json', type=Path)
     parser.add_argument('--freeze-gc', action='store_true', help='Freeze startup objects before playback (optional timing hardening)')
+    parser.add_argument('--mirror-ports', type=int, default=0, metavar='N',
+                        help='open N extra virtual outputs and send every byte to them '
+                             'after the measured route, reproducing the multi-port '
+                             'egress fan-out (task 259); the gate still judges the '
+                             'measured send timestamps')
     args = parser.parse_args()
     if args.seconds < 3:
         parser.error('--seconds must be at least 3')
     midi_out = audio = clock = receiver = pipe = None
+    mirrors = []
     received, sent = [], []
     result = {'platform': platform.platform(), 'python': sys.version.split()[0]}
     status = 1
@@ -137,6 +143,12 @@ def main():
             result['midi_route'] = f'{args.output_port} -> {args.input_port}'
         else:
             raise ValueError('Both --input-port and --output-port are required for a physical loop')
+        for i in range(args.mirror_ports):
+            mirror = rtmidi.MidiOut(name=f'{token}-mirror-{i}')
+            mirror.open_virtual_port(f'{token}-mirror-{i}')
+            mirrors.append(mirror)
+        if mirrors:
+            result['mirror_ports'] = len(mirrors)
         with tempfile.TemporaryDirectory(prefix='showsync-jitter-') as directory:
             path = Path(directory) / 'probe.wav'
             # Low-level original tone; real output stream stays active throughout.
@@ -157,6 +169,8 @@ def main():
                     ideal = stamp + audio.maps[p.song_index].T(clock._tick / 24) - p.song_time
                     sent.append((ideal, stamp, clock._tick))
                 midi_out.send_message([byte])
+                for mirror in mirrors:
+                    mirror.send_message([byte])
             clock = ClockEngine(audio.maps, audio.position, send)
             clock.start()
             audio.start()
@@ -190,6 +204,8 @@ def main():
             audio.close()
         if midi_out:
             midi_out.close_port()
+        for mirror in mirrors:
+            mirror.close_port()
         if receiver:
             receiver.join(timeout=.2)
             if receiver.is_alive():

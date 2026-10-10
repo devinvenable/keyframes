@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 from .setlist import (SUFFIXES, VIDEO_SUFFIXES, MIDI_SUFFIXES, Setlist, SetlistError, Song, check_keyframes_bank,
-                      mapping, number, parse_keyframes_setup, parse_song, position,
+                      mapping, number, parse_keyframes_setup, parse_midi_outputs, parse_song, position,
                       song_context, string, timing_metadata)
 from .visuals import DEFAULT_CHANNEL
 from .tempomap import TempoEvent
@@ -90,7 +90,7 @@ class Row:
 
 class Document:
     def __init__(self, path=None, title=None, rows=(), source=None,
-                 keyframes=((), DEFAULT_CHANNEL)):
+                 keyframes=((), DEFAULT_CHANNEL), midi_outputs=()):
         self.path = Path(path).expanduser().resolve() if path else None
         self.title = title
         self.rows = list(rows)
@@ -98,6 +98,8 @@ class Document:
         # (banks, channel) for per-song Keyframes cues; the YAML block itself
         # is not editable here and rides through save() inside _source.
         self.keyframes = keyframes
+        # Egress mirror ports; hand-edited YAML only, rides through save().
+        self.midi_outputs = midi_outputs
 
     @property
     def display_title(self):
@@ -111,8 +113,9 @@ class Document:
         try:
             data = _editor().load(path.read_text(encoding="utf-8"))
             data = mapping(data if data is not None else {},
-                           {"title", "audio_root", "songs", "keyframes"}, "setlist")
+                           {"title", "audio_root", "songs", "keyframes", "midi_outputs"}, "setlist")
             keyframes = parse_keyframes_setup(data)
+            midi_outputs = parse_midi_outputs(data)
             title = string(data.get("title", path.stem), "title")
             root = Path(string(data.get("audio_root", "."), "audio_root")).expanduser()
             root = (path.parent / root).resolve()
@@ -146,7 +149,8 @@ class Document:
                 if row.video and not row.video.is_file():
                     row.file_error = f"video file not found: {row.video}"
                 rows.append(row)
-            return cls(path, title, rows, source=data, keyframes=keyframes)
+            return cls(path, title, rows, source=data, keyframes=keyframes,
+                       midi_outputs=midi_outputs)
         except (OSError, ValueError, YAMLError) as exc:
             raise SetlistError(f"{context}: {exc}") from exc
 
@@ -217,7 +221,7 @@ class Document:
             row, message = blocked
             raise SetlistError(f"{row.name}: {message}" if row else message)
         return Setlist(self.display_title, tuple(row.song() for row in self.rows),
-                       *self.keyframes)
+                       *self.keyframes, self.midi_outputs)
 
     def default_save_directory(self):
         return self.rows[0].file.parent if self.rows else Path.home()

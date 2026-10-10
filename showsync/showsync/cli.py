@@ -7,9 +7,10 @@ import math
 from .appstate import last_setlist, remember_setlist, clock_offset_ms, remember_clock_offset
 from .audio import AudioEngine
 from .bundle import BundleError, export_bundle, import_bundle
-from .clock import ClockEngine, open_midi_port
+from .clock import ClockEngine
 from .document import Document
 from .devices import Devices
+from .egress import VIRTUAL_PORT_NAME, MidiEgress, open_egress
 from .gui import main_loop
 from .headless import headless_loop
 from .markers import MarkerWriter
@@ -23,7 +24,11 @@ def main(argv=None):
     parser.add_argument('setlist', nargs='?',
                         help='open setlist YAML in the editor; omitted = reopen the last-used set (or start a new one)')
     parser.add_argument('--audio-device', type=lambda s: int(s) if s.isdecimal() else s)
-    parser.add_argument('--midi-port', help='MIDI output index or exact name')
+    parser.add_argument('--midi-port', help='MIDI output index, name, or unique substring')
+    parser.add_argument('--midi-outputs', metavar='PORT,PORT,…',
+                        help='mirror the clock/transport/cue egress to these outputs '
+                             '(each an index, name, or unique substring); overrides the '
+                             "setlist's top-level midi_outputs list for this run")
     parser.add_argument('--list-devices', action='store_true')
     parser.add_argument('--freeze-gc', action='store_true', help='Freeze startup objects to reduce GC timing pauses')
     parser.add_argument('--editor-screen', metavar='NAME|INDEX',
@@ -110,25 +115,49 @@ def main(argv=None):
         return 0
 
     devices = Devices(args.midi_port, args.audio_device)
+    cli_outputs = None
+    if args.midi_outputs is not None:
+        cli_outputs = [part.strip() for part in args.midi_outputs.split(',') if part.strip()]
+        if not cli_outputs:
+            parser.error('--midi-outputs needs at least one port')
     frozen = False
+
+    def open_outputs(setlist):
+        """Egress for this set: configured mirrors, or the device-chosen port.
+
+        The setlist's midi_outputs (CLI --midi-outputs overriding) replaces
+        the single device selection entirely — mirroring the device port on
+        top could resolve to a jack already in the list and double the clock.
+        """
+        mirrors = cli_outputs if cli_outputs is not None else \
+            list(setlist.midi_outputs) if setlist is not None else []
+        if mirrors and devices.midi_name is not None:
+            logging.info('Setlist midi_outputs in use — ignoring single MIDI output %r',
+                         devices.midi_name)
+        elif devices.midi_name is not None:
+            mirrors = [devices.midi_name]
+        try:
+            egress = open_egress(mirrors)
+        except Exception as exc:
+            logging.warning('MIDI egress unavailable (%s) — playing audio only.', exc)
+            return MidiEgress([])
+        if mirrors and not egress.hardware_names:
+            devices.notice = ('MIDI output disconnected — egress on the virtual '
+                              f'{VIRTUAL_PORT_NAME} port only.')
+        return egress
 
     def start_engines(setlist):
         nonlocal frozen
         audio = midi = clock = None
         try:
             audio = AudioEngine(setlist, device=devices.audio_index)
-            try:
-                midi = open_midi_port(devices.midi_name) if devices.midi_name is not None else None
-            except Exception:
-                devices.midi_name = None
-                devices.notice = 'MIDI output disconnected — playing audio only.'
+            midi = open_outputs(setlist)
             if args.freeze_gc:
                 audio.prepare()
                 gc.freeze()
                 frozen = True
             events = MidiEventsView(audio, load_setlist_events(setlist)) if setlist is not None else None
-            clock = ClockEngine(audio.maps, audio.position,
-                                lambda message: midi.send_message([message] if isinstance(message, int) else message) if midi is not None else None,
+            clock = ClockEngine(audio.maps, audio.position, midi.send,
                                 clock_offset_ms=offset, send_transport=devices.send_transport,
                                 events=events,
                                 controls=song_controls(setlist) if setlist is not None else None)
@@ -165,7 +194,7 @@ def main(argv=None):
                     audio.close()
             finally:
                 if midi:
-                    midi.close_port()
+                    midi.close()
                 if frozen:
                     gc.unfreeze()
                     frozen = False

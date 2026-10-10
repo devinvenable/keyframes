@@ -242,3 +242,14 @@ def test_connect_transport_returns_none_without_hardware(monkeypatch):
     owner = SimpleNamespace(transport_received=FakeSignal())
     assert connect_transport(owner, Rig().control) is None
     assert owner.transport_received.slots == []
+
+
+def test_input_never_listens_to_our_own_virtual_cue_egress(monkeypatch):
+    # The 'ShowSync Cues' virtual output is readable by every ALSA client,
+    # including ourselves — listening would echo our own Start/Stop back in.
+    ports = ['ShowSync:ShowSync Cues 128:0', 'TBOX 2X2 MIDI 1']
+    fake_rtmidi(monkeypatch, ports)
+    assert [i.opened for i in open_midi_inputs(None)] == [1]
+    # Even a preferred-name match must not open it.
+    fake_rtmidi(monkeypatch, ports)
+    assert [i.opened for i in open_midi_inputs('ShowSync:ShowSync Cues 128:0')] == [1]

@@ -234,22 +234,42 @@ class ClockEngine:
                 self._close_event_port()
 
 
+def resolve_midi_port(selection, ports):
+    """Index of `selection` in `ports`: index, exact name, or unique substring.
+
+    Exact rtmidi names are stage-brittle — ALSA appends a client:port id that
+    changes across replugs, and CoreMIDI names differ entirely — so a set
+    authored as 'Midi Out 2' must find the same jack on any host. An exact
+    match always wins; otherwise a case-insensitive substring must single out
+    one port, and an ambiguous or missing match raises with the candidates so
+    the caller can fall back rather than guess.
+    """
+    if selection is None:
+        if len(ports) != 1:
+            raise ValueError(f'Choose --midi-port by index, name, or unique substring; '
+                             f'available: {list(enumerate(ports))}')
+        return 0
+    if isinstance(selection, int) or str(selection).isdecimal():
+        index = int(selection)
+        if not 0 <= index < len(ports):
+            raise ValueError(f'MIDI port index {index} is out of range: {list(enumerate(ports))}')
+        return index
+    exact = [i for i, name in enumerate(ports) if name == selection]
+    if len(exact) == 1:
+        return exact[0]
+    matches = [i for i, name in enumerate(ports) if str(selection).lower() in name.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        raise ValueError(f'MIDI port {selection!r} is ambiguous; matches: '
+                         f'{[(i, ports[i]) for i in matches]}')
+    raise ValueError(f'MIDI port {selection!r} does not match any output; '
+                     f'available: {list(enumerate(ports))}')
+
+
 def open_midi_port(selection=None):
     import rtmidi
     output = rtmidi.MidiOut()
-    ports = output.get_ports()
-    if selection is None:
-        if len(ports) != 1:
-            raise ValueError(f'Choose --midi-port by index or exact name; available: {list(enumerate(ports))}')
-        index = 0
-    elif str(selection).isdecimal():
-        index = int(selection)
-    else:
-        matches = [i for i, name in enumerate(ports) if name == selection]
-        if len(matches) != 1:
-            raise ValueError(f'MIDI port must match one exact name; available: {list(enumerate(ports))}')
-        index = matches[0]
-    if not 0 <= index < len(ports):
-        raise ValueError(f'MIDI port index {index} is out of range: {list(enumerate(ports))}')
+    index = resolve_midi_port(selection, output.get_ports())
     output.open_port(index)
     return output

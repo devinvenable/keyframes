@@ -63,6 +63,9 @@ class Setlist:
     # banks[i], program 0 the default bank (visuals.py documents why).
     keyframes_banks: tuple[str, ...] = ()
     keyframes_channel: int = DEFAULT_CHANNEL
+    # Output ports (names, substrings, or indices) the clock/transport/cue
+    # egress is mirrored to. Empty = the single device-chosen output.
+    midi_outputs: tuple[str | int, ...] = ()
 
 
 def number(value, field, *, positive=False):
@@ -151,10 +154,7 @@ def parse_song(row, root, *, require_bpm=True):
                     raise ValueError('midi loop length must be finite')
         midi_port = options.get('port')
         if midi_port is not None:
-            if isinstance(midi_port, str):
-                string(midi_port, 'midi.port')
-            elif isinstance(midi_port, bool) or not isinstance(midi_port, int) or midi_port < 0:
-                raise ValueError('midi.port must be an exact name or nonnegative index')
+            midi_port = port_matcher(midi_port, 'midi.port')
         midi = string(options.get('file'), 'midi.file')
     if midi is not None:
         midi = (root / string(midi, "midi")).resolve()
@@ -214,6 +214,32 @@ def parse_keyframes_cue(row):
                                      f"known: {', '.join(sorted(KEYFRAMES_SCENES))}")
             allow = tuple(raw)
     return KeyframesCue(bank=bank, enabled=enabled, probability=probability, allow=allow)
+
+
+def port_matcher(value, field):
+    """One output selector: a name/substring string or a nonnegative index."""
+    if isinstance(value, str):
+        return string(value, field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f'{field} must be a port name, substring, or nonnegative index')
+    return value
+
+
+def parse_midi_outputs(data):
+    """The top-level midi_outputs list: egress mirror port selectors.
+
+    Substring selectors are the portable spelling — exact rtmidi names carry
+    host-specific ALSA ids and differ entirely on CoreMIDI. Resolution (and
+    the warn-but-play behavior for a port missing on this host) happens at
+    engine start; here only the shape is validated."""
+    if 'midi_outputs' not in data:
+        return ()
+    outputs = data['midi_outputs']
+    if not isinstance(outputs, list) or not outputs:
+        raise ValueError('midi_outputs must be a nonempty list of ports '
+                         '(omit it for the default single output)')
+    return tuple(port_matcher(value, f'midi_outputs[{i}]')
+                 for i, value in enumerate(outputs))
 
 
 def parse_keyframes_setup(data):
@@ -283,8 +309,9 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
     context = str(path)
     try:
         data = mapping(yaml.safe_load(path.read_text(encoding="utf-8")),
-                       {"title", "audio_root", "songs", "keyframes"}, "setlist")
+                       {"title", "audio_root", "songs", "keyframes", "midi_outputs"}, "setlist")
         keyframes_banks, keyframes_channel = parse_keyframes_setup(data)
+        midi_outputs = parse_midi_outputs(data)
         title = string(data.get("title", path.stem), "title")
         root = Path(string(data.get("audio_root", "."), "audio_root")).expanduser()
         root = (path.parent / root).resolve()
@@ -306,7 +333,8 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
                 raise ValueError(f"trim must be under the file duration ({duration:g}s)")
             song.tempo_map(duration - song.trim if duration is not None else None)
             songs.append(song)
-        return Setlist(title, tuple(songs), keyframes_banks, keyframes_channel)
+        return Setlist(title, tuple(songs), keyframes_banks, keyframes_channel,
+                       midi_outputs)
     except (OSError, ValueError, yaml.YAMLError) as exc:
         raise SetlistError(f"{context}: {exc}") from exc
 

@@ -121,17 +121,20 @@ def open_midi_inputs(preferred=None):
     hearing the same byte on several ports is safe. An exact match on
     `preferred` (the configured MIDI output name) is ordered first but never
     excludes the rest. Ports named through/virtual/loopback are skipped to
-    avoid our own clock egress looping back. Incoming clock/sysex/sensing
+    avoid our own clock egress looping back, and so is our own 'ShowSync
+    Cues' virtual egress port — listening to it would feed every Start/Stop
+    we send straight back into this input. Incoming clock/sysex/sensing
     stay ignored (rtmidi default), so only channel and transport messages
     reach the callback."""
     import rtmidi
+    from .egress import VIRTUAL_PORT_NAME
     probe = rtmidi.MidiIn()
     ports = probe.get_ports()
     probe.delete()
+    skipped = ('through', 'virtual', 'loopback', VIRTUAL_PORT_NAME.lower())
     candidates = [i for i, name in enumerate(ports)
-                  if name == preferred
-                  or not any(word in name.lower()
-                             for word in ('through', 'virtual', 'loopback'))]
+                  if (name == preferred and VIRTUAL_PORT_NAME.lower() not in name.lower())
+                  or not any(word in name.lower() for word in skipped)]
     candidates.sort(key=lambda i: ports[i] != preferred)
     inputs = []
     for index in candidates:
