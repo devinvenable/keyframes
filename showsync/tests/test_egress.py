@@ -20,6 +20,7 @@ class FakeOutput:
     fail_virtual = False
 
     def __init__(self, name=None):
+        self.name = name
         self.opened = None
 
     def get_ports(self):
@@ -94,6 +95,7 @@ def test_egress_opens_mirrors_and_virtual_port(fake_rtmidi):
     egress = open_egress(['midi out 1', 'Midi Out 2', 'KeyStep'],
                          virtual=open_virtual_cue_port())
     assert egress.hardware_names == PORTS
+    assert [port.name for _, port, _ in egress.ports] == ['ShowSync Egress'] * len(PORTS)
     assert any(VIRTUAL_PORT_NAME in name for name in egress.names)
     assert ('open-virtual', VIRTUAL_PORT_NAME) in fake_rtmidi.log
 

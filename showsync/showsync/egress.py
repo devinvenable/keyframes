@@ -150,7 +150,7 @@ def open_egress(selections, virtual=None):
         matcher = getattr(selection, 'port', selection)
         mask = classes_mask(getattr(selection, 'send', None))
         try:
-            output = rtmidi.MidiOut()
+            output = rtmidi.MidiOut(name='ShowSync Egress')
             index = resolve_midi_port(matcher, output.get_ports())
             if index in opened:
                 name, port, had = ports[opened[index]]
