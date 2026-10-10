@@ -29,6 +29,9 @@ class Devices:
         self.midi_name = None
         self.audio_index = None
         self.send_transport = appstate.send_transport()
+        # None uses the setlist routes, then the single device fallback.
+        # Explicit lists are run-only, initially supplied by --midi-outputs.
+        self.egress_override = None
 
     def resolve(self, ports, outputs):
         self.notice = ''

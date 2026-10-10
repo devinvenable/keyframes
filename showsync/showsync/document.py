@@ -10,10 +10,10 @@ import io
 import os
 from pathlib import Path
 
-from .setlist import (SUFFIXES, VIDEO_SUFFIXES, MIDI_SUFFIXES, Setlist, SetlistError, Song, check_keyframes_bank,
+from .setlist import (SUFFIXES, VIDEO_SUFFIXES, MIDI_SUFFIXES, YAML_FIELDS, Setlist, SetlistError, Song, check_keyframes_bank,
                       mapping, number, parse_keyframes_setup, parse_midi_outputs, parse_song, position,
                       song_context, string, timing_metadata)
-from .visuals import DEFAULT_CHANNEL
+from .visuals import DEFAULT_CHANNEL, KeyframesCue
 from .tempomap import TempoEvent
 
 
@@ -54,7 +54,7 @@ class Row:
     midi_loop: bool = False
     midi_beats: float | None = None
     midi_port: str | int | None = None
-    keyframes: object = None  # opaque to the editor; travels through save()
+    keyframes: KeyframesCue | None = None
 
     def problem(self):
         if self.file_error:
@@ -95,10 +95,9 @@ class Document:
         self.title = title
         self.rows = list(rows)
         self._source = source  # ruamel data of the file on disk; None until first save
-        # (banks, channel) for per-song Keyframes cues; the YAML block itself
-        # is not editable here and rides through save() inside _source.
+        # (banks, channel) for per-song Keyframes cues.
         self.keyframes = keyframes
-        # Egress mirror ports; hand-edited YAML only, rides through save().
+        # Egress mirror ports, editable in Set Settings.
         self.midi_outputs = midi_outputs
 
     @property
@@ -113,7 +112,7 @@ class Document:
         try:
             data = _editor().load(path.read_text(encoding="utf-8"))
             data = mapping(data if data is not None else {},
-                           {"title", "audio_root", "songs", "keyframes", "midi_outputs"}, "setlist")
+                           YAML_FIELDS['setlist'], "setlist")
             keyframes = parse_keyframes_setup(data)
             midi_outputs = parse_midi_outputs(data)
             title = string(data.get("title", path.stem), "title")
@@ -242,8 +241,21 @@ class Document:
         try:
             editor = _editor()
             data = self._source if isinstance(self._source, dict) else CommentedMap()
-            if "title" not in data:
-                data["title"] = self.display_title
+            if data.get('title') != self.display_title:
+                data['title'] = self.display_title
+            if parse_midi_outputs(data) != tuple(self.midi_outputs):
+                if self.midi_outputs:
+                    data['midi_outputs'] = [
+                        {'port': item.port, 'send': list(item.send)}
+                        if hasattr(item, 'send') else item for item in self.midi_outputs]
+                else:
+                    data.pop('midi_outputs', None)
+            if parse_keyframes_setup(data) != self.keyframes:
+                setup = data.get('keyframes')
+                if not isinstance(setup, dict):
+                    setup = data['keyframes'] = CommentedMap()
+                setup['banks'] = list(self.keyframes[0])
+                setup['channel'] = self.keyframes[1]
             root = Path(str(data.get("audio_root", "."))).expanduser()
             root = (self.path.parent / root).resolve()
             original = list(data.get("songs") or [])
@@ -261,6 +273,9 @@ class Document:
                     if current_file != row.file:
                         entry['file'] = self._portable(row.file, root)
                 self._set_number(entry, "bpm", row.bpm)
+                if row.gap or 'gap' in entry:
+                    self._set_number(entry, 'gap', row.gap)
+                self._sync_cue(entry, row.keyframes)
                 if row.midi is None:
                     entry.pop('midi', None)
                 else:
@@ -316,6 +331,36 @@ class Document:
         self._source = data
         for i, row in enumerate(self.rows):
             row.source_index = i
+
+    @staticmethod
+    def _sync_cue(entry, cue):
+        from .setlist import parse_keyframes_cue
+        from ruamel.yaml.comments import CommentedMap
+        if parse_keyframes_cue(entry) == cue:
+            return
+        if cue is None:
+            entry.pop('keyframes', None)
+            return
+        saved = entry.get('keyframes')
+        if not isinstance(saved, dict):
+            saved = entry['keyframes'] = CommentedMap()
+        if cue.bank is None:
+            saved.pop('bank', None)
+        else:
+            saved['bank'] = cue.bank
+        scenes = saved.get('scenes')
+        if not isinstance(scenes, dict):
+            scenes = CommentedMap()
+        for key in ('enabled', 'probability', 'allow'):
+            value = getattr(cue, key)
+            if value is None:
+                scenes.pop(key, None)
+            else:
+                scenes[key] = list(value) if key == 'allow' else value
+        if scenes:
+            saved['scenes'] = scenes
+        else:
+            saved.pop('scenes', None)
 
     @staticmethod
     def _portable(file, root):

@@ -281,7 +281,7 @@ class MainWindow(QMainWindow):
     def __init__(self, document, *, start_engines, dialogs=None, remember=None,
                  estimator=estimate_grid, trim_suggester=suggest_trim, settings=None,
                  notice='', clock_offset_ms=0, offset_changed=None, devices=None,
-                 midi_transport=False, autostart=None):
+                 midi_transport=None, autostart=None):
         super().__init__()
         if dialogs is None:
             from .dialogs import Dialogs
@@ -318,8 +318,14 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.refresh)
         self.timer.start()
         self.midi_input = None
-        if midi_transport:
-            self.enable_midi_transport()
+        self.transport = None
+        self.transport_cli_override = midi_transport is not None
+        effective = (midi_transport if self.transport_cli_override else
+                     self.settings.value('receiveMidiTransport', False, type=bool))
+        self.transport_status = QLabel()
+        self.statusBar().addPermanentWidget(self.transport_status)
+        self.transport_action.setChecked(effective)
+        self.set_receive_transport(effective, remember=False)
         if autostart is not None:
             logging.info('Autostart: set begins in %gs.', autostart)
             QTimer.singleShot(round(autostart * 1000), self.play)
@@ -520,7 +526,38 @@ class MainWindow(QMainWindow):
         if self.devices is None:
             return
         from .device_dialog import DeviceDialog
-        DeviceDialog(self.devices, self).exec()
+        if DeviceDialog(self.devices, self).exec() == QDialog.Accepted:
+            self.update_routing_status()
+
+    def set_preferences(self):
+        if self.audio is not None:
+            return
+        from .config_dialog import SetSettingsDialog
+        overridden = self.devices is not None and self.devices.egress_override is not None
+        if SetSettingsDialog(self.document, self, overridden=overridden).exec() == QDialog.Accepted:
+            self.changed()
+            self.update_routing_status()
+
+    def song_preferences(self):
+        index = self.table.currentIndex().row()
+        if self.audio is not None or not 0 <= index < len(self.document.rows):
+            return
+        from .config_dialog import SongSettingsDialog
+        if SongSettingsDialog(self.document.rows[index], self.document.keyframes[0], self).exec() == QDialog.Accepted:
+            self.changed()
+
+    def update_routing_status(self):
+        outputs = (self.devices.egress_override if self.devices is not None and
+                   self.devices.egress_override is not None else self.document.midi_outputs)
+        source = ('run override' if self.devices is not None and self.devices.egress_override is not None
+                  else 'set' if outputs else 'device')
+        labels = [f'{item.port} ({", ".join(item.send)})' if hasattr(item, 'send') else str(item)
+                  for item in outputs]
+        if not labels:
+            labels = [(self.devices.midi_name or 'No hardware output (audio only)') if self.devices else 'Automatic']
+        prefix = 'MIDI' if source == 'device' else f'MIDI ({source})'
+        self.midi_status.setText(f'{prefix}: {", ".join(labels)}')
+        self.midi_status.setToolTip('Hardware routing; ShowSync Cues additionally carries full egress when available.')
 
     def prepare_devices(self):
         if self.devices is None:
@@ -559,6 +596,10 @@ class MainWindow(QMainWindow):
         self.devices_action = self.action(file_menu, 'Preferences…', self.device_preferences)
         self.offset_action = self.action(file_menu, 'MIDI clock offset…', self.clock_preferences)
         set_menu = self.menuBar().addMenu('&Set')
+        self.set_settings_action = self.action(set_menu, 'Set settings…', self.set_preferences)
+        self.song_settings_action = self.action(set_menu, 'Song settings…', self.song_preferences)
+        self.transport_action = self.action(set_menu, 'Receive MIDI Start/Stop', self.set_receive_transport)
+        self.transport_action.setCheckable(True)
         self.play_action = self.action(set_menu, '&Play Set', self.play)
         self.pause_action = self.action(set_menu, 'Pause / Resume', self.pause, 'Space')
         self.skip_action = self.action(set_menu, 'Skip', self.skip, 'Ctrl+Right')
@@ -1042,7 +1083,7 @@ class MainWindow(QMainWindow):
             self.notice(f'Could not start the show: {exc}')
             return
         if self.devices is not None:
-            self.midi_status.setText(f'MIDI: {self.devices.midi_name or "No output (audio only)"}')
+            self.update_routing_status()
         self.baseline = list(self.document.rows)
         self.show_row_problem()
         self.populate_queue()
@@ -1089,6 +1130,25 @@ class MainWindow(QMainWindow):
         if self.audio is not None and not self.audio.position().ended:
             self.audio.skip()
 
+    def set_receive_transport(self, enabled, *, remember=True):
+        # Closing and disconnecting prevents duplicate handlers after a toggle.
+        if self.midi_input is not None:
+            self.midi_input.close_port()
+            self.midi_input = None
+            self.transport_received.disconnect(self.transport.handle)
+        if remember:
+            self.settings.setValue('receiveMidiTransport', enabled)
+            source = 'GUI choice (remembered)'
+        else:
+            source = 'CLI flag' if self.transport_cli_override else 'remembered GUI preference'
+        if enabled:
+            self.enable_midi_transport()
+        status = f'Receive MIDI transport: {"ON" if enabled else "OFF"} — {source}'
+        if enabled and self.midi_input is None:
+            status += ' (no input available)'
+        self.transport_status.setText(status)
+        logging.info(status)
+
     def enable_midi_transport(self):
         """--midi-transport: hardware Play/Stop drive the set like the GUI."""
         from .transport import TransportControl, connect_transport
@@ -1134,6 +1194,9 @@ class MainWindow(QMainWindow):
         """30 Hz reader: no transport mutations or MIDI sends in painting."""
         live = self.audio is not None
         self.devices_action.setEnabled(not live)
+        self.set_settings_action.setEnabled(not live)
+        self.song_settings_action.setEnabled(not live and self.table.currentIndex().isValid())
+        self.transport_action.setEnabled(not live)
         self.play_action.setEnabled(not live)
         self.pause_action.setEnabled(live)
         self.skip_action.setEnabled(live)
@@ -1248,7 +1311,7 @@ def place_editor(window, screens, spec):
 
 def main_loop(document, *, start_engines, dialogs=None, remember=None, notice='',
               clock_offset_ms=0, offset_changed=None, devices=None,
-              editor_screen=None, midi_transport=False, autostart=None):
+              editor_screen=None, midi_transport=None, autostart=None):
     app = QApplication.instance() or QApplication(application_arguments())
     window = MainWindow(document, start_engines=start_engines, dialogs=dialogs,
                         remember=remember, notice=notice, clock_offset_ms=clock_offset_ms,

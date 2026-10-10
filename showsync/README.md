@@ -172,6 +172,26 @@ addition, on Linux/macOS every show opens a virtual output named **`ShowSync
 Cues`** carrying the same egress; the Keyframes app always listens to it by
 name, so visual cues need no cable.
 
+**Set → Set settings…** edits this saved output list, with separate Clock,
+Transport, and Cues checkboxes for each port (for example, clock-only to the
+KeyStep). Remove all rows to use the single output in Preferences. The same
+dialog edits the set title and Keyframes bank list/channel. Supply the complete,
+alphabetically sorted list of Keyframes bank folders, excluding `default`.
+
+**File → Preferences… → Override set outputs for this run only** edits the
+`--midi-outputs` override, including per-port filters. It takes precedence over
+the saved set list; turning it off restores the set list. The override is never
+saved. The automatic **ShowSync Cues** virtual port continues carrying full
+egress regardless of hardware filters. Changes apply at the next playback.
+
+Select a song and choose **Set → Song settings…** for its gap, separate video,
+embedded-video mute, MIDI loop length (beats; four per bar), and visual cue.
+With **Send visual cue at song start** off, the previous song's visuals persist.
+With it on, bank defaults are restored and the selected bank/scene overrides
+apply. Scene probability and allowlist overrides are optional. Use Scenes →
+Disabled for no scenes; an empty enabled allowlist is rejected. These settings
+save with the set, preserving untouched YAML and comments.
+
 **File → Preferences…** offers MIDI and audio output dropdowns with a refresh
 button. Explicit choices are saved on this machine. Play never asks you to
 configure devices: audio uses the system default unless you picked an output;
@@ -189,6 +209,18 @@ Preferences also includes **Send MIDI Start/Stop**, enabled by default and
 saved on this machine. Turn it off to send clock ticks only and trigger your
 gear manually. This applies to every song boundary, pause, restart, end of
 set, and closing playback. Turning it off leaves timing and bar waits unchanged.
+
+**Set → Receive MIDI Start/Stop** controls incoming hardware transport while
+stopped and remembers the GUI preference. At startup, the status bar and log
+show its effective ON/OFF value and source. Explicit `--midi-transport` takes
+precedence without overwriting the preference; `live.sh` and `perform.sh`
+already pass that flag. Headless runs still use the CLI flag only.
+
+Configuration coverage is recorded in `showsync/config_exposure.py` and checked
+by `tests/test_config_parity.py`. New CLI or accepted YAML fields need a GUI
+exposure or a reasoned `cli_only` entry. Launch/capture options, arbitrary tempo
+maps, and separate Keyframes process options (including `--note-source`) remain
+outside these dialogs; use YAML or the owning CLI/launcher for those settings.
 
 The [design and five-song example](docs/design-v1.md) define the YAML format.
 The original example is also in `tests/fixtures/fall2026.yaml`; its audio paths

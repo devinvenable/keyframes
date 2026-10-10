@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 from . import devices as hardware
 from . import appstate
+from .config_dialog import OutputEditor
 
 
 class DeviceDialog(QDialog):
@@ -31,6 +32,18 @@ class DeviceDialog(QDialog):
         self.refresh_button = QPushButton('Refresh devices')
         self.refresh_button.clicked.connect(self.refresh_devices)
         layout.addWidget(self.refresh_button)
+        self.override_outputs = QCheckBox('Override set outputs for this run only')
+        self.override_outputs.setChecked(devices.egress_override is not None)
+        layout.addWidget(self.override_outputs)
+        self.outputs = OutputEditor(devices.egress_override or ())
+        self.outputs.setEnabled(self.override_outputs.isChecked())
+        self.override_outputs.toggled.connect(self.outputs.setEnabled)
+        layout.addWidget(self.outputs)
+        note = QLabel('The set output list overrides the single MIDI output above.\n'
+                      'This run-only list overrides both. Empty lists are not allowed.\n'
+                      'ShowSync Cues always carries full egress when available.')
+        note.setWordWrap(True)
+        layout.addWidget(note)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
@@ -80,6 +93,14 @@ class DeviceDialog(QDialog):
         self.validate()
 
     def accept(self):
+        try:
+            outputs = self.outputs.outputs() if self.override_outputs.isChecked() else None
+            if outputs == ():
+                raise ValueError('Add at least one output, or turn off the run-only override.')
+        except ValueError as exc:
+            self.message.setText(str(exc))
+            return
+        self.devices.egress_override = outputs
         self.devices.choose(self.midi.currentData(), self.audio.currentData())
         self.devices.send_transport = self.send_transport.isChecked()
         appstate.remember_send_transport(self.devices.send_transport)

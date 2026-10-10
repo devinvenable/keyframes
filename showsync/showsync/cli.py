@@ -19,7 +19,8 @@ from .visuals import song_controls
 from .setlist import SetlistError
 
 
-def main(argv=None):
+def build_parser():
+    """Declare the CLI without starting Qt, opening ports, or reading state."""
     parser = argparse.ArgumentParser(description='Audio-master backing tracks and MIDI clock')
     parser.add_argument('setlist', nargs='?',
                         help='open setlist YAML in the editor; omitted = reopen the last-used set (or start a new one)')
@@ -44,7 +45,7 @@ def main(argv=None):
                              '(default %(const)ss when SECONDS is omitted; write '
                              '--autostart=N or put the setlist first so the path '
                              'is not read as the seconds value)')
-    parser.add_argument('--midi-transport', action='store_true',
+    parser.add_argument('--midi-transport', action='store_true', default=None,
                         help='listen for MIDI realtime Start/Continue/Stop on the MIDI '
                              'input and drive the set like the GUI controls')
     parser.add_argument('--clock-offset', type=float, metavar='MS',
@@ -60,6 +61,11 @@ def main(argv=None):
                              'keyframes/ subtree; with --import-bundle: install the '
                              "bundle's Keyframes set into DIR (keeps the old manifest "
                              'as mapping.json.bak — run while Keyframes is closed)')
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.keyframes and not (args.import_bundle or args.export_bundle):
         parser.error('--keyframes only makes sense with --export-bundle or --import-bundle')
@@ -120,6 +126,7 @@ def main(argv=None):
         cli_outputs = [part.strip() for part in args.midi_outputs.split(',') if part.strip()]
         if not cli_outputs:
             parser.error('--midi-outputs needs at least one port')
+    devices.egress_override = cli_outputs
     frozen = False
     # Opened now — before any set plays — so Keyframes (which lists its MIDI
     # inputs once at launch) always finds the cue port; see egress.py. Closed
@@ -137,7 +144,7 @@ def main(argv=None):
         the single device selection entirely — mirroring the device port on
         top could resolve to a jack already in the list and double the clock.
         """
-        mirrors = cli_outputs if cli_outputs is not None else \
+        mirrors = devices.egress_override if devices.egress_override is not None else \
             list(setlist.midi_outputs) if setlist is not None else []
         if mirrors and devices.midi_name is not None:
             logging.info('Setlist midi_outputs in use — ignoring single MIDI output %r',
@@ -232,7 +239,7 @@ def main(argv=None):
             return headless_loop(document, start_engines=start_engines,
                                  remember=remember_setlist, devices=devices,
                                  autostart=args.autostart,
-                                 midi_transport=args.midi_transport)
+                                 midi_transport=bool(args.midi_transport))
         except KeyboardInterrupt:
             return 0
         except Exception as exc:

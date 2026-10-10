@@ -13,6 +13,22 @@ from .tempomap import TempoEvent, TempoMap
 from .visuals import DEFAULT_CHANNEL, KEYFRAMES_SCENES, KeyframesCue
 
 
+# These are the actual accepted YAML fields, shared with the editor loader.
+# Every addition must have a GUI exposure or a reason in config_exposure.py.
+YAML_FIELDS = {
+    'setlist': {'title', 'audio_root', 'songs', 'keyframes', 'midi_outputs'},
+    'song': {'name', 'file', 'bpm', 'gap', 'tempo', 'offset', 'trim', 'midi',
+             'video', 'mute', 'restart', 'editor', 'keyframes'},
+    'midi': {'file', 'loop', 'beats', 'bars', 'port'},
+    'event': {'at', 'bpm', 'ramp'},
+    'keyframes': {'bank', 'scenes'},
+    'keyframes.scenes': {'enabled', 'probability', 'allow'},
+    'egress': {'port', 'send'},
+    'keyframes.setup': {'banks', 'channel'},
+    'editor': {'bpm_estimated', 'offset_estimated', 'timing_review'},
+}
+
+
 class SetlistError(ValueError):
     pass
 
@@ -124,7 +140,7 @@ def parse_song(row, root, *, require_bpm=True):
     The editor's lenient Document rows and the strict playback loader share
     this, so a set saved mid-edit (bpm still unset) reopens instead of erroring.
     """
-    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "trim", "midi", "video", "mute", "restart", "editor", "keyframes"}, "song")
+    row = mapping(row, YAML_FIELDS['song'], "song")
     editor = timing_metadata(row)
     if require_bpm and editor.get('timing_review'):
         raise ValueError('Replacement audio needs timing review')
@@ -156,7 +172,7 @@ def parse_song(row, root, *, require_bpm=True):
     midi = row.get("midi")
     midi_loop, midi_beats, midi_port = False, None, None
     if isinstance(midi, dict):
-        options = mapping(midi, {'file', 'loop', 'beats', 'bars', 'port'}, 'midi')
+        options = mapping(midi, YAML_FIELDS['midi'], 'midi')
         midi_loop = options.get('loop', False)
         if not isinstance(midi_loop, bool):
             raise ValueError('midi.loop must be a boolean')
@@ -181,7 +197,7 @@ def parse_song(row, root, *, require_bpm=True):
     events = []
     for j, raw in enumerate(raw_events):
         try:
-            raw = mapping(raw, {"at", "bpm", "ramp"}, "event")
+            raw = mapping(raw, YAML_FIELDS['event'], "event")
             events.append(TempoEvent(position(raw.get("at")),
                                      number(raw.get("bpm"), "bpm", positive=True),
                                      number(raw.get("ramp", 0), "ramp")))
@@ -203,11 +219,11 @@ def parse_keyframes_cue(row):
     ``enabled: false``."""
     if "keyframes" not in row:
         return None
-    cue = mapping(row["keyframes"] or {}, {"bank", "scenes"}, "keyframes")
+    cue = mapping(row["keyframes"] or {}, YAML_FIELDS['keyframes'], "keyframes")
     bank = string(cue["bank"], "keyframes.bank") if "bank" in cue else None
     enabled = probability = allow = None
     if "scenes" in cue:
-        scenes = mapping(cue["scenes"] or {}, {"enabled", "probability", "allow"},
+        scenes = mapping(cue["scenes"] or {}, YAML_FIELDS['keyframes.scenes'],
                          "keyframes.scenes")
         if "enabled" in scenes:
             enabled = scenes["enabled"]
@@ -245,7 +261,7 @@ def egress_entry(value, field):
     {port: ..., send: [clock|transport|cues, ...]} subset."""
     if not isinstance(value, dict):
         return port_matcher(value, field)
-    entry = mapping(value, {'port', 'send'}, field)
+    entry = mapping(value, YAML_FIELDS['egress'], field)
     if 'port' not in entry:
         raise ValueError(f'{field} needs a port (name, substring, or index)')
     port = port_matcher(entry['port'], f'{field}.port')
@@ -294,7 +310,7 @@ def parse_keyframes_setup(data):
     error text both say to keep the list in lockstep with the folders."""
     if "keyframes" not in data:
         return (), DEFAULT_CHANNEL
-    setup = mapping(data["keyframes"] or {}, {"banks", "channel"}, "keyframes")
+    setup = mapping(data["keyframes"] or {}, YAML_FIELDS['keyframes.setup'], "keyframes")
     banks = setup.get("banks", [])
     if not isinstance(banks, list):
         raise ValueError("keyframes.banks must be a list")
@@ -325,7 +341,7 @@ def check_keyframes_bank(cue, banks):
 
 def timing_metadata(row):
     editor = mapping(row.get('editor', {}),
-                     {'bpm_estimated', 'offset_estimated', 'timing_review'}, 'editor')
+                     YAML_FIELDS['editor'], 'editor')
     for key in ('bpm_estimated', 'offset_estimated'):
         if key in editor and not isinstance(editor[key], bool):
             raise ValueError(f'editor.{key} must be a boolean')
@@ -351,7 +367,7 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
     context = str(path)
     try:
         data = mapping(yaml.safe_load(path.read_text(encoding="utf-8")),
-                       {"title", "audio_root", "songs", "keyframes", "midi_outputs"}, "setlist")
+                       YAML_FIELDS['setlist'], "setlist")
         keyframes_banks, keyframes_channel = parse_keyframes_setup(data)
         midi_outputs = parse_midi_outputs(data)
         title = string(data.get("title", path.stem), "title")
