@@ -159,7 +159,15 @@ def test_mod_wheel_still_pans_with_visual_control_installed():
 def test_allowlist_filters_the_activation_picker():
     state = make_state()
     config = {'enabled': True, 'probability': 1.0, 'allow': ['concentric-rings']}
-    update_scene_on_trigger(state, make_media(), 0.0, config, rng=lambda: 0.0)
+    candidates = []
+
+    def spy(names):
+        candidates.append(list(names))
+        return names[0]
+
+    with patch('main.random.choice', side_effect=spy):
+        update_scene_on_trigger(state, make_media(), 0.0, config, rng=lambda: 0.0)
+    assert candidates == [['concentric-rings']]  # picker saw ONLY allowed names
     assert isinstance(state['active_scene'], ConcentricRingsScene)
 
 
