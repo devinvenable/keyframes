@@ -4,6 +4,7 @@ import json
 import os
 import queue
 import random
+import re
 import shutil
 import sys
 import threading
@@ -2276,7 +2277,7 @@ def resolve_midi_log_path(cli_value, environ=None):
 
 
 class MidiEventLogger:
-    """Append every incoming MIDI event to a JSONL sidecar, one object per
+    """Append accepted-source MIDI events to a JSONL sidecar, one object per
     line, flushed per event so the file is intact even if the process is
     killed mid-take. Opens with a self-describing reference line (event
     "log_open") carrying the same epoch+monotonic pair every event gets:
@@ -2290,6 +2291,7 @@ class MidiEventLogger:
         self.path = path
         self._file = open(path, 'a', encoding='utf-8')
         self._warned = False
+        self._filtered_sources = {}
         self._write({'event': 'log_open', 'epoch': time.time(),
                      'monotonic': time.monotonic()})
 
@@ -2326,6 +2328,29 @@ class MidiEventLogger:
         self.log_event('note_echo_suppressed', port=port,
                        echo_of_port=echo_of_port, **fields)
 
+    def log_filtered_source(self, msg, port):
+        """Count ignored channel traffic, emitting at most once/5s per port.
+
+        Keep one example per summary, not raw copies of an ignored flood.
+        Pending counts are flushed on close; a crash can lose counts since
+        the last summary (accepted performance events still flush per event).
+        """
+        now = time.monotonic()
+        stats = self._filtered_sources.setdefault(
+            port, {'counts': {}, 'logged_at': None})
+        counts = stats['counts']
+        counts[msg.type] = counts.get(msg.type, 0) + 1
+        stats['example'] = msg.dict()
+        if stats['logged_at'] is None or now - stats['logged_at'] >= 5.0:
+            self._flush_filtered_source(port, stats)
+            stats['logged_at'] = now
+
+    def _flush_filtered_source(self, port, stats):
+        if stats['counts']:
+            self.log_event('note_source_filtered', port=port,
+                           counts=dict(stats['counts']), example=stats['example'])
+            stats['counts'].clear()
+
     def _write(self, record):
         try:
             self._file.write(json.dumps(record) + '\n')
@@ -2342,6 +2367,8 @@ class MidiEventLogger:
                       f"will be lost ({self.path})")
 
     def close(self):
+        for port, stats in self._filtered_sources.items():
+            self._flush_filtered_source(port, stats)
         try:
             self._file.close()
         except OSError:
@@ -2457,13 +2484,16 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                           note_hit_counts=None, assign_callback=None,
                           latch_mode=True, display_mode='fill',
                           scenes_config=None, midi_logger=None,
-                          midi_source=None, visual_control=None):
+                          midi_source=None, visual_control=None,
+                          note_sources=None):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
     If latch_mode is false and min_note_beats is set, note-off is deferred
     until the minimum duration elapses. Every displayed note-on optionally
-    starts a short black retrigger gap."""
+    starts a short black retrigger gap. note_sources restricts live channel
+    messages to selected ports; None preserves legacy/all-source behavior.
+    System messages and ShowSync Cues bypass that source restriction."""
     if note_hit_counts is None:
         note_hit_counts = {}
 
@@ -2473,9 +2503,21 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
     note_midi_flood(current_state, flood_dropped, midi_source, midi_logger, now)
 
     for msg in messages:
-        # Take sidecar: every incoming event is logged BEFORE any filtering
-        # (channel, range, type) — the log is ground truth of what arrived,
-        # not of what triggered. Only real note-ons get the mapped flag.
+        # Keep system clock/transport and ShowSync's dedicated cue path
+        # independent of the selected performance input. None is legacy/all
+        # mode (also used for the local keyboard/file queue).
+        source_filtered = (note_sources is not None
+                           and midi_source not in note_sources
+                           and SHOWSYNC_CUE_PORT.lower() not in (midi_source or '').lower()
+                           and hasattr(msg, 'channel'))
+        if source_filtered:
+            if midi_logger:
+                midi_logger.log_filtered_source(msg, midi_source)
+            continue
+
+        # Take sidecar: accepted-source events are logged BEFORE channel,
+        # range and type filtering. Ignored-source arrivals are summarized
+        # above so an unused input cannot flood the take log.
         if midi_logger:
             mapped = None
             if msg.type == 'note_on' and msg.velocity > 0:
@@ -3253,6 +3295,47 @@ def draw_grid_preview(screen, cells, scroll_y, preview):
 SHOWSYNC_CUE_PORT = 'ShowSync Cues'
 
 
+def configure_note_source(open_names, requested='tbox', midi_logger=None):
+    """Resolve a performance source from ports actually opened at startup.
+
+    Return a singleton set, an empty set if neither rig source exists, or
+    None for legacy/all mode. ALSA may call the TBOX input 'Midi Out 1';
+    match the endpoint number, never the '2x2' device name or ALSA client id.
+    Port 2 belongs to a different rig and must not become the note source.
+    """
+    hardware = [p for p in open_names if SHOWSYNC_CUE_PORT.lower() not in p.lower()]
+    candidates = {
+        'tbox': [p for p in hardware if 'tbox' in p.lower()
+                 and re.search(r'\b(?:in|out|midi)\s*1\b', p, re.IGNORECASE)],
+        'usb': [p for p in hardware if 'keystep' in p.lower()],
+    }
+    effective = requested
+    warning = None
+    if requested == 'all':
+        selected = hardware
+    else:
+        if not candidates[requested]:
+            other = 'usb' if requested == 'tbox' else 'tbox'
+            if candidates[other]:
+                effective = other
+                warning = (f"requested {requested} note source unavailable; "
+                           f"falling back to {other}")
+            else:
+                effective = 'none'
+                warning = (f"requested {requested} note source unavailable; neither "
+                           "TBOX In 1 nor KeyStep USB is open. Keyboard/cues still "
+                           "work; use --note-source all for other controllers")
+        selected = candidates.get(effective, [])[:1]
+    if warning:
+        print(f"WARNING: MIDI NOTE SOURCE: {warning}", flush=True)
+    print(f"MIDI note source: {effective} (requested: {requested}); "
+          f"ports: {', '.join(selected) or 'none'}", flush=True)
+    if midi_logger:
+        midi_logger.log_event('note_source', requested=requested, effective=effective,
+                              ports=selected, warning=warning)
+    return None if requested == 'all' else frozenset(selected)
+
+
 def select_midi_ports(available_ports, port_filter=None):
     """Select MIDI ports. If port_filter is given, return all substring matches.
     Otherwise auto-select all hardware ports (skip virtual ones).
@@ -3388,6 +3471,11 @@ def main():
                         help="MIDI channel to listen on (1-16, default: all)")
     parser.add_argument('--port', '-p', type=str, default=None,
                         help="MIDI port name substring to match (e.g. 'KeyStep')")
+    parser.add_argument('--note-source', choices=('tbox', 'usb', 'all'), default='tbox',
+                        help="Live notes/CC source: TBOX In 1 (tbox, default), "
+                             "KeyStep USB (usb), or all ports (legacy). Falls back "
+                             "to the other rig source if absent; clock and "
+                             "ShowSync Cues are independent")
     parser.add_argument('--start-note', type=int, default=DEFAULT_START_NOTE,
                         help=f"Lowest MIDI note number (default: {DEFAULT_START_NOTE})")
     parser.add_argument('--num-keys', type=int, default=DEFAULT_NUM_KEYS,
@@ -3492,8 +3580,11 @@ def main():
             port_names = select_midi_ports(inputs, args.port)
             if port_names:
                 for pn in port_names:
-                    inports.append(mido.open_input(pn))
-                    print(f"MIDI input: {pn}")
+                    try:
+                        inports.append(mido.open_input(pn))
+                        print(f"MIDI input: {pn}")
+                    except (OSError, RuntimeError) as exc:
+                        print(f"WARNING: cannot open MIDI input {pn}: {exc}")
             else:
                 print("No matching MIDI input found — using keyboard only.")
                 print(f"  Available ports: {inputs}")
@@ -3516,6 +3607,8 @@ def main():
         except OSError as exc:
             print(f"WARNING: cannot open MIDI event log {midi_log_path}: {exc}")
     queue_source = f"file:{args.midi_file}" if args.midi_file else 'keyboard'
+    note_sources = configure_note_source(
+        [port.name for port in inports], args.note_source, midi_logger)
 
     stall_rearm = None
     stall_log_path = resolve_stall_log_path()
@@ -3793,7 +3886,8 @@ def main():
                                           note_hit_counts, assign_if_selected,
                                           latch_enabled, args.display_mode,
                                           scenes_config, midi_logger, inport.name,
-                                          visual_control=visuals)
+                                          visual_control=visuals,
+                                          note_sources=note_sources)
 
         # Apply a bank program change recorded during MIDI processing here on
         # the UI/media thread — the same path (and state resets) as F5/F6.

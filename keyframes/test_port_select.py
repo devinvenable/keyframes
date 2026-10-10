@@ -72,11 +72,18 @@ def test_refresh_never_touches_hardware_ports():
     assert cue_port_refresh(HARDWARE, HARDWARE) == ([], [])
 
 
-def test_reattach_across_sender_relaunch_with_real_ports():
+def test_reattach_across_sender_relaunch_with_real_ports(monkeypatch):
     """The full mechanism: a stale subscription hears nothing after the cue
     sender is relaunched; one refresh pass rebinds and cues flow again."""
     import time
+    import uuid
     import mido
+    import main
+
+    # Never publish bank changes on the real show cue name during tests:
+    # a running Keyframes instance would discover and consume them.
+    cue_name = f'Keyframes-Test-Cues-{uuid.uuid4().hex}'
+    monkeypatch.setattr(main, 'SHOWSYNC_CUE_PORT', cue_name)
 
     def refresh(inports):
         stale, fresh = cue_port_refresh([p.name for p in inports],
@@ -92,7 +99,7 @@ def test_reattach_across_sender_relaunch_with_real_ports():
         time.sleep(wait)
         return [m for p in inports for m in p.iter_pending()]
 
-    sender = mido.open_output('ShowSync Cues', virtual=True)
+    sender = mido.open_output(cue_name, virtual=True)
     inports = []
     try:
         time.sleep(.2)
@@ -103,7 +110,7 @@ def test_reattach_across_sender_relaunch_with_real_ports():
         # "Crash": the sender client disappears; a new one takes its place.
         sender.close()
         time.sleep(.2)
-        sender = mido.open_output('ShowSync Cues', virtual=True)
+        sender = mido.open_output(cue_name, virtual=True)
         time.sleep(.2)
         sender.send(mido.Message('program_change', program=1))
         assert drain(inports) == []  # the stale subscription is deaf

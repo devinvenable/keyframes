@@ -106,6 +106,12 @@ python main.py --midi-file path/to/song.mid --loop
 # Listen on a specific MIDI channel only (1-16)
 python main.py --channel 1
 
+# Use KeyStep USB for notes/CC (practice without the TBOX rig)
+python main.py --note-source usb
+
+# Legacy input from all controllers, with cross-port note echo suppression
+python main.py --note-source all
+
 # Run in a window instead of fullscreen
 python main.py --windowed
 
@@ -129,11 +135,32 @@ Keyframes writes the active bank name there on every bank load — launch
 bank and F5/F6 switches alike — so a crash-restart relaunches into the
 bank that was live on stage. Off by default: no env var, no file.
 
+### Live MIDI note source
+
+`--note-source tbox` is the default: performance messages come from **TBOX
+In 1** only, including KeyStep notes mirrored through DIN and other hardware
+on the thru box. Some drivers label this input `TBOX ... Midi Out 1`; port 2
+is excluded. Use `--note-source usb` for KeyStep USB, or `--note-source all`
+for other controllers and the legacy multi-input behavior. Echo suppression
+remains active as a safety net.
+
+The selection covers notes, CC, pitch bend, and program changes. Clock and
+transport still arrive from all opened ports; **ShowSync Cues** is always
+exempt, including after a reconnect. Computer-keyboard and MIDI-file playback
+are independent. `--port` still limits which hardware ports are opened.
+
+If the requested source is absent or fails to open at startup, Keyframes
+prints a warning and uses the other rig source. If neither is open, it warns
+that hardware notes are unavailable; keyboard/cues still work, and other
+controllers can be used with `--note-source all`. Selection is fixed for that
+run. Startup output and the MIDI sidecar record the requested source, actual
+source, port name, and any fallback warning.
+
 ### MIDI event log (take sidecar)
 
 During `scripts/perform.sh` captures (which set `KEYFRAMES_MIDI_LOG`), or when
-run manually with `--midi-log <path>`, Keyframes appends **every incoming MIDI
-event** to a JSON Lines sidecar — ground truth of the performance (which keys
+run manually with `--midi-log <path>`, Keyframes appends incoming MIDI
+events from accepted sources to a JSON Lines sidecar — ground truth of the performance (which keys
 fired when), and for sequenced material the clock stream *is* the beat grid, so
 later edits never have to re-derive tempo from audio. Off by default: normal
 playing writes no files.
@@ -155,6 +182,11 @@ One JSON object per line. The first line is a self-describing reference:
 - All message types are logged (`control_change`, `program_change`,
   `pitchwheel`, `clock`, ...). Clock ticks appear only when the connected
   sequencer actually sends MIDI clock, and can dominate the file (24/beat).
+- A `note_source` startup record identifies the requested/effective source
+  and selected ports. Ignored channel messages produce `note_source_filtered`
+  summaries instead of raw events: counts by message type and one example,
+  at most once per five seconds per port. Pending counts flush on clean close;
+  a crash can lose ignored-source counts since the last summary.
 - Crash-safe: performance events are flushed per line, so a killed process
   loses at most buffered clock ticks. Stale events drained at startup are
   never logged.
