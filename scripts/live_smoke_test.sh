@@ -225,6 +225,9 @@ check "--no-restart teardown clean" test "$rc" = 0
 # --- 8. showsync dies at startup: abort before keyframes -------------------
 clear_ctl
 printf 'crash\n' > "$WORK/ctl.showsync"
+# Direct invocation (to capture rc) bypasses run_live's log truncation —
+# clear the stub logs here or section 7's keyframes launch fails the check.
+: > "$STUB_LOG"; : > "$STUB_ENV_LOG"
 STUB_LOG="$STUB_LOG" STUB_ENV_LOG="$STUB_ENV_LOG" STUB_CTL="$WORK" \
 LIVE_PYTHON="$WORK/bin/python-stub" LIVE_SETTLE_SECONDS=1 \
 DISPLAY="${DISPLAY:-:99}" \
