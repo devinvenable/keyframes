@@ -144,8 +144,8 @@ is excluded. Use `--note-source usb` for KeyStep USB, or `--note-source all`
 for other controllers and the legacy multi-input behavior. Echo suppression
 remains active as a safety net.
 
-The selection covers notes, CC, pitch bend, and program changes. Clock and
-transport still arrive from all opened ports; **ShowSync Cues** is always
+The selection covers notes, CC, pitch bend, and program changes. Clock uses
+its own source selection below; transport arrives from all opened ports. **ShowSync Cues** is always
 exempt, including after a reconnect. Computer-keyboard and MIDI-file playback
 are independent. `--port` still limits which hardware ports are opened.
 
@@ -155,6 +155,43 @@ that hardware notes are unavailable; keyboard/cues still work, and other
 controllers can be used with `--note-source all`. Selection is fixed until
 inputs are reopened after a MIDI worker restart. Startup output and the MIDI sidecar record the requested source, actual
 source, port name, and any fallback warning.
+
+### Live MIDI clock source
+
+`--clock-source tbox` listens to exactly one **TBOX In 1** endpoint (also
+labelled `Midi Out 1` by some drivers), matching the clock heard by the rig.
+Use `--clock-source cues` for **ShowSync Cues**, or `--clock-source usb` for
+KeyStep USB. The requested source comes first, followed by the remaining
+sources in **tbox > cues > usb** order. Selection uses successfully opened
+ports, not tick activity: a silent but open preferred port stays selected.
+If none is available, no live ticks are accepted and startup uses `--bpm`.
+TBOX port 2, unknown controllers, and raw `RtMidiOut Client` ports are never
+clock fallbacks. `--port` still determines which hardware inputs can open.
+
+Startup output and `clock_source` sidecar records include the requested and
+effective source, selected port, fallback order, and warning. Selection is
+refreshed when the worker reports changed ports (including after restart),
+or when the legacy in-process cue rescan changes the opened ports.
+Other inputs' clock ticks are removed before the processing cap and raw
+event logging; every read still counts toward the bounded read cap.
+`clock_source_filtered` summaries count ignored ticks at most once per five
+seconds per port, with pending counts flushed on clean close. Notes,
+transport, ShowSync visual cues, and local keyboard/MIDI-file queues retain
+their independent handling.
+
+This is a CLI-only Keyframes setting, also available through
+`LIVE_KEYFRAMES_ARGS` / `PERFORM_KEYFRAMES_ARGS`; it is registered as such in
+ShowSync's configuration parity inventory.
+
+The saved T277 log contained two bare `RtMidiOut Client` inputs. The likely
+source is ShowSync's `open_egress()` in `showsync/showsync/egress.py`, which
+creates an unnamed `rtmidi.MidiOut()` per hardware destination; its virtual
+cue client is separately named `ShowSync`. Keyframes' auto-selection skips
+known virtual names but does not exclude `RtMidiOut`, so those endpoints can
+be opened as inputs. `scripts/live.sh` contains no explicit `aconnect`
+plumbing. The saved MIDI log cannot prove client ownership or destinations;
+no live ALSA inspection was performed. ShowSync client naming is a separate
+follow-up; single-source clock selection rejects their duplicated ticks.
 
 ### MIDI I/O recovery and rollback
 

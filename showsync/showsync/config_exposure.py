@@ -144,7 +144,7 @@ PROCESS_ENV = {
 # pygame. Register future arguments here with a reason or a real UI exposure.
 KEYFRAMES_CLI = {key: cli_only('Separate Keyframes process option; set via LIVE_KEYFRAMES_ARGS / PERFORM_KEYFRAMES_ARGS or its CLI.')
                  for key in ('--bank', '--midi-file', '--loop', '--channel', '--port',
-                             '--midi-io', '--note-source', '--start-note', '--num-keys', '--min-note',
+                             '--midi-io', '--note-source', '--clock-source', '--start-note', '--num-keys', '--min-note',
                              '--no-latch', '--bpm', '--zoom-ring', '--windowed',
                              '--display-mode', '--midi-log', '--packaging-smoke-test', '--size')}
 # Persistent app files are preferences/derived UI state, not a second set schema.
