@@ -26,6 +26,10 @@ def test_configuration_surface_has_explicit_exposure(window_factory, tmp_path, q
     assert_covered(YAML_FIELDS, exposure.YAML)
     for section, fields in YAML_FIELDS.items():
         assert_covered(fields, exposure.YAML[section])
+    identity = ast.parse((ROOT / 'showsync/showsync/identity.py').read_text())
+    assert_covered({node.value for node in ast.walk(identity)
+                    if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                    and node.value.startswith('-')}, exposure.QT_IDENTITY)
 
     # Companion options: AST inspection avoids importing/starting pygame.
     tree = ast.parse((ROOT / 'keyframes/main.py').read_text())
@@ -61,7 +65,8 @@ def test_configuration_surface_has_explicit_exposure(window_factory, tmp_path, q
             qtbot.addWidget(widget)
     registries = [exposure.CLI, *exposure.YAML.values(), *exposure.LAUNCHER_FLAGS.values(),
                   exposure.LAUNCHER_ENV, exposure.KEYFRAMES_CLI, exposure.QT_SETTINGS,
-                  exposure.APP_STATE, exposure.PERFORM_CONF, exposure.PROCESS_ENV]
+                  exposure.APP_STATE, exposure.PERFORM_CONF, exposure.PROCESS_ENV,
+                  exposure.QT_IDENTITY]
     for registry in registries:
         for name, entry in registry.items():
             assert bool(entry.gui) != bool(entry.cli_only), name

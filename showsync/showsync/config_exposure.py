@@ -51,6 +51,9 @@ CLI = {
     'keyframes': cli_only('Offline bundle companion media import/export; Keyframes must be closed before installing.'),
 }
 
+# identity.application_arguments is Qt argv, not ShowSync's argparse surface.
+QT_IDENTITY = {'-name': cli_only('Fixed desktop WM_CLASS identity on Linux; not performer configuration.')}
+
 YAML = {
     'setlist': {
         'title': gui('SetSettingsDialog.title'),
