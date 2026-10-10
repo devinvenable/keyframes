@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from showsync.clock import resolve_midi_port
-from showsync.egress import VIRTUAL_PORT_NAME, MidiEgress, open_egress
+from showsync.egress import (VIRTUAL_PORT_NAME, MidiEgress, open_egress,
+                             open_virtual_cue_port)
 
 PORTS = ['MIDIPLUS TBOX 2x2:MIDIPLUS TBOX 2x2 Midi Out 1 36:0',
          'MIDIPLUS TBOX 2x2:MIDIPLUS TBOX 2x2 Midi Out 2 36:1',
@@ -90,14 +91,15 @@ def test_exact_name_wins_over_substring_of_another():
 # --- open_egress ---
 
 def test_egress_opens_mirrors_and_virtual_port(fake_rtmidi):
-    egress = open_egress(['midi out 1', 'Midi Out 2', 'KeyStep'])
+    egress = open_egress(['midi out 1', 'Midi Out 2', 'KeyStep'],
+                         virtual=open_virtual_cue_port())
     assert egress.hardware_names == PORTS
     assert any(VIRTUAL_PORT_NAME in name for name in egress.names)
     assert ('open-virtual', VIRTUAL_PORT_NAME) in fake_rtmidi.log
 
 
 def test_identical_bytes_reach_every_port(fake_rtmidi):
-    egress = open_egress(['midi out 1', 'KeyStep'])
+    egress = open_egress(['midi out 1', 'KeyStep'], virtual=open_virtual_cue_port())
     egress.send(0xF8)
     egress.send((0xC0, 3))
     sends = [entry for entry in fake_rtmidi.log if entry[0] == 'send']
@@ -125,13 +127,14 @@ def test_duplicate_selections_open_the_jack_once(fake_rtmidi):
 
 def test_virtual_port_failure_degrades_to_hardware_only(fake_rtmidi, caplog):
     fake_rtmidi.fail_virtual = True
-    egress = open_egress(['KeyStep'])
-    assert egress.names == [PORTS[2]]
+    assert open_virtual_cue_port() is None
     assert VIRTUAL_PORT_NAME in caplog.text
+    egress = open_egress(['KeyStep'], virtual=None)
+    assert egress.names == [PORTS[2]]
 
 
 def test_dead_port_is_dropped_and_the_show_goes_on(fake_rtmidi, caplog):
-    egress = open_egress(['midi out 1', 'KeyStep'])
+    egress = open_egress(['midi out 1', 'KeyStep'], virtual=open_virtual_cue_port())
     victim = next(port for name, port in egress.ports if name == PORTS[0])
     def explode(data):
         raise RuntimeError('USB gone')
@@ -145,16 +148,18 @@ def test_dead_port_is_dropped_and_the_show_goes_on(fake_rtmidi, caplog):
     assert {e[1] for e in sends} == {PORTS[2], VIRTUAL_PORT_NAME}
 
 
-def test_close_closes_every_port_and_empties_the_egress(fake_rtmidi):
-    egress = open_egress(['midi out 1'])
+def test_close_closes_mirrors_but_never_the_shared_virtual_port(fake_rtmidi):
+    # Keyframes lists its inputs once at launch: the virtual cue port lives
+    # for the whole process, across GUI set stops and restarts.
+    egress = open_egress(['midi out 1'], virtual=open_virtual_cue_port())
     egress.close()
     closed = {entry[1] for entry in fake_rtmidi.log if entry[0] == 'close'}
-    assert closed == {PORTS[0], VIRTUAL_PORT_NAME}
+    assert closed == {PORTS[0]}
     assert egress.names == []
 
 
 def test_empty_selection_still_offers_the_virtual_cue_port(fake_rtmidi):
-    egress = open_egress([])
+    egress = open_egress([], virtual=open_virtual_cue_port())
     assert egress.hardware_names == []
     assert egress.names == [f'{VIRTUAL_PORT_NAME} (virtual)']
     egress.send(0xF8)

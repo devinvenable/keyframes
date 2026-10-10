@@ -98,6 +98,7 @@ def test_cli_precedence_and_audio_only(rig, monkeypatch):
     audio, egress, clock = Mock(), Mock(), Mock()
     monkeypatch.setattr(cli, 'AudioEngine', audio)
     monkeypatch.setattr(cli, 'open_egress', egress)
+    monkeypatch.setattr(cli, 'open_virtual_cue_port', lambda: None)
     monkeypatch.setattr(cli, 'ClockEngine', clock)
     monkeypatch.setattr(cli, 'last_setlist', lambda: None)
     monkeypatch.setattr(cli, 'main_loop', lambda doc, **kw: captured.append(kw) or 0)
@@ -106,7 +107,7 @@ def test_cli_precedence_and_audio_only(rig, monkeypatch):
     selection = kw['devices']
     selection.resolve(devices.midi_outputs(), devices.audio_outputs())
     kw['start_engines'](None)
-    egress.assert_called_once_with(['TBOX Out 2'])
+    egress.assert_called_once_with(['TBOX Out 2'], virtual=None)
     assert audio.call_args.kwargs['device'] == 8
     selection.choose('TBOX Out 2', 'Stage (ALSA)')
     assert appstate.device_choices() == {'midi': 'TBOX Out 1', 'audio': 'Speakers (ALSA)'}
@@ -115,7 +116,7 @@ def test_cli_precedence_and_audio_only(rig, monkeypatch):
     _, _, close = kw['start_engines'](None)
     # No device selected: the egress still opens (virtual cue port only) and
     # carries the clock send callback.
-    egress.assert_called_once_with([])
+    egress.assert_called_once_with([], virtual=None)
     clock.call_args.args[2](248)
     egress.return_value.send.assert_called_with(248)
     close()
@@ -141,6 +142,8 @@ def test_transport_preference_accept_cancel_and_engine_wiring(qtbot, rig, monkey
     captured = []
     engine = Mock()
     monkeypatch.setattr(cli, 'AudioEngine', Mock())
+    monkeypatch.setattr(cli, 'open_egress', Mock())
+    monkeypatch.setattr(cli, 'open_virtual_cue_port', lambda: None)
     monkeypatch.setattr(cli, 'ClockEngine', engine)
     monkeypatch.setattr(cli, 'last_setlist', lambda: None)
     monkeypatch.setattr(cli, 'main_loop', lambda doc, **kw: captured.append(kw) or 0)
@@ -157,6 +160,7 @@ def _egress_rig(monkeypatch):
     egress = Mock()
     monkeypatch.setattr(cli, 'AudioEngine', Mock())
     monkeypatch.setattr(cli, 'open_egress', egress)
+    monkeypatch.setattr(cli, 'open_virtual_cue_port', lambda: None)
     monkeypatch.setattr(cli, 'ClockEngine', Mock())
     monkeypatch.setattr(cli, 'last_setlist', lambda: None)
     monkeypatch.setattr(cli, 'main_loop', lambda doc, **kw: captured.append(kw) or 0)
@@ -172,7 +176,7 @@ def test_setlist_midi_outputs_replace_the_device_port(rig, monkeypatch):
     kw['devices'].resolve(devices.midi_outputs(), devices.audio_outputs())
     setlist = Setlist('Show', (), midi_outputs=('Midi Out 1', 'KeyStep'))
     kw['start_engines'](setlist)
-    egress.assert_called_once_with(['Midi Out 1', 'KeyStep'])
+    egress.assert_called_once_with(['Midi Out 1', 'KeyStep'], virtual=None)
 
 
 def test_cli_midi_outputs_override_the_setlist(rig, monkeypatch):
@@ -182,7 +186,7 @@ def test_cli_midi_outputs_override_the_setlist(rig, monkeypatch):
     kw = captured[-1]
     setlist = Setlist('Show', (), midi_outputs=('Midi Out 1',))
     kw['start_engines'](setlist)
-    egress.assert_called_once_with(['TBOX', 'KeyStep USB'])
+    egress.assert_called_once_with(['TBOX', 'KeyStep USB'], virtual=None)
 
 
 def test_all_outputs_unavailable_notices_but_still_starts(rig, monkeypatch):

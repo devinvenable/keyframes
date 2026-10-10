@@ -10,7 +10,7 @@ from .bundle import BundleError, export_bundle, import_bundle
 from .clock import ClockEngine
 from .document import Document
 from .devices import Devices
-from .egress import VIRTUAL_PORT_NAME, MidiEgress, open_egress
+from .egress import VIRTUAL_PORT_NAME, MidiEgress, open_egress, open_virtual_cue_port
 from .gui import main_loop
 from .headless import headless_loop
 from .markers import MarkerWriter
@@ -121,6 +121,14 @@ def main(argv=None):
         if not cli_outputs:
             parser.error('--midi-outputs needs at least one port')
     frozen = False
+    # Opened now — before any set plays — so Keyframes (which lists its MIDI
+    # inputs once at launch) always finds the cue port; see egress.py. Closed
+    # by process exit.
+    try:
+        virtual_cue_port = open_virtual_cue_port()
+    except Exception as exc:
+        logging.warning('Virtual MIDI port unavailable (%s) — hardware outputs only', exc)
+        virtual_cue_port = None
 
     def open_outputs(setlist):
         """Egress for this set: configured mirrors, or the device-chosen port.
@@ -137,10 +145,10 @@ def main(argv=None):
         elif devices.midi_name is not None:
             mirrors = [devices.midi_name]
         try:
-            egress = open_egress(mirrors)
+            egress = open_egress(mirrors, virtual=virtual_cue_port)
         except Exception as exc:
             logging.warning('MIDI egress unavailable (%s) — playing audio only.', exc)
-            return MidiEgress([])
+            return MidiEgress([], shared=[virtual_cue_port] if virtual_cue_port else [])
         if mirrors and not egress.hardware_names:
             devices.notice = ('MIDI output disconnected — egress on the virtual '
                               f'{VIRTUAL_PORT_NAME} port only.')

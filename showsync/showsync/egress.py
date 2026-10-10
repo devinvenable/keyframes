@@ -26,32 +26,40 @@ VIRTUAL_PORT_NAME = 'ShowSync Cues'
 class MidiEgress:
     """Open MIDI outputs sent to as one; identical bytes on every port."""
 
-    def __init__(self, ports):
-        # [(display name, rtmidi output)] — the list mutates only on failure.
+    def __init__(self, ports, shared=()):
+        # [(display name, rtmidi output)] — lists mutate only on send failure.
+        # `ports` (the mirrors) are owned and closed with the egress; `shared`
+        # (the virtual cue port) outlives it — Keyframes enumerates its inputs
+        # once at startup, so that port must exist for the whole process, not
+        # just while a set is playing.
         self.ports = list(ports)
+        self.shared = list(shared)
 
     @property
     def names(self):
-        return [name for name, _ in self.ports]
+        return [name for name, _ in self.ports + self.shared]
 
     @property
     def hardware_names(self):
-        return [name for name, _ in self.ports if not name.endswith('(virtual)')]
+        return [name for name, _ in self.ports]
 
     def send(self, message):
         data = [message] if isinstance(message, int) else message
-        for entry in list(self.ports):
-            name, port = entry
-            try:
-                port.send_message(data)
-            except Exception as exc:
-                # Mid-show failure (unplugged interface): drop the mirror and
-                # play on — the remaining ports keep the show alive.
-                self.ports.remove(entry)
-                LOG.warning('MIDI output %r failed (%s) — continuing without it', name, exc)
+        for destinations in (self.ports, self.shared):
+            for entry in list(destinations):
+                name, port = entry
+                try:
+                    port.send_message(data)
+                except Exception as exc:
+                    # Mid-show failure (unplugged interface): drop the mirror
+                    # and play on — the remaining ports keep the show alive.
+                    destinations.remove(entry)
+                    LOG.warning('MIDI output %r failed (%s) — continuing without it',
+                                name, exc)
 
     def close(self):
         ports, self.ports = self.ports, []
+        self.shared = []
         for name, port in ports:
             try:
                 port.close_port()
@@ -59,8 +67,29 @@ class MidiEgress:
                 LOG.warning('MIDI output %r did not close cleanly: %s', name, exc)
 
 
-def open_egress(selections, *, virtual_name=VIRTUAL_PORT_NAME):
-    """Egress over `selections` (names/substrings/indices) plus the virtual port.
+def open_virtual_cue_port(name=VIRTUAL_PORT_NAME):
+    """The process-lifetime virtual egress port, or None where unsupported.
+
+    Opened once at application startup — before any set plays — so Keyframes,
+    which lists MIDI inputs once when it launches, always finds it. Pass the
+    result to every open_egress call; it is closed by process exit, never by
+    an egress."""
+    import rtmidi
+    try:
+        output = rtmidi.MidiOut(name='ShowSync')
+        output.open_virtual_port(name)
+    except Exception as exc:
+        # Windows MM has no virtual ports; hardware mirrors still carry the
+        # full egress there.
+        LOG.warning('Virtual MIDI port %r unavailable (%s) — hardware outputs only',
+                    name, exc)
+        return None
+    LOG.info('MIDI egress: %s (virtual port, open for the process life)', name)
+    return (f'{name} (virtual)', output)
+
+
+def open_egress(selections, virtual=None):
+    """Egress over `selections` (names/substrings/indices) plus `virtual`.
 
     Resolution failures warn and skip — a port missing on this host (or an
     ambiguous substring) must never gate the show. Duplicate selections that
@@ -87,15 +116,4 @@ def open_egress(selections, *, virtual_name=VIRTUAL_PORT_NAME):
         opened.add(index)
         ports.append((name, output))
         LOG.info('MIDI egress: %s', name)
-    if virtual_name:
-        try:
-            output = rtmidi.MidiOut(name='ShowSync')
-            output.open_virtual_port(virtual_name)
-            ports.append((f'{virtual_name} (virtual)', output))
-            LOG.info('MIDI egress: %s (virtual port)', virtual_name)
-        except Exception as exc:
-            # Windows MM has no virtual ports; hardware mirrors still carry
-            # the full egress there.
-            LOG.warning('Virtual MIDI port %r unavailable (%s) — hardware outputs only',
-                        virtual_name, exc)
-    return MidiEgress(ports)
+    return MidiEgress(ports, shared=[virtual] if virtual is not None else [])

@@ -3078,6 +3078,29 @@ def select_midi_ports(available_ports, port_filter=None):
     return with_cues([available_ports[0]] if not cue_ports else [])
 
 
+# How often the main loop refreshes its cue-port connections. A refresh is a
+# close+reopen (a few local syscalls); the loss window is well under one clock
+# tick and the 48-sample BPM average shrugs off a single odd interval.
+CUE_PORT_RESCAN_S = 5.0
+
+
+def cue_port_refresh(open_names, available_ports):
+    """(stale_names, fresh_names): cue connections to drop and cue ports to open.
+
+    A crashed-and-relaunched ShowSync registers a NEW MIDI client while our
+    existing subscription points at the dead one — and it usually reappears
+    under the SAME name (ALSA reuses freed client ids; CoreMIDI names carry
+    no id at all), so a name diff cannot detect it. Unconditionally reopening
+    every cue port is the only binding that is always to the live client;
+    that is what lets visual cues survive a mid-show ShowSync restart without
+    restarting Keyframes. Only cue ports are refreshed — hardware selection
+    stays a startup-time decision."""
+    keyword = SHOWSYNC_CUE_PORT.lower()
+    stale = [name for name in open_names if keyword in name.lower()]
+    fresh = [port for port in available_ports if keyword in port.lower()]
+    return stale, fresh
+
+
 def run_packaging_smoke_test():
     """Exercise the shipped image, video, GIF, and RT-MIDI backend without hardware."""
     image_files = sorted(Path(IMAGES_DIR).glob('*.png'))
@@ -3399,6 +3422,7 @@ def main():
 
     midi_channel = args.channel - 1 if args.channel else None
     clock = pygame.time.Clock()
+    last_cue_scan = time.monotonic()
     running = True
     while running:
         for event in pygame.event.get():
@@ -3566,6 +3590,25 @@ def main():
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()
+        # Follow ShowSync's virtual cue port across a ShowSync relaunch (see
+        # cue_port_refresh). A refresh failure must never break the render loop.
+        if not args.midi_file and now - last_cue_scan >= CUE_PORT_RESCAN_S:
+            last_cue_scan = now
+            try:
+                stale, fresh = cue_port_refresh(
+                    [port.name for port in inports], mido.get_input_names())
+                for name in stale:
+                    gone = next(port for port in inports if port.name == name)
+                    inports.remove(gone)
+                    gone.close()
+                    if name not in fresh:
+                        print(f"MIDI input gone: {name}")
+                for name in fresh:
+                    inports.append(mido.open_input(name))
+                    if name not in stale:
+                        print(f"MIDI input: {name} (cue port connected)")
+            except Exception as exc:
+                print(f"WARNING: cue port refresh failed: {exc}")
         if PAN_AUTO_RECENTER:
             update_pan_recenter(state, now)
         cur_active = state['note_active']

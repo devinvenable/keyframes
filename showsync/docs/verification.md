@@ -68,6 +68,23 @@ logic, including that a genuine send-side spike still fails.
 | Linux / loaded host (load 16), priority denied | 15 s | 837 / 837 | 2.185 / 15.769 | 2.680 / 17.398 | 5 / 2 | Fail |
 | Windows / no MIDI loopback route | — | — | — | — | — | Unavailable |
 
+### Multi-port egress (task 259)
+
+The egress fan-out (setlist `midi_outputs` mirrors + the 'ShowSync Cues'
+virtual port, showsync/egress.py) adds one non-blocking `send_message` C call
+per extra port inside the same clock-thread send. Measured 2026-10-10 with
+`--mirror-ports 3` (the gig shape: measured route + three mirrors = four open
+outputs) on the quiet Linux host, 30 s, rtprio granted:
+
+| Route | Ticks | Send σ / worst ms (gate) | Underruns / dropped | Gate |
+|---|---:|---:|---:|---|
+| 1 output (same-day control, `linux-mirror0-control.json`) | 1680 / 1680 | 0.011 / 0.142 | 0 / 0 | **Pass** |
+| 4 outputs (`--mirror-ports 3`, `linux-mirror3.json`) | 1680 / 1680 | 0.022 / 0.581 | 0 / 0 | **Pass** |
+
+Fan-out to four ports stays an order of magnitude inside the σ < 0.5 ms /
+worst < 2 ms gate. Re-run on the gig Mac mini with the real port set before
+the dress rehearsal.
+
 The restated gate changes no failed-run bookkeeping: both loaded-Linux runs
 fail on send-side error alone, and the 15 s independent-receiver Mac run fails
 on a genuine 8.8 ms send-side spike plus three dropped ticks, so GC freezing

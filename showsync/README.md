@@ -145,8 +145,32 @@ showsync path/to/setlist.yaml --midi-port PORT
 ```
 
 `DEVICE` accepts an audio index or device-name substring; `PORT` accepts a
-MIDI output index or exact name. These flags override saved device choices for
+MIDI output index, exact name, or **case-insensitive substring** that matches
+exactly one output (exact names always win; an ambiguous substring is an
+error listing the candidates). These flags override saved device choices for
 this run only.
+
+### Multi-port egress
+
+The clock, Start/Stop/Continue, and Keyframes cues can be mirrored to several
+outputs at once with a top-level setlist list (each entry an index, name, or
+unique substring — substrings travel between Linux/ALSA and macOS/CoreMIDI,
+exact names do not):
+
+```yaml
+midi_outputs:
+  - Midi Out 1
+  - Midi Out 2
+  - KeyStep
+```
+
+When present, this list replaces the single saved/`--midi-port` output.
+`--midi-outputs 'Midi Out 1,KeyStep'` overrides it for one run. A port that
+cannot be resolved warns and is skipped, and a port that fails mid-show is
+dropped (reopened on the next set start) — a bad port never stops a show. In
+addition, on Linux/macOS every show opens a virtual output named **`ShowSync
+Cues`** carrying the same egress; the Keyframes app always listens to it by
+name, so visual cues need no cable.
 
 **File → Preferences…** offers MIDI and audio output dropdowns with a refresh
 button. Explicit choices are saved on this machine. Play never asks you to

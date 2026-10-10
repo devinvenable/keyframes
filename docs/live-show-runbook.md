@@ -50,6 +50,47 @@ the set around it.
   David's rig via the thru box (that clock is the core of the set —
   decision D11).
 
+### Multi-port egress (task 259 — no hardware return loop)
+
+ShowSync mirrors its full egress — clock, Start/Stop/Continue, and the
+Keyframes visual cues (PC + CC102–105) — to **every port in the setlist's
+top-level `midi_outputs:` list**, plus a **virtual output named `ShowSync
+Cues`** that is always opened (Linux/macOS; Windows has no virtual ports
+and degrades to the hardware mirrors). Keyframes picks up `ShowSync Cues`
+by name, always, on top of its normal hardware/`--port` selection — so
+cues and clock reach Keyframes **in software**, and the old DIN return
+cable into TBOX In 1 is GONE. No return loop means no echoed/doubled
+clock and no wedged TBOX (insight I51); ShowSync's transport echo gate
+(T169) stays as insurance, and ShowSync never listens to its own virtual
+port.
+
+Gig topology (decision D14, revised):
+
+| Destination | Port | Carries |
+|---|---|---|
+| Devin's synths (thru box) | TBOX Out 1 | full egress |
+| David's rig | TBOX Out 2 | full egress + his per-song `midi:` file (per-song `midi.port`) |
+| KeyStep (sync source; its clock toggle stays **USB**) | KeyStep USB | full egress |
+| Keyframes | `ShowSync Cues` virtual port | full egress, no cable |
+
+Declared in the setlist (substrings are the portable spelling — exact
+rtmidi names carry Linux ALSA ids and differ on the Mac's CoreMIDI):
+
+```yaml
+midi_outputs:
+  - Midi Out 1      # TBOX Out 1 — thru box / Devin's synths
+  - Midi Out 2      # TBOX Out 2 — David
+  - KeyStep         # KeyStep USB — its MIDI-sync clock source
+```
+
+CLI override for one run: `--midi-outputs 'Midi Out 1,KeyStep'`. A port
+missing on this host (or an ambiguous substring) **warns and is skipped —
+the show always starts**. A port that dies mid-show (USB yanked) is
+dropped the same way and **stays dropped for that engine's life**: a
+replug does NOT self-heal. Recovery is the normal supervisor path — kill
+or crash ShowSync, it relaunches, KeyStep Play restarts the set from the
+top with all configured ports reopened.
+
 ## Ending the show
 
 Any of these ends everything cleanly:
