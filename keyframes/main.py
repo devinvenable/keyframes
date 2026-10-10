@@ -93,6 +93,20 @@ LATCH_NOTICE_SECONDS = 1.5
 # center and below is 1.0 (no zoom). Composes multiplicatively with the ring.
 MAX_PITCH_BEND_ZOOM = 4.0
 MOD_WHEEL_CC = 1
+# ShowSync -> Keyframes per-song visual control (docs/visual-control-midi.md).
+# Program Change selects a bank by index into the deterministic bank order
+# (program 0 = default, 1..N = banks/ folder names sorted). The scene CCs sit
+# in the undefined 102-119 range so they can never collide with performance
+# controllers (CC1 mod wheel, CC64 sustain). All of these are accepted on ANY
+# channel, unlike notes: ShowSync's cue channel must not depend on Keyframes'
+# --channel filter, and a KeyStep patch change should work however the
+# performer has channels set. Tradeoff (deliberate): any gear on Keyframes'
+# input port that emits a patch change will switch banks — keep other
+# PC-emitting gear off that port.
+SCENE_CC_RESET = 102        # any value: drop all per-song overrides
+SCENE_CC_ENABLED = 103      # 0-63 = scenes off, 64-127 = on
+SCENE_CC_PROBABILITY = 104  # value/127 -> probability 0.0-1.0
+SCENE_CC_ALLOW_ADD = 105    # value = scene midi_id; first add starts an allowlist
 # Mod-wheel pan: full wheel deflection slides the displayed frame sideways by
 # this fraction of the viewport width, at any zoom, revealing background at
 # the vacated edge.
@@ -565,15 +579,17 @@ class MediaBanks:
         publish_bank_state(name)
         return media, cells, config
 
-    def cycle(self, direction):
-        names = self.names()
-        index = names.index(self.name) if self.name in names else 0
-        name = names[(index + direction) % len(names)]
+    def select(self, name):
         loaded = self.load(name)
         self.notice = f"Bank: {name}"
         self.notice_until = time.monotonic() + BANK_NOTICE_SECONDS
         print(self.notice)
         return loaded
+
+    def cycle(self, direction):
+        names = self.names()
+        index = names.index(self.name) if self.name in names else 0
+        return self.select(names[(index + direction) % len(names)])
 
     def draw_notice(self, screen, now):
         if now < self.notice_until:
@@ -647,7 +663,8 @@ def play_midi_file(filepath, msg_queue, stop_event, loop=False):
         for msg in midi_file.play():
             if stop_event.is_set():
                 return
-            if msg.type in ('note_on', 'note_off', 'clock'):
+            if msg.type in ('note_on', 'note_off', 'clock',
+                            'program_change', 'control_change'):
                 msg_queue.put(msg)
         if not loop:
             break
@@ -1019,9 +1036,11 @@ def load_scenes_config(path=None):
     """Read scenes.json, tolerating a missing or malformed file.
 
     Returns ``{'enabled': bool, 'probability': float}`` with defaults filled
-    in, so callers never need to re-validate. Out-of-range probabilities and
-    wrong-typed values fall back to the defaults rather than erroring — a
-    hand-edit typo must not brick startup, matching load_mapping()."""
+    in, so callers never need to re-validate. An optional ``allow`` list of
+    registered scene names restricts which scenes the activation picker may
+    choose (absent = all). Out-of-range probabilities and wrong-typed values
+    fall back to the defaults rather than erroring — a hand-edit typo must
+    not brick startup, matching load_mapping()."""
     if path is None:
         path = SCENES_CONFIG_PATH
     config = {'enabled': True, 'probability': DEFAULT_SCENE_PROBABILITY}
@@ -1038,7 +1057,99 @@ def load_scenes_config(path=None):
     if (isinstance(probability, (int, float)) and not isinstance(probability, bool)
             and 0.0 <= probability <= 1.0):
         config['probability'] = float(probability)
+    allow = raw.get('allow')
+    if isinstance(allow, list):
+        names = [name for name in allow if name in SCENE_REGISTRY]
+        # An all-unknown list is a typo'd file, not "allow nothing": ignore it
+        # (same brick-proofing as the other fields). [] stays an explicit
+        # "no scenes may activate".
+        if names or not allow:
+            config['allow'] = names
     return config
+
+
+def apply_program_change(visuals, banks, adopt_bank):
+    """Load the bank a recorded program change names, on the caller's thread.
+
+    Programs index banks.names() (0 = default, 1..N = sorted folder names).
+    Re-cueing the already-live bank is a no-op: ShowSync sends the program on
+    every cue-bearing song, and reloading would blank media caches
+    mid-performance for nothing. Out-of-range programs and load failures set
+    the on-screen bank notice instead of raising — a bad cue must never take
+    down the show."""
+    program = visuals.take_pending_program()
+    if program is None:
+        return
+    names = banks.names()
+    name = names[program] if 0 <= program < len(names) else None
+    if name is None:
+        banks.notice = f"No bank for program {program} (have {len(names)})"
+        banks.notice_until = time.monotonic() + BANK_NOTICE_SECONDS
+        print(banks.notice)
+    elif name != banks.name:
+        try:
+            adopt_bank(banks.select(name))
+        except (OSError, ValueError, pygame.error) as exc:
+            banks.notice = f"Bank switch failed: {exc}"
+            banks.notice_until = time.monotonic() + BANK_NOTICE_SECONDS
+            print(banks.notice)
+
+
+class VisualControl:
+    """Per-song overrides driven over MIDI (ShowSync cues, or any controller).
+
+    Holds the active bank's scenes.json config as ``base`` and a dict of
+    overrides layered on top of it; ``scenes()`` is what the trigger path
+    actually consumes. Overrides persist across songs and manual bank
+    switches until the next SCENE_CC_RESET — ShowSync sends the reset first
+    for every song that carries a ``keyframes:`` block, so a block-less song
+    inherits the previous cue and a cue-bearing one starts from the (new)
+    bank's defaults. Program changes are only RECORDED here (``pending``):
+    loading a bank touches media caches and grid state, so the main loop
+    applies it exactly where the F5/F6 keys do."""
+
+    def __init__(self, base):
+        self.base = base
+        self.overrides = {}
+        self.pending_program = None
+
+    def rebase(self, base):
+        """Adopt a newly loaded bank's scenes.json as the defaults."""
+        self.base = base
+
+    def scenes(self):
+        return {**self.base, **self.overrides}
+
+    def take_pending_program(self):
+        program, self.pending_program = self.pending_program, None
+        return program
+
+    def handle(self, msg):
+        """Consume a visual-control message; False = not ours, process normally.
+
+        Deliberately not channel-filtered (see the SCENE_CC_* comment)."""
+        if msg.type == 'program_change':
+            self.pending_program = msg.program
+            return True
+        if msg.type != 'control_change':
+            return False
+        if msg.control == SCENE_CC_RESET:
+            self.overrides.clear()
+        elif msg.control == SCENE_CC_ENABLED:
+            self.overrides['enabled'] = msg.value >= 64
+        elif msg.control == SCENE_CC_PROBABILITY:
+            self.overrides['probability'] = msg.value / 127.0
+        elif msg.control == SCENE_CC_ALLOW_ADD:
+            name = SCENE_MIDI_IDS.get(msg.value)
+            if name is None:
+                print(f"Ignoring scene allow-add for unknown midi_id {msg.value}")
+            else:
+                allow = self.overrides.setdefault('allow', [])
+                if name not in allow:
+                    allow.append(name)
+        else:
+            return False
+        return True
 
 
 class SceneMediaSource:
@@ -1147,6 +1258,7 @@ class Scene:
     ``current_state['active_scene']`` hook."""
 
     name = 'scene'
+    midi_id = None  # registered subclasses must set a unique, append-only id
 
     def __init__(self, image, now, background=None):
         # ``image``/``background`` accept a SceneMediaSource or a bare
@@ -1217,10 +1329,18 @@ class Scene:
 
 # name -> Scene subclass; activation picks randomly among registered scenes.
 SCENE_REGISTRY = {}
+# midi_id -> scene name, for CC105 allow-add. Each registered scene carries an
+# explicit, append-only midi_id (NEVER renumbered: ShowSync mirrors this table
+# in showsync/visuals.py, and a stable id is what keeps old setlists valid when
+# new scenes are registered — sorted-order indices would shift under them).
+SCENE_MIDI_IDS = {}
 
 
 def register_scene(cls):
+    if cls.midi_id is None or cls.midi_id in SCENE_MIDI_IDS:
+        raise ValueError(f"scene {cls.name!r} needs a unique midi_id (append-only)")
     SCENE_REGISTRY[cls.name] = cls
+    SCENE_MIDI_IDS[cls.midi_id] = cls.name
     return cls
 
 
@@ -1252,6 +1372,7 @@ class FourBarSweepScene(Scene):
     them to register sweep variants without duplicating the mechanics."""
 
     name = 'four-bar-sweep'
+    midi_id = 0
     NUM_BARS = 4
     FADE_SECONDS = SCENE_FADE_SECONDS
     FADE_COLOR = (255, 255, 255)
@@ -1341,6 +1462,7 @@ class FourBarSweepBlackScene(FourBarSweepScene):
     """Four-bar sweep whose bars fade to black instead of white."""
 
     name = 'four-bar-sweep-black'
+    midi_id = 1
     FADE_COLOR = (0, 0, 0)
 
 
@@ -1351,6 +1473,7 @@ class FourBarSweepTintedScene(FourBarSweepScene):
     untinted as the natural-image payoff. Fades to white like the original."""
 
     name = 'four-bar-sweep-tinted'
+    midi_id = 2
     BAR_TINTS = ((255, 0, 0), (0, 255, 0), (0, 0, 255), None)
 
 
@@ -1379,6 +1502,7 @@ class ConcentricRingsScene(Scene):
     eye later."""
 
     name = 'concentric-rings'
+    midi_id = 3
     RING_THICKNESS_FRACTION = 0.1    # ring width, as a fraction of screen height
     EXPANSION_SPEED_FRACTION = 0.25  # screen-heights per second of outward growth
     BEATS_TO_LIVE = 16
@@ -1493,6 +1617,7 @@ class TimedConcentricRingsScene(ConcentricRingsScene):
     scene still lives its full DURATION_SECONDS from its own activation."""
 
     name = 'concentric-rings-timed'
+    midi_id = 4
     DURATION_SECONDS = 6.0
 
     def continue_from(self, previous):
@@ -1968,7 +2093,14 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
             return  # an unmapped beat advanced/cleared; it can't activate
         if not scenes_config or not scenes_config.get('enabled', True):
             return
-        if not SCENE_REGISTRY:
+        # A per-song/per-bank allowlist filters the registry before the roll;
+        # an empty allowlist (or one with no registered names left) simply
+        # means no scene can activate this song.
+        allow = scenes_config.get('allow')
+        names = sorted(SCENE_REGISTRY)
+        if allow is not None:
+            names = [name for name in names if name in allow]
+        if not names:
             return
         roll = (rng if rng is not None else random.random)()
         if roll >= scenes_config.get('probability', DEFAULT_SCENE_PROBABILITY):
@@ -1976,7 +2108,7 @@ def update_scene_on_trigger(current_state, media, now, scenes_config, rng=None,
         source = scene_media_source(media, target_size, inverted=inverted)
         if source is None:
             return
-        scene_cls = SCENE_REGISTRY[random.choice(sorted(SCENE_REGISTRY))]
+        scene_cls = SCENE_REGISTRY[random.choice(names)]
         new_scene = scene_cls(source, now, background=prev_still)
         prev_still = None  # the scene owns it now (even if it released it)
         if ended_scene is not None:
@@ -2138,7 +2270,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                           note_hit_counts=None, assign_callback=None,
                           latch_mode=True, display_mode='fill',
                           scenes_config=None, midi_logger=None,
-                          midi_source=None):
+                          midi_source=None, visual_control=None):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
@@ -2173,6 +2305,12 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
         # Handle MIDI clock regardless of channel filter
         if msg.type == 'clock' and clock_tracker:
             clock_tracker.tick()
+            continue
+
+        # Per-song visual control (bank program changes, scene CCs) — like
+        # clock, never channel-filtered. Consumed messages end here; a bank
+        # program recorded by handle() is applied by the main loop.
+        if visual_control is not None and visual_control.handle(msg):
             continue
 
         # Live performance controls: pitch bend zooms the displayed media,
@@ -2210,6 +2348,11 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # untouched (it restarts on retrigger). last_note holds across
             # note-offs in both latch and non-latch modes.
             media = note_to_media.get(note)
+            # Per-song overrides layered over the bank defaults; read at
+            # note time so a cue arriving earlier in this same batch of
+            # messages already applies to this trigger.
+            if visual_control is not None:
+                scenes_config = visual_control.scenes()
             # What is on screen right now, captured before this trigger
             # rewrites the state — a newly activated scene's background. Only
             # taken when this trigger could actually activate a scene, so the
@@ -3148,6 +3291,14 @@ def main():
               f"trigger ({', '.join(sorted(SCENE_REGISTRY))}) — see scenes.json")
     else:
         print("Scenes disabled (scenes.json)")
+    # ShowSync (or any gear on the input port) steers banks and scenes per
+    # song: see docs/visual-control-midi.md for the message vocabulary.
+    visuals = VisualControl(scenes_config)
+    print("MIDI visual control: program change selects bank "
+          f"(0=default, 1-{max(len(banks.names()) - 1, 0)}); "
+          f"CC{SCENE_CC_RESET} reset, CC{SCENE_CC_ENABLED} scenes on/off, "
+          f"CC{SCENE_CC_PROBABILITY} probability, CC{SCENE_CC_ALLOW_ADD} allow scene "
+          f"({', '.join(f'{i}={SCENE_MIDI_IDS[i]}' for i in sorted(SCENE_MIDI_IDS))})")
     overlays_config = banks.overlays_config or load_overlays_config()
     overlay_variants = discover_overlays(overlays_config['dir'])
     state['overlay'] = OverlayScheduler(overlays_config, overlay_variants,
@@ -3193,6 +3344,34 @@ def main():
             grid_cells, selected_index, note, note_to_media)
         print(f"Mapped selected media to key {note}")
         return True
+
+    def adopt_bank(loaded):
+        """Publish a freshly loaded bank into the live view state — shared by
+        the F5/F6 keys and MIDI program changes so every switch path resets
+        exactly the same per-bank state."""
+        nonlocal note_to_media, grid_cells, scenes_config, overlays_config
+        nonlocal grid_preview, grid_drag, selected_index, drop_flash
+        nonlocal grid_scroll, prev_active
+        note_to_media, grid_cells, scenes_config = loaded
+        # The new bank's scenes.json becomes the defaults under any per-song
+        # overrides (a ShowSync cue sends bank, then reset, then overrides).
+        visuals.rebase(scenes_config)
+        overlays_config = banks.overlays_config
+        state['overlay'].reconfigure(
+            overlays_config,
+            discover_overlays(overlays_config['dir']),
+            time.monotonic())
+        note_to_media = note_to_media or {}
+        if grid_preview:
+            grid_preview['player'].release()
+        grid_preview = grid_drag = selected_index = drop_flash = None
+        grid_scroll = 0
+        flash_times.clear()
+        note_hit_counts.clear()
+        prev_active = None
+        # A repeated note in another bank is a fresh hit, not an
+        # inversion of the previous bank's still image.
+        state['last_note'] = None
 
     if min_note_beats:
         dur = clock_tracker.note_duration(min_note_beats)
@@ -3248,23 +3427,7 @@ def main():
                         banks.notice_until = time.monotonic() + BANK_NOTICE_SECONDS
                         print(banks.notice)
                         continue
-                    note_to_media, grid_cells, scenes_config = loaded
-                    overlays_config = banks.overlays_config
-                    state['overlay'].reconfigure(
-                        overlays_config,
-                        discover_overlays(overlays_config['dir']),
-                        time.monotonic())
-                    note_to_media = note_to_media or {}
-                    if grid_preview:
-                        grid_preview['player'].release()
-                    grid_preview = grid_drag = selected_index = drop_flash = None
-                    grid_scroll = 0
-                    flash_times.clear()
-                    note_hit_counts.clear()
-                    prev_active = None
-                    # A repeated note in another bank is a fresh hit, not an
-                    # inversion of the previous bank's still image.
-                    state['last_note'] = None
+                    adopt_bank(loaded)
                 elif event.key == pygame.K_l:
                     latch_enabled = toggle_latch_mode(latch_enabled)
                     if latch_enabled:
@@ -3368,7 +3531,8 @@ def main():
                                       clock_tracker, min_note_beats, args.zoom_ring,
                                       note_hit_counts, assign_if_selected,
                                       latch_enabled, args.display_mode,
-                                      scenes_config, midi_logger, queue_source)
+                                      scenes_config, midi_logger, queue_source,
+                                      visual_control=visuals)
         # Process live MIDI device messages
         for inport in inports:
             state = process_midi_messages(inport, start_note, end_note,
@@ -3376,7 +3540,12 @@ def main():
                                           clock_tracker, min_note_beats, args.zoom_ring,
                                           note_hit_counts, assign_if_selected,
                                           latch_enabled, args.display_mode,
-                                          scenes_config, midi_logger, inport.name)
+                                          scenes_config, midi_logger, inport.name,
+                                          visual_control=visuals)
+
+        # Apply a bank program change recorded during MIDI processing here on
+        # the UI/media thread — the same path (and state resets) as F5/F6.
+        apply_program_change(visuals, banks, adopt_bank)
 
         # Track note triggers for the grid's flash highlight (works in both views)
         now = time.monotonic()

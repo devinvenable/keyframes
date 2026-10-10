@@ -10,6 +10,7 @@ import re
 import yaml
 
 from .tempomap import TempoEvent, TempoMap
+from .visuals import DEFAULT_CHANNEL, KEYFRAMES_SCENES, KeyframesCue
 
 
 class SetlistError(ValueError):
@@ -36,6 +37,7 @@ class Song:
     midi_loop: bool = False
     midi_beats: float | None = None
     midi_port: str | int | None = None
+    keyframes: KeyframesCue | None = None  # per-song visual cue (see visuals.py)
 
     @property
     def video_source(self):
@@ -57,6 +59,10 @@ class Song:
 class Setlist:
     title: str
     songs: tuple[Song, ...]
+    # Complete, sorted list of Keyframes bank folder names: program i+1 cues
+    # banks[i], program 0 the default bank (visuals.py documents why).
+    keyframes_banks: tuple[str, ...] = ()
+    keyframes_channel: int = DEFAULT_CHANNEL
 
 
 def number(value, field, *, positive=False):
@@ -100,7 +106,7 @@ def parse_song(row, root, *, require_bpm=True):
     The editor's lenient Document rows and the strict playback loader share
     this, so a set saved mid-edit (bpm still unset) reopens instead of erroring.
     """
-    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "trim", "midi", "video", "mute", "restart", "editor"}, "song")
+    row = mapping(row, {"name", "file", "bpm", "gap", "tempo", "offset", "trim", "midi", "video", "mute", "restart", "editor", "keyframes"}, "song")
     editor = timing_metadata(row)
     if require_bpm and editor.get('timing_review'):
         raise ValueError('Replacement audio needs timing review')
@@ -168,7 +174,85 @@ def parse_song(row, root, *, require_bpm=True):
             raise ValueError(f"tempo[{j}].{exc}") from exc
     return dict(name=name, file=file, bpm=bpm, gap=gap, tempo=tuple(events), offset=offset,
                 midi=midi, video=video, mute=mute, trim=trim,
-                midi_loop=midi_loop, midi_beats=midi_beats, midi_port=midi_port)
+                midi_loop=midi_loop, midi_beats=midi_beats, midi_port=midi_port,
+                keyframes=parse_keyframes_cue(row))
+
+
+def parse_keyframes_cue(row):
+    """The song's validated keyframes block, or None when absent.
+
+    An empty block is legal and still meaningful — it cues "reset to the
+    bank's scenes.json defaults" at this song's start. ``allow: []`` is
+    rejected rather than silently meaning "all scenes": there is no MIDI
+    message for an empty allowlist, so "no scenes this song" is spelled
+    ``enabled: false``."""
+    if "keyframes" not in row:
+        return None
+    cue = mapping(row["keyframes"] or {}, {"bank", "scenes"}, "keyframes")
+    bank = string(cue["bank"], "keyframes.bank") if "bank" in cue else None
+    enabled = probability = allow = None
+    if "scenes" in cue:
+        scenes = mapping(cue["scenes"] or {}, {"enabled", "probability", "allow"},
+                         "keyframes.scenes")
+        if "enabled" in scenes:
+            enabled = scenes["enabled"]
+            if not isinstance(enabled, bool):
+                raise ValueError("keyframes.scenes.enabled must be a boolean")
+        if "probability" in scenes:
+            probability = number(scenes["probability"], "keyframes.scenes.probability")
+            if probability > 1:
+                raise ValueError("keyframes.scenes.probability must be between 0 and 1")
+        if "allow" in scenes:
+            raw = scenes["allow"]
+            if not isinstance(raw, list) or not raw:
+                raise ValueError("keyframes.scenes.allow must be a nonempty list "
+                                 "(for no scenes at all, set enabled: false)")
+            for name in raw:
+                string(name, "keyframes.scenes.allow")
+                if name not in KEYFRAMES_SCENES:
+                    raise ValueError(f"unknown scene {name!r} in keyframes.scenes.allow; "
+                                     f"known: {', '.join(sorted(KEYFRAMES_SCENES))}")
+            allow = tuple(raw)
+    return KeyframesCue(bank=bank, enabled=enabled, probability=probability, allow=allow)
+
+
+def parse_keyframes_setup(data):
+    """(banks, channel) from the top-level keyframes block.
+
+    The banks list must be COMPLETE (every folder under keyframes/banks/) and
+    sorted: Keyframes maps program n to its own sorted folder listing, so an
+    unsorted or partial list silently cues the wrong imagery. Sortedness is
+    checkable here; completeness only Keyframes can see — the spec and the
+    error text both say to keep the list in lockstep with the folders."""
+    if "keyframes" not in data:
+        return (), DEFAULT_CHANNEL
+    setup = mapping(data["keyframes"] or {}, {"banks", "channel"}, "keyframes")
+    banks = setup.get("banks", [])
+    if not isinstance(banks, list):
+        raise ValueError("keyframes.banks must be a list")
+    names = [string(name, "keyframes.banks") for name in banks]
+    if "default" in names:
+        raise ValueError("keyframes.banks must not list 'default' (it is always program 0)")
+    if len(set(names)) != len(names):
+        raise ValueError("keyframes.banks must not repeat a bank")
+    if names != sorted(names):
+        raise ValueError("keyframes.banks must be sorted alphabetically — program numbers "
+                         "follow Keyframes' sorted banks/ folder order, and the list must "
+                         "match it exactly (all folders, sorted)")
+    if len(names) > 127:
+        raise ValueError("keyframes.banks: at most 127 banks are addressable")
+    channel = setup.get("channel", DEFAULT_CHANNEL)
+    if isinstance(channel, bool) or not isinstance(channel, int) or not 1 <= channel <= 16:
+        raise ValueError("keyframes.channel must be an integer 1-16")
+    return tuple(names), channel
+
+
+def check_keyframes_bank(cue, banks):
+    """Reject a cue naming a bank the top-level list can't map to a program."""
+    if cue is not None and cue.bank is not None and cue.bank != "default" \
+            and cue.bank not in banks:
+        raise ValueError(f"keyframes.bank {cue.bank!r} is not in the top-level "
+                         "keyframes.banks list")
 
 
 def timing_metadata(row):
@@ -199,7 +283,8 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
     context = str(path)
     try:
         data = mapping(yaml.safe_load(path.read_text(encoding="utf-8")),
-                       {"title", "audio_root", "songs"}, "setlist")
+                       {"title", "audio_root", "songs", "keyframes"}, "setlist")
+        keyframes_banks, keyframes_channel = parse_keyframes_setup(data)
         title = string(data.get("title", path.stem), "title")
         root = Path(string(data.get("audio_root", "."), "audio_root")).expanduser()
         root = (path.parent / root).resolve()
@@ -210,6 +295,7 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
         for i, row in enumerate(rows):
             context = song_context(path, i, row)
             fields = parse_song(row, root)
+            check_keyframes_bank(fields["keyframes"], keyframes_banks)
             if check_files and not fields["file"].is_file():
                 raise ValueError(f"file does not exist: {fields['file']}")
             if check_files and fields["video"] and not fields["video"].is_file():
@@ -220,7 +306,7 @@ def load_setlist(path, *, check_files=True, duration_probe=None):
                 raise ValueError(f"trim must be under the file duration ({duration:g}s)")
             song.tempo_map(duration - song.trim if duration is not None else None)
             songs.append(song)
-        return Setlist(title, tuple(songs))
+        return Setlist(title, tuple(songs), keyframes_banks, keyframes_channel)
     except (OSError, ValueError, yaml.YAMLError) as exc:
         raise SetlistError(f"{context}: {exc}") from exc
 

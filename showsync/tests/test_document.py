@@ -284,3 +284,41 @@ def test_trim_saves_for_new_rows_and_gates_playback_when_too_long(tmp_path):
     from showsync.tempomap import TempoEvent
     row.tempo = (TempoEvent(0.1, 140, 0),)
     assert 'before trim' in row.problem()
+
+
+KEYFRAMED = """\
+keyframes:
+  banks: [robot-society-symbols]
+songs:
+  - name: "Opener"
+    file: tone.wav
+    bpm: 120
+    keyframes:              # cue comment survives the editor
+      bank: robot-society-symbols
+      scenes: {enabled: true, probability: 0.15}
+"""
+
+
+def test_keyframes_cues_ride_through_the_editor(tmp_path):
+    path = tmp_path / 'set.yaml'
+    (tmp_path / 'tone.wav').write_bytes(TONE.read_bytes())
+    path.write_text(KEYFRAMED, encoding='utf-8')
+    document = Document.load(path, probe=probe)
+    setlist = document.setlist()
+    assert setlist.keyframes_banks == ('robot-society-symbols',)
+    assert setlist.songs[0].keyframes.probability == 0.15
+    document.rows[0].bpm = 121  # an ordinary edit must not shed the cue
+    document.save()
+    assert 'cue comment survives the editor' in path.read_text()
+    reloaded = load_setlist(path, duration_probe=probe)
+    assert reloaded.songs[0].keyframes.bank == 'robot-society-symbols'
+    assert reloaded.songs[0].bpm == 121
+
+
+def test_editor_rejects_unknown_cue_bank(tmp_path):
+    path = tmp_path / 'set.yaml'
+    (tmp_path / 'tone.wav').write_bytes(TONE.read_bytes())
+    path.write_text(KEYFRAMED.replace('banks: [robot-society-symbols]',
+                                      'banks: [other]'), encoding='utf-8')
+    with pytest.raises(SetlistError, match='not in the top-level'):
+        Document.load(path, probe=probe)

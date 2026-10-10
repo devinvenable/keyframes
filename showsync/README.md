@@ -250,6 +250,27 @@ Sustain and notes are released at loop boundaries and on pause, skip, or end.
 Port values accept an exact name or zero-based index. Editor saves and show
 bundles preserve these options; bundled MIDI paths are relocated with the audio.
 
+### Per-song Keyframes cues
+
+A song's `keyframes:` block cues the Keyframes visuals app at that song's
+start, over the clock port: which media bank is live, whether scenes may
+activate, how often, and which ones. A top-level `keyframes: {banks: [...]}`
+block maps bank names to program numbers. Songs without a block leave the
+visuals untouched. Full message vocabulary and YAML syntax:
+[`docs/visual-control-midi.md`](../docs/visual-control-midi.md).
+
+```yaml
+keyframes:
+  banks: [insect-war-aged, robot-society-symbols]  # complete, sorted
+songs:
+  - name: "Robot Society"
+    file: robot-society.wav
+    bpm: 120
+    keyframes:
+      bank: robot-society-symbols
+      scenes: {enabled: true, probability: 0.15, allow: [four-bar-sweep-tinted]}
+```
+
 ### Video playback
 
 Add an MP4, M4V, MPG, MPEG, or MOV as a song to play its embedded audio as the

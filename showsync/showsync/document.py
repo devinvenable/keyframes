@@ -10,8 +10,10 @@ import io
 import os
 from pathlib import Path
 
-from .setlist import (SUFFIXES, VIDEO_SUFFIXES, MIDI_SUFFIXES, Setlist, SetlistError, Song, mapping, number,
-                      parse_song, position, song_context, string, timing_metadata)
+from .setlist import (SUFFIXES, VIDEO_SUFFIXES, MIDI_SUFFIXES, Setlist, SetlistError, Song, check_keyframes_bank,
+                      mapping, number, parse_keyframes_setup, parse_song, position,
+                      song_context, string, timing_metadata)
+from .visuals import DEFAULT_CHANNEL
 from .tempomap import TempoEvent
 
 
@@ -52,6 +54,7 @@ class Row:
     midi_loop: bool = False
     midi_beats: float | None = None
     midi_port: str | int | None = None
+    keyframes: object = None  # opaque to the editor; travels through save()
 
     def problem(self):
         if self.file_error:
@@ -72,7 +75,7 @@ class Row:
     def song(self):
         return Song(self.name, self.file, self.bpm, self.gap, self.tempo, self.offset,
                     self.midi, self.video, self.mute, self.trim,
-                    self.midi_loop, self.midi_beats, self.midi_port)
+                    self.midi_loop, self.midi_beats, self.midi_port, self.keyframes)
 
     @property
     def custom_tempo(self):
@@ -86,11 +89,15 @@ class Row:
 
 
 class Document:
-    def __init__(self, path=None, title=None, rows=(), source=None):
+    def __init__(self, path=None, title=None, rows=(), source=None,
+                 keyframes=((), DEFAULT_CHANNEL)):
         self.path = Path(path).expanduser().resolve() if path else None
         self.title = title
         self.rows = list(rows)
         self._source = source  # ruamel data of the file on disk; None until first save
+        # (banks, channel) for per-song Keyframes cues; the YAML block itself
+        # is not editable here and rides through save() inside _source.
+        self.keyframes = keyframes
 
     @property
     def display_title(self):
@@ -104,7 +111,8 @@ class Document:
         try:
             data = _editor().load(path.read_text(encoding="utf-8"))
             data = mapping(data if data is not None else {},
-                           {"title", "audio_root", "songs"}, "setlist")
+                           {"title", "audio_root", "songs", "keyframes"}, "setlist")
+            keyframes = parse_keyframes_setup(data)
             title = string(data.get("title", path.stem), "title")
             root = Path(string(data.get("audio_root", "."), "audio_root")).expanduser()
             root = (path.parent / root).resolve()
@@ -115,6 +123,7 @@ class Document:
             for i, item in enumerate(raw or []):
                 context = song_context(path, i, item)
                 fields = parse_song(item, root, require_bpm=False)
+                check_keyframes_bank(fields["keyframes"], keyframes[0])
                 metadata = timing_metadata(item)
                 row = Row(**fields, source_index=i,
                           offset_explicit="offset" in item and not metadata.get('offset_estimated'),
@@ -137,7 +146,7 @@ class Document:
                 if row.video and not row.video.is_file():
                     row.file_error = f"video file not found: {row.video}"
                 rows.append(row)
-            return cls(path, title, rows, source=data)
+            return cls(path, title, rows, source=data, keyframes=keyframes)
         except (OSError, ValueError, YAMLError) as exc:
             raise SetlistError(f"{context}: {exc}") from exc
 
@@ -207,7 +216,8 @@ class Document:
         if blocked:
             row, message = blocked
             raise SetlistError(f"{row.name}: {message}" if row else message)
-        return Setlist(self.display_title, tuple(row.song() for row in self.rows))
+        return Setlist(self.display_title, tuple(row.song() for row in self.rows),
+                       *self.keyframes)
 
     def default_save_directory(self):
         return self.rows[0].file.parent if self.rows else Path.home()

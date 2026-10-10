@@ -14,6 +14,7 @@ from .gui import main_loop
 from .headless import headless_loop
 from .markers import MarkerWriter
 from .midifile import MidiEventsView, load_setlist_events
+from .visuals import song_controls
 from .setlist import SetlistError
 
 
@@ -129,7 +130,8 @@ def main(argv=None):
             clock = ClockEngine(audio.maps, audio.position,
                                 lambda message: midi.send_message([message] if isinstance(message, int) else message) if midi is not None else None,
                                 clock_offset_ms=offset, send_transport=devices.send_transport,
-                                events=events)
+                                events=events,
+                                controls=song_controls(setlist) if setlist is not None else None)
             clock.start()
             audio.start()
         except Exception:

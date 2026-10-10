@@ -284,12 +284,14 @@ lives in `scenes.json` beside `mapping.json` (it can't live inside
 `mapping.json`, which is rewritten as a pure note→file manifest):
 
 ```json
-{"enabled": true, "probability": 0.05}
+{"enabled": true, "probability": 0.05, "allow": ["concentric-rings"]}
 ```
 
-Both keys are optional; a missing or malformed file means scenes are enabled
-at the 5% default. New scenes subclass `Scene` in `main.py` and register with
-`@register_scene` — activation picks randomly among registered scenes, and
+All keys are optional; a missing or malformed file means scenes are enabled
+at the 5% default with every registered scene allowed. `allow` restricts the
+activation picker to the listed scenes (`[]` = none may activate). New scenes
+subclass `Scene` in `main.py` and register with `@register_scene`, carrying a
+unique append-only `midi_id` — activation picks randomly among allowed scenes, and
 the main loop only ever sees the one `active_scene` hook. A trigger that
 ends the active scene falls straight through to the activation roll, so a
 new scene can start on the very note that ended the old one — no one-frame
@@ -399,6 +401,17 @@ bank. Loading is synchronous, so a large bank can briefly pause input/rendering.
 Grid assignment, unmapping, drag-to-replace, and automatic reconciliation all
 use the **active bank's** media folder and `mapping.json`. Scene settings stay
 in a separate `scenes.json`: mappings are always pure note-to-filename JSON.
+
+## MIDI visual control (per-song banks and scenes)
+
+Banks and scene settings can be driven over MIDI — ShowSync cues them per
+song from the setlist, and a KeyStep's program-change buttons switch banks
+live. A Program Change selects the bank (`0` = default, `1..N` = banks
+sorted); CC 102/103/104/105 reset/enable/probability/allow-scene override the
+active bank's `scenes.json` until the next reset. These messages are accepted
+on **any** channel (notes still honour `--channel`), so keep other
+PC-emitting gear off Keyframes' input port. Full message map, scene id table,
+and setlist YAML syntax: [`docs/visual-control-midi.md`](../docs/visual-control-midi.md).
 If the bank has no `scenes.json`, the global file applies. A bank can be empty
 or contain unmapped media; use the grid to assign keys.
 

@@ -13,9 +13,14 @@ LOG = logging.getLogger(__name__)
 
 class ClockEngine:
     def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep,
-                 clock_offset_ms=0, send_transport=True, events=None):
+                 clock_offset_ms=0, send_transport=True, events=None, controls=None):
         self.maps, self.position, self.send = maps, position, send
         self.now, self.sleep = now, sleep
+        # Optional per-song visual-control messages (indexable like maps, one
+        # tuple of byte tuples per song — see visuals.song_controls). Sent on
+        # the clock port at each song start so Keyframes cues share the
+        # clock's transport and timebase without any per-song .mid dependency.
+        self.controls = controls
         self.clock_offset_ms = clock_offset_ms
         self.send_transport = send_transport
         # Optional per-song MidiEvent lists (indexable like maps). File events
@@ -88,6 +93,11 @@ class ClockEngine:
             elif self.events is not None:
                 self._song_events = self.events[p.song_index]
             self._cursor = 0
+            if self.controls is not None:
+                # Emitted before this song's START/first tick: the bank must
+                # be live before any note or clock the new song produces.
+                for message in self.controls[p.song_index]:
+                    self.send(message)
         # Position carries the same immutable layout as its audio frame.
         tempo = p.layout.maps[p.song_index] if p.layout is not None else self.maps[p.song_index]
         audio_time = p.song_time
