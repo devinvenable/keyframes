@@ -200,7 +200,6 @@ clear_ctl
 printf 'sleep\n' > "$WORK/ctl.showsync"    # first launch OK...
 run_live "$SETLIST"
 wait_launches 1 "^keyframes" || true
-first_showsync_pid_count=$(grep -c '^showsync' "$STUB_LOG")
 # Match showsync/main.py specifically: a broader "showsync" would also hit
 # the keyframes stub when the repo path itself contains "showsync" (e.g. a
 # task worktree named after this feature).
