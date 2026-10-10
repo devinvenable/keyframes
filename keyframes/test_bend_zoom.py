@@ -13,6 +13,7 @@ import pytest
 import main
 from main import (
     MAX_PITCH_BEND_ZOOM,
+    PAN_AUTO_RECENTER,
     PAN_RECENTER_DELAY,
     PAN_RECENTER_SECONDS,
     effective_zoom_scale,
@@ -141,6 +142,36 @@ def test_bend_zoom_persists_across_note_off_clear():
 
 
 # --- auto-recenter -----------------------------------------------------------
+
+def test_auto_recenter_enabled_with_one_second_idle_window():
+    # Task 256: Devin bumps the mod strip accidentally and the frame stays
+    # off-center, so the recenter is ON with a 1s idle window. (It was
+    # feel-test disabled in task 203; this pins the reversal.)
+    assert PAN_AUTO_RECENTER is True
+    assert PAN_RECENTER_DELAY == 1.0
+
+
+def test_recenter_drift_is_multi_frame_monotonic_at_60fps():
+    # The glide home must span several frames — quick, but never a one-frame
+    # snap. Walk the ease at a real 60fps cadence and require every rendered
+    # frame to move strictly toward 0 without ever reaching it in one step.
+    state = make_state(pan=1.0, pan_cc_time=0.0)
+    frame = 1.0 / 60.0
+    t = PAN_RECENTER_DELAY + 0.001
+    update_pan_recenter(state, t)  # ease arms on this frame, pan still held
+    samples = []
+    while state['pan'] != 0.0:
+        t += frame
+        update_pan_recenter(state, t)
+        samples.append(state['pan'])
+    # Multiple intermediate frames strictly decreasing — no snap.
+    intermediates = [p for p in samples if 0.0 < p < 1.0]
+    assert len(intermediates) >= 5
+    assert all(a > b for a, b in zip(intermediates, intermediates[1:]))
+    assert samples[0] < 1.0  # first drifting frame has left the start...
+    assert samples[0] > 0.5  # ...but nowhere near a jump home
+    assert samples[-1] == 0.0
+
 
 def test_recenter_waits_out_the_silence_delay_then_eases():
     state = make_state(pan=1.0, pan_cc_time=100.0)

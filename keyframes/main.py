@@ -114,11 +114,14 @@ MAX_PAN_FRACTION = 0.40
 # The KeyStep's mod strip sends nothing when the finger lifts, so pan cannot
 # spring back on its own. After this much CC1 silence an off-center pan eases
 # home over PAN_RECENTER_SECONDS; any new CC1 cancels the ease and takes over.
-# Devin feel-tested and prefers the pan to STAY where he put it, so the
-# auto-recenter is off; flip PAN_AUTO_RECENTER to re-enable the ease.
-PAN_AUTO_RECENTER = False
-PAN_RECENTER_DELAY = 0.4
-PAN_RECENTER_SECONDS = 0.25
+# Devin originally preferred the pan to stay put, but accidental strip bumps
+# left the frame off-center mid-song (2026-10-10), so the recenter is on with
+# a deliberately long 1s idle window: slow enough to hold a framing while
+# riding the strip, fast enough that a bump heals itself. The 0.3s glide is
+# ~18 frames at 60fps — quick, but never a one-frame snap.
+PAN_AUTO_RECENTER = True
+PAN_RECENTER_DELAY = 1.0
+PAN_RECENTER_SECONDS = 0.3
 
 SIZE_PRESETS = {
     'hd': (1920, 1080),
