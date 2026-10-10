@@ -17,6 +17,8 @@ import numpy as np
 import pygame
 import mido
 
+from midi_io import MidiInputs
+
 # Default note range for a 64-key keyboard
 DEFAULT_START_NOTE = 36  # C2
 DEFAULT_NUM_KEYS = 64
@@ -3471,6 +3473,9 @@ def main():
                         help="MIDI channel to listen on (1-16, default: all)")
     parser.add_argument('--port', '-p', type=str, default=None,
                         help="MIDI port name substring to match (e.g. 'KeyStep')")
+    parser.add_argument('--midi-io', choices=('process', 'inproc'), default='process',
+                        help="MIDI I/O isolation (default: process); inproc restores "
+                             "legacy direct ports for emergency rollback")
     parser.add_argument('--note-source', choices=('tbox', 'usb', 'all'), default='tbox',
                         help="Live notes/CC source: TBOX In 1 (tbox, default), "
                              "KeyStep USB (usb), or all ports (legacy). Falls back "
@@ -3573,7 +3578,7 @@ def main():
             daemon=True
         )
         playback_thread.start()
-    else:
+    elif args.midi_io == 'inproc':
         # Try to open MIDI devices, but don't require them (keyboard always works)
         inputs = mido.get_input_names()
         if inputs:
@@ -3607,8 +3612,9 @@ def main():
         except OSError as exc:
             print(f"WARNING: cannot open MIDI event log {midi_log_path}: {exc}")
     queue_source = f"file:{args.midi_file}" if args.midi_file else 'keyboard'
-    note_sources = configure_note_source(
+    note_sources = (configure_note_source(
         [port.name for port in inports], args.note_source, midi_logger)
+        if args.midi_io == 'inproc' or args.midi_file else frozenset())
 
     stall_rearm = None
     stall_log_path = resolve_stall_log_path()
@@ -3722,259 +3728,285 @@ def main():
     midi_channel = args.channel - 1 if args.channel else None
     clock = pygame.time.Clock()
     last_cue_scan = time.monotonic()
+    live_midi = (MidiInputs(args.port, CUE_PORT_RESCAN_S)
+                 if not args.midi_file and args.midi_io == 'process' else None)
+    last_port_names = None
     running = True
-    while running:
-        if stall_rearm:
-            # One cheap C call: pushes the all-thread stack dump deadline out
-            # another STALL_DUMP_SECONDS. If this loop ever stops turning,
-            # the dump fires and names the wedged call.
-            stall_rearm()
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.VIDEORESIZE and not fullscreen:
-                display_w, display_h = event.w, event.h
-                last_windowed_size = (display_w, display_h)
-                screen = pygame.display.set_mode(last_windowed_size, pygame.RESIZABLE)
-                target_size = update_display_target_size(
-                    state, display_w, display_h)
-            elif event.type == pygame.KEYDOWN:
-                # Any key dismisses the startup help overlay and returns to the
-                # normal view — matching "press any key to continue". The F1/?
-                # reshow bindings are excepted (handled below). While the overlay
-                # is up, Escape closes it instead of quitting, so it can't
-                # surprise-exit the app. The key still performs its normal action
-                # (a piano key also plays its note, Tab still opens the grid).
-                if show_help and not grid_mode and not is_help_reshow_key(event):
-                    show_help = update_help_visibility(show_help, key_pressed=True)
-                    if event.key == pygame.K_ESCAPE:
-                        continue  # consumed: closed the overlay, don't also quit
-                if event.key == pygame.K_ESCAPE:
+    try:
+        while running:
+            if stall_rearm:
+                # One cheap C call: pushes the all-thread stack dump deadline out
+                # another STALL_DUMP_SECONDS. If this loop ever stops turning,
+                # the dump fires and names the wedged call.
+                stall_rearm()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
                     running = False
-                elif is_fullscreen_toggle_key(event):
-                    if not fullscreen:
-                        last_windowed_size = (display_w, display_h)
-                    fullscreen = not fullscreen
-                    screen, display_w, display_h, target_size = set_display_mode(
-                        fullscreen, last_windowed_size, state)
-                elif is_help_reshow_key(event):
-                    # Reshow the startup help overlay. Handled ahead of
-                    # KEY_TO_NOTE so F1/? never doubles as a played note; it
-                    # dismisses again on the next note. Ignored in grid view,
-                    # which has its own on-screen controls header.
-                    if not grid_mode:
-                        show_help = update_help_visibility(show_help, reshow_key=True)
-                elif event.key in BANK_KEYS:
-                    try:
-                        loaded = banks.cycle(BANK_KEYS[event.key])
-                    except (OSError, ValueError, pygame.error) as exc:
-                        banks.notice = f"Bank switch failed: {exc}"
-                        banks.notice_until = time.monotonic() + BANK_NOTICE_SECONDS
-                        print(banks.notice)
-                        continue
-                    adopt_bank(loaded)
-                elif event.key == pygame.K_l:
-                    latch_enabled = toggle_latch_mode(latch_enabled)
-                    if latch_enabled:
-                        # A pending minimum-duration release belongs to the
-                        # non-latch mode that just ended.
-                        state['hold_until'] = None
-                    latch_notice_until = time.monotonic() + LATCH_NOTICE_SECONDS
-                    print(f"Latch mode: {'on' if latch_enabled else 'off'}")
-                elif event.key == pygame.K_TAB:
-                    grid_mode = not grid_mode
-                    if grid_mode and grid_cells is None:
-                        grid_cells = build_grid_cells(
-                            note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
-                    grid_scroll = 0
-                    # Leaving the grid mid-hold: drop the gesture so it can't
-                    # keep a preview alive off-screen (reconcile releases it).
-                    grid_drag = None
-                    selected_index = None
-                elif (grid_mode and selected_index is not None and grid_cells
-                      and event.key in (pygame.K_DELETE, pygame.K_BACKSPACE)):
-                    unmap_cell(grid_cells[selected_index], note_to_media)
-                    grid_cells = build_grid_cells(
-                        note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
-                    selected_index = None
-                    print("Unmapped selected media")
-                elif grid_mode and event.key in (pygame.K_UP, pygame.K_DOWN,
-                                                 pygame.K_PAGEUP, pygame.K_PAGEDOWN,
-                                                 pygame.K_HOME, pygame.K_END):
-                    if event.key == pygame.K_UP:
-                        grid_scroll -= 80
-                    elif event.key == pygame.K_DOWN:
-                        grid_scroll += 80
-                    elif event.key == pygame.K_PAGEUP:
-                        grid_scroll -= 400
-                    elif event.key == pygame.K_PAGEDOWN:
-                        grid_scroll += 400
-                    elif event.key == pygame.K_HOME:
+                elif event.type == pygame.VIDEORESIZE and not fullscreen:
+                    display_w, display_h = event.w, event.h
+                    last_windowed_size = (display_w, display_h)
+                    screen = pygame.display.set_mode(last_windowed_size, pygame.RESIZABLE)
+                    target_size = update_display_target_size(
+                        state, display_w, display_h)
+                elif event.type == pygame.KEYDOWN:
+                    # Any key dismisses the startup help overlay and returns to the
+                    # normal view — matching "press any key to continue". The F1/?
+                    # reshow bindings are excepted (handled below). While the overlay
+                    # is up, Escape closes it instead of quitting, so it can't
+                    # surprise-exit the app. The key still performs its normal action
+                    # (a piano key also plays its note, Tab still opens the grid).
+                    if show_help and not grid_mode and not is_help_reshow_key(event):
+                        show_help = update_help_visibility(show_help, key_pressed=True)
+                        if event.key == pygame.K_ESCAPE:
+                            continue  # consumed: closed the overlay, don't also quit
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                    elif is_fullscreen_toggle_key(event):
+                        if not fullscreen:
+                            last_windowed_size = (display_w, display_h)
+                        fullscreen = not fullscreen
+                        screen, display_w, display_h, target_size = set_display_mode(
+                            fullscreen, last_windowed_size, state)
+                    elif is_help_reshow_key(event):
+                        # Reshow the startup help overlay. Handled ahead of
+                        # KEY_TO_NOTE so F1/? never doubles as a played note; it
+                        # dismisses again on the next note. Ignored in grid view,
+                        # which has its own on-screen controls header.
+                        if not grid_mode:
+                            show_help = update_help_visibility(show_help, reshow_key=True)
+                    elif event.key in BANK_KEYS:
+                        try:
+                            loaded = banks.cycle(BANK_KEYS[event.key])
+                        except (OSError, ValueError, pygame.error) as exc:
+                            banks.notice = f"Bank switch failed: {exc}"
+                            banks.notice_until = time.monotonic() + BANK_NOTICE_SECONDS
+                            print(banks.notice)
+                            continue
+                        adopt_bank(loaded)
+                    elif event.key == pygame.K_l:
+                        latch_enabled = toggle_latch_mode(latch_enabled)
+                        if latch_enabled:
+                            # A pending minimum-duration release belongs to the
+                            # non-latch mode that just ended.
+                            state['hold_until'] = None
+                        latch_notice_until = time.monotonic() + LATCH_NOTICE_SECONDS
+                        print(f"Latch mode: {'on' if latch_enabled else 'off'}")
+                    elif event.key == pygame.K_TAB:
+                        grid_mode = not grid_mode
+                        if grid_mode and grid_cells is None:
+                            grid_cells = build_grid_cells(
+                                note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
                         grid_scroll = 0
-                    elif event.key == pygame.K_END:
-                        grid_scroll = 10 ** 9  # clamped during render
-                elif event.key in KEY_TO_NOTE:
-                    # Piano keys always enqueue; assign_if_selected (the queue's
-                    # assign_callback) turns the note into a remap when a grid
-                    # cell is selected, so keyboard and MIDI share one path.
-                    note = KEY_TO_NOTE[event.key]
-                    msg_queue.put(mido.Message('note_on', note=note, velocity=100))
-            elif event.type == pygame.KEYUP:
-                if event.key in KEY_TO_NOTE:
-                    note = KEY_TO_NOTE[event.key]
-                    msg_queue.put(mido.Message('note_off', note=note, velocity=0))
-            elif event.type == pygame.MOUSEWHEEL and grid_mode:
-                grid_scroll -= event.y * 60
-            elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
-                  and grid_mode and grid_cells):
-                # A held click previews videos; releasing it simply selects.
-                grid_drag = begin_grid_gesture(grid_cells, grid_scroll,
-                                               screen.get_size(), event.pos)
-            elif (event.type == pygame.MOUSEBUTTONUP and event.button == 1
-                  and grid_mode and grid_cells):
-                # Release over a cell selects it (arming the next played note);
-                # release over the header/padding deselects (grid_cell_at None).
-                selected_index = grid_cell_at(grid_cells, grid_scroll,
-                                              screen.get_size(), event.pos)
-                grid_drag = None
-            elif event.type in (pygame.DROPFILE, pygame.DROPTEXT):
-                # Native drag-and-drop: replace the cell under the cursor with
-                # the dropped media file (copy into images/, persist via the
-                # mapping, delete the old file, reload live). DROPTEXT covers
-                # file managers that hand SDL a text/uri-list instead of a plain
-                # path; normalize_drop_paths decodes either payload. The drop
-                # target comes from drop_pointer_pos() — on X11
-                # pygame.mouse.get_pos() is stale during an external drag (no
-                # MOUSEMOTION is delivered), so the X server is queried directly.
-                raw = getattr(event, 'file', None) or getattr(event, 'text', '') or ''
-                paths = normalize_drop_paths(raw)
-                pointer = drop_pointer_pos()
-                idx = None
-                if grid_mode and grid_cells:
-                    idx = grid_cell_at(grid_cells, grid_scroll,
-                                       screen.get_size(), pointer)
-                if not grid_mode or not grid_cells:
-                    pass  # only the grid view accepts drops
-                elif idx is None:
-                    # Missed every cell: flash the whole window red so a failed
-                    # drop is never silent.
-                    drop_flash = {'note': None, 'ok': False,
-                                  'until': time.monotonic() + GRID_DROP_FLASH}
-                else:
-                    cell = grid_cells[idx]
-                    flash_note = cell['notes'][0] if cell['notes'] else None
-                    ok = bool(paths) and apply_drop(paths[0], cell, note_to_media)
-                    if ok:
+                        # Leaving the grid mid-hold: drop the gesture so it can't
+                        # keep a preview alive off-screen (reconcile releases it).
+                        grid_drag = None
+                        selected_index = None
+                    elif (grid_mode and selected_index is not None and grid_cells
+                          and event.key in (pygame.K_DELETE, pygame.K_BACKSPACE)):
+                        unmap_cell(grid_cells[selected_index], note_to_media)
                         grid_cells = build_grid_cells(
                             note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
-                    drop_flash = {'note': flash_note, 'ok': ok,
-                                  'until': time.monotonic() + GRID_DROP_FLASH}
+                        selected_index = None
+                        print("Unmapped selected media")
+                    elif grid_mode and event.key in (pygame.K_UP, pygame.K_DOWN,
+                                                     pygame.K_PAGEUP, pygame.K_PAGEDOWN,
+                                                     pygame.K_HOME, pygame.K_END):
+                        if event.key == pygame.K_UP:
+                            grid_scroll -= 80
+                        elif event.key == pygame.K_DOWN:
+                            grid_scroll += 80
+                        elif event.key == pygame.K_PAGEUP:
+                            grid_scroll -= 400
+                        elif event.key == pygame.K_PAGEDOWN:
+                            grid_scroll += 400
+                        elif event.key == pygame.K_HOME:
+                            grid_scroll = 0
+                        elif event.key == pygame.K_END:
+                            grid_scroll = 10 ** 9  # clamped during render
+                    elif event.key in KEY_TO_NOTE:
+                        # Piano keys always enqueue; assign_if_selected (the queue's
+                        # assign_callback) turns the note into a remap when a grid
+                        # cell is selected, so keyboard and MIDI share one path.
+                        note = KEY_TO_NOTE[event.key]
+                        msg_queue.put(mido.Message('note_on', note=note, velocity=100))
+                elif event.type == pygame.KEYUP:
+                    if event.key in KEY_TO_NOTE:
+                        note = KEY_TO_NOTE[event.key]
+                        msg_queue.put(mido.Message('note_off', note=note, velocity=0))
+                elif event.type == pygame.MOUSEWHEEL and grid_mode:
+                    grid_scroll -= event.y * 60
+                elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                      and grid_mode and grid_cells):
+                    # A held click previews videos; releasing it simply selects.
+                    grid_drag = begin_grid_gesture(grid_cells, grid_scroll,
+                                                   screen.get_size(), event.pos)
+                elif (event.type == pygame.MOUSEBUTTONUP and event.button == 1
+                      and grid_mode and grid_cells):
+                    # Release over a cell selects it (arming the next played note);
+                    # release over the header/padding deselects (grid_cell_at None).
+                    selected_index = grid_cell_at(grid_cells, grid_scroll,
+                                                  screen.get_size(), event.pos)
+                    grid_drag = None
+                elif event.type in (pygame.DROPFILE, pygame.DROPTEXT):
+                    # Native drag-and-drop: replace the cell under the cursor with
+                    # the dropped media file (copy into images/, persist via the
+                    # mapping, delete the old file, reload live). DROPTEXT covers
+                    # file managers that hand SDL a text/uri-list instead of a plain
+                    # path; normalize_drop_paths decodes either payload. The drop
+                    # target comes from drop_pointer_pos() — on X11
+                    # pygame.mouse.get_pos() is stale during an external drag (no
+                    # MOUSEMOTION is delivered), so the X server is queried directly.
+                    raw = getattr(event, 'file', None) or getattr(event, 'text', '') or ''
+                    paths = normalize_drop_paths(raw)
+                    pointer = drop_pointer_pos()
+                    idx = None
+                    if grid_mode and grid_cells:
+                        idx = grid_cell_at(grid_cells, grid_scroll,
+                                           screen.get_size(), pointer)
+                    if not grid_mode or not grid_cells:
+                        pass  # only the grid view accepts drops
+                    elif idx is None:
+                        # Missed every cell: flash the whole window red so a failed
+                        # drop is never silent.
+                        drop_flash = {'note': None, 'ok': False,
+                                      'until': time.monotonic() + GRID_DROP_FLASH}
+                    else:
+                        cell = grid_cells[idx]
+                        flash_note = cell['notes'][0] if cell['notes'] else None
+                        ok = bool(paths) and apply_drop(paths[0], cell, note_to_media)
+                        if ok:
+                            grid_cells = build_grid_cells(
+                                note_to_media, (GRID_THUMB_W, GRID_THUMB_H))
+                        drop_flash = {'note': flash_note, 'ok': ok,
+                                      'until': time.monotonic() + GRID_DROP_FLASH}
 
-        # Process keyboard/file messages from queue
-        state = process_midi_messages(msg_queue, start_note, end_note,
-                                      note_to_media, target_size, state, midi_channel,
-                                      clock_tracker, min_note_beats, args.zoom_ring,
-                                      note_hit_counts, assign_if_selected,
-                                      latch_enabled, args.display_mode,
-                                      scenes_config, midi_logger, queue_source,
-                                      visual_control=visuals)
-        # Process live MIDI device messages
-        for inport in inports:
-            state = process_midi_messages(inport, start_note, end_note,
+            # Process keyboard/file messages from queue
+            state = process_midi_messages(msg_queue, start_note, end_note,
                                           note_to_media, target_size, state, midi_channel,
                                           clock_tracker, min_note_beats, args.zoom_ring,
                                           note_hit_counts, assign_if_selected,
                                           latch_enabled, args.display_mode,
-                                          scenes_config, midi_logger, inport.name,
-                                          visual_control=visuals,
-                                          note_sources=note_sources)
+                                          scenes_config, midi_logger, queue_source,
+                                          visual_control=visuals)
+            # Only the helper owns native ports in the default mode. Its queues
+            # feed the same routing/flood path as legacy inputs, on this thread.
+            if live_midi is not None:
+                for record in live_midi.poll():
+                    if record['kind'] == 'ports':
+                        names = tuple(record['names'])
+                        if names != last_port_names:
+                            note_sources = configure_note_source(
+                                names, args.note_source, midi_logger)
+                            last_port_names = names
+                    else:
+                        print(f"WARNING: {record['message']}", flush=True)
+                        if midi_logger:
+                            midi_logger.log_event('midi_io', **record)
+                live_sources = list(live_midi.sources.items())
+            else:
+                live_sources = [(port.name, port) for port in inports]
+            # Process live MIDI device messages
+            for source_name, inport in live_sources:
+                state = process_midi_messages(inport, start_note, end_note,
+                                              note_to_media, target_size, state, midi_channel,
+                                              clock_tracker, min_note_beats, args.zoom_ring,
+                                              note_hit_counts, assign_if_selected,
+                                              latch_enabled, args.display_mode,
+                                              scenes_config, midi_logger, source_name,
+                                              visual_control=visuals,
+                                              note_sources=note_sources)
 
-        # Apply a bank program change recorded during MIDI processing here on
-        # the UI/media thread — the same path (and state resets) as F5/F6.
-        apply_program_change(visuals, banks, adopt_bank)
+            # Apply a bank program change recorded during MIDI processing here on
+            # the UI/media thread — the same path (and state resets) as F5/F6.
+            apply_program_change(visuals, banks, adopt_bank)
 
-        # Track note triggers for the grid's flash highlight (works in both views)
-        now = time.monotonic()
-        # Follow ShowSync's virtual cue port across a ShowSync relaunch (see
-        # cue_port_refresh). A refresh failure must never break the render loop.
-        if not args.midi_file and now - last_cue_scan >= CUE_PORT_RESCAN_S:
-            last_cue_scan = now
-            try:
-                stale, fresh = cue_port_refresh(
-                    [port.name for port in inports], mido.get_input_names())
-                for name in stale:
-                    gone = next(port for port in inports if port.name == name)
-                    inports.remove(gone)
-                    gone.close()
-                    if name not in fresh:
-                        print(f"MIDI input gone: {name}")
-                for name in fresh:
-                    inports.append(mido.open_input(name))
-                    if name not in stale:
-                        print(f"MIDI input: {name} (cue port connected)")
-            except Exception as exc:
-                print(f"WARNING: cue port refresh failed: {exc}")
-        if PAN_AUTO_RECENTER:
-            update_pan_recenter(state, now)
-        cur_active = state['note_active']
-        note_started = cur_active is not None and cur_active != prev_active
-        if note_started:
-            flash_times[cur_active] = now
-        prev_active = cur_active
+            # Track note triggers for the grid's flash highlight (works in both views)
+            now = time.monotonic()
+            # Follow ShowSync's virtual cue port across a ShowSync relaunch (see
+            # cue_port_refresh). A refresh failure must never break the render loop.
+            if (not args.midi_file and args.midi_io == 'inproc'
+                    and now - last_cue_scan >= CUE_PORT_RESCAN_S):
+                last_cue_scan = now
+                try:
+                    stale, fresh = cue_port_refresh(
+                        [port.name for port in inports], mido.get_input_names())
+                    for name in stale:
+                        gone = next(port for port in inports if port.name == name)
+                        inports.remove(gone)
+                        gone.close()
+                        if name not in fresh:
+                            print(f"MIDI input gone: {name}")
+                    for name in fresh:
+                        inports.append(mido.open_input(name))
+                        if name not in stale:
+                            print(f"MIDI input: {name} (cue port connected)")
+                except Exception as exc:
+                    print(f"WARNING: cue port refresh failed: {exc}")
+            if PAN_AUTO_RECENTER:
+                update_pan_recenter(state, now)
+            cur_active = state['note_active']
+            note_started = cur_active is not None and cur_active != prev_active
+            if note_started:
+                flash_times[cur_active] = now
+            prev_active = cur_active
 
-        # Dismiss the startup help overlay the moment a note is played. This
-        # covers both keyboard piano keys and incoming MIDI notes uniformly,
-        # since both surface here as a newly-active note.
-        show_help = update_help_visibility(show_help, note_started=note_started)
+            # Dismiss the startup help overlay the moment a note is played. This
+            # covers both keyboard piano keys and incoming MIDI notes uniformly,
+            # since both surface here as a newly-active note.
+            show_help = update_help_visibility(show_help, note_started=note_started)
 
-        # Reconcile the press-and-hold preview with the current gesture. Runs
-        # every frame (not just on events) so playback starts the moment a video
-        # cell is pressed and stops on release, on becoming a drag, or when the
-        # pointer leaves the cell — all folded into gesture_previews(). Only one
-        # preview lives at a time; switching to a different held cell releases
-        # the old VideoPlayer before opening the new one.
-        if grid_mode and grid_cells and gesture_previews(
-                grid_drag, grid_cells, grid_scroll,
-                screen.get_size(), pygame.mouse.get_pos()):
-            hold_idx = grid_drag['from_index']
-            if grid_preview is None or grid_preview['index'] != hold_idx:
-                if grid_preview:
-                    grid_preview['player'].release()
-                media = grid_cells[hold_idx]['media']
-                grid_preview = {'index': hold_idx,
-                                'player': VideoPlayer(
-                                    media['path'], (GRID_THUMB_W, GRID_THUMB_H),
-                                    loop=media.get('loop', False))}
-        elif grid_preview:
-            grid_preview['player'].release()
-            grid_preview = None
+            # Reconcile the press-and-hold preview with the current gesture. Runs
+            # every frame (not just on events) so playback starts the moment a video
+            # cell is pressed and stops on release, on becoming a drag, or when the
+            # pointer leaves the cell — all folded into gesture_previews(). Only one
+            # preview lives at a time; switching to a different held cell releases
+            # the old VideoPlayer before opening the new one.
+            if grid_mode and grid_cells and gesture_previews(
+                    grid_drag, grid_cells, grid_scroll,
+                    screen.get_size(), pygame.mouse.get_pos()):
+                hold_idx = grid_drag['from_index']
+                if grid_preview is None or grid_preview['index'] != hold_idx:
+                    if grid_preview:
+                        grid_preview['player'].release()
+                    media = grid_cells[hold_idx]['media']
+                    grid_preview = {'index': hold_idx,
+                                    'player': VideoPlayer(
+                                        media['path'], (GRID_THUMB_W, GRID_THUMB_H),
+                                        loop=media.get('loop', False))}
+            elif grid_preview:
+                grid_preview['player'].release()
+                grid_preview = None
 
-        # Draw current frame
-        if grid_mode:
-            grid_scroll = render_grid(screen, grid_cells, grid_scroll, grid_fonts,
-                                      cur_active, flash_times, now, selected_index)
-            draw_drop_flash(screen, grid_cells, grid_scroll, drop_flash, now)
-            draw_grid_preview(screen, grid_cells, grid_scroll, grid_preview)
-        else:
-            draw_performance_frame(screen, state, target_size, now,
-                                   args.display_mode)
+            # Draw current frame
+            if grid_mode:
+                grid_scroll = render_grid(screen, grid_cells, grid_scroll, grid_fonts,
+                                          cur_active, flash_times, now, selected_index)
+                draw_drop_flash(screen, grid_cells, grid_scroll, drop_flash, now)
+                draw_grid_preview(screen, grid_cells, grid_scroll, grid_preview)
+            else:
+                draw_performance_frame(screen, state, target_size, now,
+                                       args.display_mode)
 
-        if now < latch_notice_until:
-            notice_font = pygame.font.SysFont(None, 36)
-            draw_text_outlined(
-                screen, f"Latch: {'ON' if latch_enabled else 'OFF'}", notice_font,
-                (24, 20), color=(255, 220, 120), outline_w=1
-            )
+            if now < latch_notice_until:
+                notice_font = pygame.font.SysFont(None, 36)
+                draw_text_outlined(
+                    screen, f"Latch: {'ON' if latch_enabled else 'OFF'}", notice_font,
+                    (24, 20), color=(255, 220, 120), outline_w=1
+                )
 
-        # Startup/help overlay draws on top of the current frame in performance
-        # view only (grid view has its own controls header).
-        if show_help and not grid_mode:
-            draw_startup_help(screen, display_w, display_h)
+            # Startup/help overlay draws on top of the current frame in performance
+            # view only (grid view has its own controls header).
+            if show_help and not grid_mode:
+                draw_startup_help(screen, display_w, display_h)
 
-        banks.draw_notice(screen, now)
+            banks.draw_notice(screen, now)
 
-        pygame.display.flip()
-        clock.tick(60)
+            pygame.display.flip()
+            clock.tick(60)
+
+    finally:
+        if live_midi is not None:
+            live_midi.close()
 
     stop_event.set()
     if stall_rearm:
@@ -3994,4 +4026,6 @@ def main():
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

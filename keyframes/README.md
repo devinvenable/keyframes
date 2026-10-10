@@ -152,9 +152,35 @@ are independent. `--port` still limits which hardware ports are opened.
 If the requested source is absent or fails to open at startup, Keyframes
 prints a warning and uses the other rig source. If neither is open, it warns
 that hardware notes are unavailable; keyboard/cues still work, and other
-controllers can be used with `--note-source all`. Selection is fixed for that
-run. Startup output and the MIDI sidecar record the requested source, actual
+controllers can be used with `--note-source all`. Selection is fixed until
+inputs are reopened after a MIDI worker restart. Startup output and the MIDI sidecar record the requested source, actual
 source, port name, and any fallback warning.
+
+### MIDI I/O recovery and rollback
+
+Live input defaults to `--midi-io process`: a helper owns MIDI enumeration,
+open, reads, cue rescans, and close. The renderer receives the original MIDI
+bytes through a local socket and applies the existing note/clock/cue routing.
+This isolates native port-close deadlocks, including ones holding Python's
+GIL, from the display and keyboard. Cue connections still refresh every five
+seconds, including when ShowSync reuses the same port name.
+
+A worker silent for two seconds is killed and restarted (startup allows ten
+seconds). Hardware notes and cues can be lost during this recovery and the
+usual startup drain; the current image/bank remains on screen. Recovery is
+reported to the console and, when enabled, the MIDI sidecar as `midi_io`.
+Quitting allows a quarter second for normal port closure before terminating
+the helper. On Linux the helper also dies if `live.sh` terminates the renderer.
+
+For emergency rollback, `--midi-io inproc` restores the previous direct-port
+startup, polling, and cue rescan behavior, including its original close-stall
+risk. With the live launcher, set:
+
+```bash
+LIVE_KEYFRAMES_ARGS="--midi-io inproc" scripts/live.sh songs/fullshow-set.yaml
+```
+
+MIDI-file playback does not start a helper in either mode.
 
 ### MIDI event log (take sidecar)
 

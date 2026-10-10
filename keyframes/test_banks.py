@@ -160,7 +160,7 @@ def test_scene_override_and_global_fallback_after_switch_back(library):
 
 def test_cli_hotkeys_grid_reset_and_switch_overlay(library, monkeypatch):
     root, _ = library
-    monkeypatch.setattr(main.sys, 'argv', ['main.py', '--bank', 'other', '--windowed'])
+    monkeypatch.setattr(main.sys, 'argv', ['main.py', '--midi-io', 'inproc', '--bank', 'other', '--windowed'])
     monkeypatch.setattr(main.mido, 'get_input_names', lambda: [])
     key = lambda k: pygame.event.Event(pygame.KEYDOWN, key=k, mod=0)
     x, y = main.cell_rect(0, main.grid_layout(1, 0, (1280, 720)))

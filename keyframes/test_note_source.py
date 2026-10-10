@@ -172,7 +172,7 @@ def test_main_wires_default_cli_and_open_failure_fallback(
     monkeypatch.setenv('KEYFRAMES_MIDI_LOG', str(path))
     monkeypatch.delenv('KEYFRAMES_STALL_LOG', raising=False)
     monkeypatch.delenv('KEYFRAMES_BANK_STATE', raising=False)
-    monkeypatch.setattr('sys.argv', ['keyframes', '--windowed', '--size', '64x64'] + args)
+    monkeypatch.setattr('sys.argv', ['keyframes', '--midi-io', 'inproc', '--windowed', '--size', '64x64'] + args)
     monkeypatch.setattr(main.mido, 'get_input_names', lambda: [PORT_DIRECT, PORT_MIRROR, CUE])
 
     def open_input(name):
