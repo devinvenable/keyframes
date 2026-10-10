@@ -1,0 +1,21 @@
+--- a/songs/fullshow-set.yaml
++++ b/songs/fullshow-set.yaml
+@@ -18,7 +18,7 @@
+   - {port: "Midi Out 2", send: [clock]}  # TBOX Out 2 - David's rig, clock only
+
+ keyframes:
+-  banks: [insect-war-aged, robot-society-symbols]   # complete sorted list (PC 1, 2)
++  banks: [brain-surgery, insect-war-aged, robot-society-symbols]   # complete sorted list (PC 1, 2, 3)
+   channel: 16
+
+ songs:
+@@ -39,7 +39,8 @@
+     offset: 0.0078
+     gap: 2
+     keyframes:
+-      scenes: {enabled: true, probability: 0.05}   # bank carries over
++      bank: brain-surgery
++      scenes: {enabled: true, probability: 0.05}
+
+   - name: "Fulber Beat"                 # fitted 99.99995
+     file: fulber_beat_no_drums.mp3

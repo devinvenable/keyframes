@@ -512,6 +512,22 @@ and setlist YAML syntax: [`docs/visual-control-midi.md`](../docs/visual-control-
 If the bank has no `scenes.json`, the global file applies. A bank can be empty
 or contain unmapped media; use the grid to assign keys.
 
+The **brain-surgery** bank for **Slow and Easy** starts at the KeyStep's bottom
+key, MIDI note **41**. Notes **41–54** hold the curated stills in source-number
+order: 02 BW, 04, 06, 07, 09 BW, 10 BW, 13, 14, 15, 16, 17 color, 17 BW,
+18 BW, 20 BW. Notes **55–58** hold the 13–16 orbit MP4s. These are unchanged
+copies from `generated/brain-surgery/`: 1024×1024 PNGs and silent 960×960 clips
+(97 frames at 24 fps, about four seconds). The bank inherits global scene and
+overlay settings. Launch with `python main.py --bank brain-surgery`.
+
+The live `songs/fullshow-set.yaml` is local and ignored by Git. After installing
+the bank, back up that file and apply
+[`docs/media/brain-surgery/fullshow-set.patch`](../docs/media/brain-surgery/fullshow-set.patch)
+from the repository root. It adds the song's bank cue and updates the complete,
+sorted registry to `[brain-surgery, insect-war-aged, robot-society-symbols]`.
+Program numbers become 1, 2, and 3 respectively; the existing named song cues
+then continue to select their original banks.
+
 The included **insect-war-aged** bank contains nine looping animated GIFs on
 notes **48–56**, playable with **Z S X D C V G B H**, in this order: tower, duel,
 black-and-white loop, hover, loop, dogfight, feeding, push-in, charge. The source
