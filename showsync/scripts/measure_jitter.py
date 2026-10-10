@@ -24,8 +24,15 @@ import soundfile as sf
 
 from showsync.audio import AudioEngine
 from showsync.clock import CLOCK, ClockEngine
+from showsync.egress import ALL_CLASSES, CLOCK_BIT, CUES_BIT, MidiEgress, TRANSPORT_BIT
 from showsync.setlist import Setlist, Song
 from showsync.tempomap import TempoEvent
+
+# Mirror fan-outs cycle these per-port class masks so the measured run
+# includes mixed filters (task 261): full egress, a clock-only mirror (the
+# v3 KeyStep/David ports), and a transport+cues port.
+MIRROR_MASKS = [('full', ALL_CLASSES), ('clock', CLOCK_BIT),
+                ('transport+cues', TRANSPORT_BIT | CUES_BIT)]
 
 
 def evaluate(sent, received, dropped_ticks, audio_underruns):
@@ -103,9 +110,11 @@ def main():
     parser.add_argument('--json', type=Path)
     parser.add_argument('--freeze-gc', action='store_true', help='Freeze startup objects before playback (optional timing hardening)')
     parser.add_argument('--mirror-ports', type=int, default=0, metavar='N',
-                        help='open N extra virtual outputs and send every byte to them '
-                             'after the measured route, reproducing the multi-port '
-                             'egress fan-out (task 259); the gate still judges the '
+                        help='open N extra virtual outputs fed through the real '
+                             'MidiEgress send loop with mixed per-port class filters '
+                             '(full / clock-only / transport+cues, cycling) after the '
+                             'measured route, reproducing the multi-port egress '
+                             'fan-out (tasks 259/261); the gate still judges the '
                              'measured send timestamps')
     args = parser.parse_args()
     if args.seconds < 3:
@@ -143,12 +152,17 @@ def main():
             result['midi_route'] = f'{args.output_port} -> {args.input_port}'
         else:
             raise ValueError('Both --input-port and --output-port are required for a physical loop')
+        mirror_entries = []
         for i in range(args.mirror_ports):
             mirror = rtmidi.MidiOut(name=f'{token}-mirror-{i}')
             mirror.open_virtual_port(f'{token}-mirror-{i}')
             mirrors.append(mirror)
+            label, mask = MIRROR_MASKS[i % len(MIRROR_MASKS)]
+            mirror_entries.append((f'mirror-{i} ({label})', mirror, mask))
+        mirror_egress = MidiEgress(mirror_entries) if mirror_entries else None
         if mirrors:
             result['mirror_ports'] = len(mirrors)
+            result['mirror_filters'] = [name for name, _, _ in mirror_entries]
         with tempfile.TemporaryDirectory(prefix='showsync-jitter-') as directory:
             path = Path(directory) / 'probe.wav'
             # Low-level original tone; real output stream stays active throughout.
@@ -169,8 +183,10 @@ def main():
                     ideal = stamp + audio.maps[p.song_index].T(clock._tick / 24) - p.song_time
                     sent.append((ideal, stamp, clock._tick))
                 midi_out.send_message([byte])
-                for mirror in mirrors:
-                    mirror.send_message([byte])
+                if mirror_egress is not None:
+                    # The real egress send loop, with mixed per-port filters,
+                    # after the measured route (the gate judges `stamp`).
+                    mirror_egress.send(byte)
             clock = ClockEngine(audio.maps, audio.position, send)
             clock.start()
             audio.start()

@@ -11,17 +11,21 @@
 # Usage: scripts/live.sh [options] [showsync args...] setlist.yaml
 #   --bank NAME       Keyframes media bank (default: default)
 #   --headless        run ShowSync without the editor window (projector
-#                     only). Pair with --autostart [SECONDS] or rely on the
-#                     default --midi-transport (KeyStep Play starts the set).
+#                     only). Pair with --autostart [SECONDS] — nothing else
+#                     starts a headless set.
 #                     NOTE: headless has no Skip/Restart controls — see the
 #                     recovery notes in docs/live-show-runbook.md.
 #   --no-restart      disable the crash supervisor (a crashed app stays down)
 #   Remaining arguments pass through to ShowSync (setlist path, --autostart,
-#   --clock-offset, --editor-screen, --audio-device, ...).
+#   --clock-offset, --editor-screen, --midi-transport, --audio-device, ...).
 #
 # Behavior:
-#   * --midi-transport is added for ShowSync unless the caller passed it:
-#     the KeyStep's hardware Play/Stop drive the set hands-free.
+#   * --midi-transport is NOT added by default (rig topology v3, decision
+#     D15): the KeyStep is the transport master of DEVIN'S rig, started and
+#     stopped constantly mid-song — if ShowSync listened, every Play would
+#     restart the set from the top. The set starts via --autostart or the
+#     editor UI; pass --midi-transport yourself for a hands-free set where
+#     a pedal/controller Play really should drive the backing tracks.
 #   * Startup order: ShowSync first (clock master; audio + MIDI open and the
 #     editor, if any, appears), then fullscreen Keyframes, which pins itself
 #     above normal windows. The projector raises itself over Keyframes for
@@ -219,11 +223,6 @@ main() {
     local python=${LIVE_PYTHON:-"$REPO_ROOT/venv/bin/python"}
     [ -x "$python" ] || python=$(command -v python3)
 
-    # Hands-free start/stop from the KeyStep's hardware transport.
-    if [[ " ${showsync_args[*]} " != *" --midi-transport"* ]]; then
-        showsync_args+=(--midi-transport)
-    fi
-
     # Keep the ShowSync editor off the visuals monitor where fullscreen
     # always-on-top Keyframes would cover it.
     local editor_screen=""
@@ -239,8 +238,8 @@ main() {
         echo "      pass --editor-screen INDEX if it opens on the projector."
     else
         echo "NOTE: only one monitor — the ShowSync editor will open under"
-        echo "      fullscreen Keyframes. Start via KeyStep Play, or press F11"
-        echo "      in Keyframes to drop it out of fullscreen first."
+        echo "      fullscreen Keyframes. Use --autostart, or press F11 in"
+        echo "      Keyframes to drop it out of fullscreen and reach the editor."
     fi
 
     showsync_cmd=("$python" "$REPO_ROOT/showsync/main.py"
@@ -328,8 +327,9 @@ main() {
             else
                 showsync_restarts=$((showsync_restarts + 1))
                 echo "Restarting ShowSync ($showsync_restarts/$RESTART_LIMIT)..."
-                echo "  KeyStep Play restarts the set FROM THE TOP; use the"
-                echo "  editor's Skip to reach the current song (see runbook)."
+                echo "  A relaunch starts with no set playing: restart from the"
+                echo "  editor (Skip to reach the current song), or it counts"
+                echo "  down again if --autostart was passed (see runbook)."
                 start_showsync
             fi
         fi

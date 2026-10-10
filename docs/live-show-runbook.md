@@ -13,11 +13,14 @@ scripts/live.sh --bank <bank-name> songs/<set>.yaml
 
 That starts, in order:
 
-1. **ShowSync** — backing tracks + MIDI clock out, with `--midi-transport`
-   added automatically so the KeyStep's hardware **Play/Stop start and stop
-   the set** hands-free. The editor window opens on the non-projector
-   monitor when there is one (auto-detected on Linux; on macOS pass
-   `--editor-screen INDEX` if Qt's remembered placement is wrong).
+1. **ShowSync** — backing tracks + MIDI clock out. The set starts from the
+   **editor UI or `--autostart`** — the KeyStep's Play/Stop belong to
+   Devin's rig, not the backing set (decision D15), so live.sh **no longer
+   adds `--midi-transport`**; pass it explicitly if a controller's Play
+   really should drive the backing tracks. The editor window opens on the
+   non-projector monitor when there is one (auto-detected on Linux; on
+   macOS pass `--editor-screen INDEX` if Qt's remembered placement is
+   wrong).
 2. **Keyframes** — fullscreen on the first landscape display (the
    projector), always-on-top, KeyStep-triggered visuals. The ShowSync
    projector raises itself above Keyframes for video songs and hides
@@ -29,6 +32,7 @@ Useful variants:
 scripts/live.sh --headless --autostart=10 songs/<set>.yaml   # projector only, clickless
 scripts/live.sh --clock-offset -20 --bank robots songs/<set>.yaml
 scripts/live.sh --no-restart songs/<set>.yaml                # disable crash supervisor
+scripts/live.sh --midi-transport songs/<set>.yaml            # opt-in: MIDI Play/Stop drives the set
 ```
 
 Anything live.sh doesn't recognize passes through to ShowSync
@@ -44,52 +48,73 @@ the set around it.
 - **Audio to the house**: ShowSync plays through the system default output
   (or `--audio-device`). Nothing is captured; there is no recording
   routing to set up.
-- **Behringer is input-only**: the KeyStep reaches both apps through it.
-  Keyframes reads note-ons for visuals; ShowSync reads MIDI realtime
-  Start/Continue/Stop for the transport, and sends MIDI clock out to
-  David's rig via the thru box (that clock is the core of the set —
-  decision D11).
+- **Behringer is input-only**: the KeyStep reaches Keyframes through it
+  (note-ons for visuals). ShowSync's MIDI transport input exists but is
+  **opt-in only** (`--midi-transport`) — by default nothing the KeyStep
+  does starts or stops the backing set.
 
-### Multi-port egress (task 259 — no hardware return loop)
+### Rig topology v3 — Devin is his rig's transport master (D15, D14)
 
-ShowSync mirrors its full egress — clock, Start/Stop/Continue, and the
-Keyframes visual cues (PC + CC102–105) — to **every port in the setlist's
-top-level `midi_outputs:` list**, plus a **virtual output named `ShowSync
-Cues`** that is always opened (Linux/macOS; Windows has no virtual ports
-and degrades to the hardware mirrors). Keyframes picks up `ShowSync Cues`
-by name, always, on top of its normal hardware/`--port` selection — so
-cues and clock reach Keyframes **in software**, and the old DIN return
-cable into TBOX In 1 is GONE. No return loop means no echoed/doubled
-clock and no wedged TBOX (insight I51); ShowSync's transport echo gate
-(T169) stays as insurance, and ShowSync never listens to its own virtual
-port.
+The design intent: **Devin's synths hear ONLY the KeyStep's own output** —
+clock while his sequencer plays, nothing when he stops. ShowSync keeps the
+set's timebase; the KeyStep syncs its tempo to it over USB but Devin
+starts/stops his own sequences freely, mid-song, without touching the
+backing set, and his Stop never stops David or the tracks.
 
-Gig topology (decision D14, revised):
+| Leg | Carries |
+|---|---|
+| ShowSync → KeyStep USB | **clock only** (tempo sync; the KeyStep's clock toggle stays **USB**) |
+| KeyStep DIN OUT → thru box → Devin's synths | the KeyStep's own stream: notes, **his** transport, its regenerated clock |
+| thru box return → TBOX In 1 | that same KeyStep stream, back into the computer (Keyframes sees his live seq edits) |
+| ShowSync → TBOX Out 2 → David's rig | **clock only** + his per-song `midi:` file (per-song `midi.port`) |
+| ShowSync → `ShowSync Cues` virtual port → Keyframes | **full egress** (clock, transport, PC + CC102–105 cues), no cable |
+| TBOX Out 1 | spare — leave unconnected |
 
-| Destination | Port | Carries |
-|---|---|---|
-| Devin's synths (thru box) | TBOX Out 1 | full egress |
-| David's rig | TBOX Out 2 | full egress + his per-song `midi:` file (per-song `midi.port`) |
-| KeyStep (sync source; its clock toggle stays **USB**) | KeyStep USB | full egress |
-| Keyframes | `ShowSync Cues` virtual port | full egress, no cable |
+Why the return loop is safe now (it wedged the TBOX in v1, insight I51):
+the I51 wedge needed a **doubled clock** — ShowSync's clock into the thru
+box plus the KeyStep's regenerated echo of it. In v3 ShowSync sends the
+thru box **nothing**: the only clock on the DIN chain is the KeyStep's
+own single regenerated stream, so the return into TBOX In 1 carries one
+clock, not two. ShowSync's transport echo gate (T169) stays as insurance,
+and ShowSync never listens to its own virtual port.
 
-Declared in the setlist (substrings are the portable spelling — exact
-rtmidi names carry Linux ALSA ids and differ on the Mac's CoreMIDI):
+**Bench-check (accepted behavior, not a bug):** if the KeyStep does not
+pass clock to its DIN OUT while its sequencer is stopped, that is the
+intent — Devin's synths hear nothing when he stops. Do **not** work
+around it by feeding the thru box from a TBOX output: any DIN clock into
+the thru box reaches ALL of his synths, re-creating the double-clock and
+making his rig chase ShowSync when he has stopped it.
+
+### Per-port egress filtering (`midi_outputs`)
+
+ShowSync's egress has three classes — `clock` (0xF8), `transport`
+(Start/Continue/Stop), and `cues` (everything else: the Keyframes PC +
+CC102–105 cues, and file events routed through the clock port). Each
+entry in the setlist's top-level `midi_outputs:` list is either a bare
+port (name, substring, or index — **full egress**, as before) or a
+filtered subset:
 
 ```yaml
 midi_outputs:
-  - Midi Out 1      # TBOX Out 1 — thru box / Devin's synths
-  - Midi Out 2      # TBOX Out 2 — David
-  - KeyStep         # KeyStep USB — its MIDI-sync clock source
+  - {port: KeyStep, send: [clock]}      # KeyStep USB — tempo sync only (D15)
+  - {port: Midi Out 2, send: [clock]}   # TBOX Out 2 — David: clock only
 ```
 
-CLI override for one run: `--midi-outputs 'Midi Out 1,KeyStep'`. A port
+Substrings are the portable spelling — exact rtmidi names carry Linux
+ALSA ids and differ on the Mac's CoreMIDI. The `ShowSync Cues` virtual
+port always carries the full egress (Linux/macOS; Windows has no virtual
+ports and degrades to the hardware mirrors) — Keyframes picks it up by
+name on top of its normal hardware/`--port` selection, so cues and clock
+reach Keyframes in software.
+
+CLI override for one run: `--midi-outputs 'Midi Out 2,KeyStep'` (bare
+ports, full egress). A port
 missing on this host (or an ambiguous substring) **warns and is skipped —
 the show always starts**. A port that dies mid-show (USB yanked) is
 dropped the same way and **stays dropped for that engine's life**: a
 replug does NOT self-heal. Recovery is the normal supervisor path — kill
-or crash ShowSync, it relaunches, KeyStep Play restarts the set from the
-top with all configured ports reopened.
+or crash ShowSync, it relaunches, and restarting the set (editor Play or
+the `--autostart` countdown) reopens all configured ports.
 
 The virtual port exists for ShowSync's whole process life (opened at
 launch, not at Play), which is why the launch order — ShowSync first,
@@ -131,21 +156,25 @@ in-memory only and resets — re-set them by hand if the song used them.
 It relaunches automatically, but a relaunch starts with **no set
 playing** — someone must restart the music:
 
-- Press **Play on the KeyStep**: the set restarts **from the top** (that
-  is the restart semantic — there is no resume-from-position).
-- To get back to the current song: in the **editor** window use
-  **Skip** repeatedly (or click the song) and start from there. In
-  `--headless` mode there is **no Skip** — the KeyStep can only restart
-  from the top, which is why the editor-on-second-screen layout is the
-  recommended gig setup.
+- In the **editor** window press Play — and to get back to the current
+  song, use **Skip** repeatedly (or click the song) and start from there.
+  A restart is always **from the top** of wherever you start it; there is
+  no resume-from-position.
+- With `--autostart`, the relaunch counts down and restarts the set from
+  the top on its own.
+- In `--headless` mode there is **no Skip** (and no editor), which is why
+  the editor-on-second-screen layout is the recommended gig setup. (If
+  you opted into `--midi-transport`, a MIDI Play also restarts from the
+  top — by default the KeyStep's Play does nothing to the backing set.)
 
 ### A song stalls (audio hung / silent, nothing crashed)
 
 The supervisor only sees process exits, so a wedged-but-alive ShowSync is
 a manual call:
 
-1. First try the transport: KeyStep **Stop**, then **Play** (set restarts
-   from the top; use the editor's Skip to return to the song).
+1. First try the transport: **Stop, then Play in the editor** (the set
+   restarts from the top; use Skip to return to the song). The KeyStep's
+   transport won't help here — it drives Devin's rig, not the set.
 2. If it's truly wedged: kill ShowSync alone with
    `pkill -f showsync/main.py` from another terminal. (Do NOT Ctrl+C the
    live.sh terminal — that ends the whole show.) The supervisor treats
@@ -158,7 +187,8 @@ a manual call:
 ### Everything is wrong
 
 Ctrl+C in the live.sh terminal, breathe, run the one command again. Cold
-start to music is: command, wait for "Starting Keyframes", KeyStep Play.
+start to music is: command, wait for "Starting Keyframes", Play in the
+editor (or let the `--autostart` countdown run).
 
 ## Platform notes (Mac mini target, Linux dev)
 

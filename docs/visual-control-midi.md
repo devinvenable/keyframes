@@ -7,16 +7,19 @@ Program Change plus four CCs), so any gear or DAW can send them, not just
 ShowSync, and the show never depends on per-song `.mid` playback (decision
 midi:D11).
 
-**Delivery (task 259):** the egress — clock, transport, and these cues —
-is mirrored to every port in the setlist's top-level `midi_outputs:` list
-*and* to a virtual output port named **`ShowSync Cues`** that ShowSync
-always opens (Linux/macOS; Windows has no virtual ports). Keyframes always
-listens to a port containing that name, in addition to its normal
-hardware/`--port` selection, while continuing to skip other virtual ports
-(Midi Through etc.). That software path replaces the old hardware return
-loop (KeyStep thru → thru box → TBOX In 1), whose echoed clock could
-double-clock and wedge the interface — the return DIN cable is removed
-from the rig (see docs/live-show-runbook.md for the full topology).
+**Delivery (tasks 259/261):** the egress — clock, transport, and these
+cues — is mirrored to every port in the setlist's top-level
+`midi_outputs:` list (each entry may filter itself to a subset of those
+classes via `{port: ..., send: [clock, transport, cues]}`; bare entries
+carry everything) *and* to a virtual output port named **`ShowSync Cues`**
+that ShowSync always opens and that always carries the **full** egress
+(Linux/macOS; Windows has no virtual ports). Keyframes always listens to a
+port containing that name, in addition to its normal hardware/`--port`
+selection, while continuing to skip other virtual ports (Midi Through
+etc.). So the cues reach Keyframes in software even in rig topology v3,
+where every hardware mirror is clock-only and the thru-box return into
+TBOX In 1 carries only the KeyStep's own stream (see
+docs/live-show-runbook.md for the full topology).
 
 This file is the spec both sides implement: `keyframes/main.py`
 (`SCENE_CC_*`, `SCENE_MIDI_IDS`, `VisualControl`) and
@@ -112,8 +115,9 @@ Semantics:
 - Scene names are validated against the id table at load; bank names against
   the top-level `banks` list.
 
-Messages are emitted by `ClockEngine` at each song start, on the full clock
-egress (every `midi_outputs` mirror plus the `ShowSync Cues` virtual port),
+Messages are emitted by `ClockEngine` at each song start, on the clock
+egress (every `midi_outputs` mirror whose `send:` filter includes `cues` —
+bare entries do — plus the always-full `ShowSync Cues` virtual port),
 before that song's Start byte and first tick — so the bank is live before the
 new song produces any note. A set restart re-emits the current song's cue,
 which also re-cues a crash-restarted Keyframes.

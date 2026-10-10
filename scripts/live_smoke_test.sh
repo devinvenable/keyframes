@@ -146,8 +146,10 @@ clear_ctl
 SETTLE_OVERRIDE=1 run_live "$SETLIST"
 wait_launches 1 "^keyframes" || true
 check "showsync launched" grep -q "^showsync .*set.yaml" "$STUB_LOG"
-check "showsync gets --midi-transport by default" \
-    grep -q "^showsync .*--midi-transport" "$STUB_LOG"
+# Rig topology v3 (D15): the KeyStep transport belongs to Devin's rig, so
+# live.sh must never opt ShowSync into it — pure caller opt-in.
+check "no --midi-transport injected by default" \
+    bash -c '! grep -q -- "--midi-transport" "$1"' _ "$STUB_LOG"
 check "keyframes launched" grep -q "^keyframes" "$STUB_LOG"
 check "showsync starts before keyframes" \
     bash -c 'head -n1 "$1" | grep -q "^showsync"' _ "$STUB_LOG"
@@ -160,6 +162,17 @@ check "Ctrl+C/TERM tears down cleanly (exit 0)" test "$rc" = 0
 # [-] so pgrep cannot match this checking process's own command line.
 check "stubs are gone after teardown" \
     bash -c '! pgrep -f "python[-]stub" >/dev/null'
+
+# --- 2b. --midi-transport is pass-through only ------------------------------
+clear_ctl
+run_live --midi-transport "$SETLIST"
+wait_launches 1 "^keyframes" || true
+check "caller's --midi-transport reaches showsync" \
+    grep -q "^showsync .*--midi-transport" "$STUB_LOG"
+check "caller's --midi-transport appears exactly once" \
+    bash -c 'test "$(head -n1 "$1" | grep -o -- "--midi-transport" | wc -l)" = 1' _ "$STUB_LOG"
+end_live
+check "pass-through run teardown clean" test "$rc" = 0
 
 # --- 3. keyframes clean exit (Esc) ends the show ---------------------------
 clear_ctl

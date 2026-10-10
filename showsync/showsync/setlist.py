@@ -55,6 +55,20 @@ class Song:
         return TempoMap(self.bpm, events, duration, max(0.0, self.offset - self.trim))
 
 
+EGRESS_CLASSES = ('clock', 'transport', 'cues')
+
+
+@dataclass(frozen=True)
+class EgressFilter:
+    """A midi_outputs entry limited to a subset of the egress classes.
+
+    `send` is drawn from EGRESS_CLASSES; egress.open_egress reads the two
+    attributes duck-typed, so the 'ShowSync Cues' virtual port (always full
+    egress) and bare entries are untouched by this."""
+    port: str | int
+    send: tuple[str, ...]
+
+
 @dataclass(frozen=True)
 class Setlist:
     title: str
@@ -63,9 +77,10 @@ class Setlist:
     # banks[i], program 0 the default bank (visuals.py documents why).
     keyframes_banks: tuple[str, ...] = ()
     keyframes_channel: int = DEFAULT_CHANNEL
-    # Output ports (names, substrings, or indices) the clock/transport/cue
-    # egress is mirrored to. Empty = the single device-chosen output.
-    midi_outputs: tuple[str | int, ...] = ()
+    # Output ports (names, substrings, or indices — or EgressFilter subsets)
+    # the clock/transport/cue egress is mirrored to. Empty = the single
+    # device-chosen output.
+    midi_outputs: tuple[str | int | EgressFilter, ...] = ()
 
 
 def number(value, field, *, positive=False):
@@ -225,6 +240,33 @@ def port_matcher(value, field):
     return value
 
 
+def egress_entry(value, field):
+    """One midi_outputs entry: a bare selector (full egress) or a
+    {port: ..., send: [clock|transport|cues, ...]} subset."""
+    if not isinstance(value, dict):
+        return port_matcher(value, field)
+    entry = mapping(value, {'port', 'send'}, field)
+    if 'port' not in entry:
+        raise ValueError(f'{field} needs a port (name, substring, or index)')
+    port = port_matcher(entry['port'], f'{field}.port')
+    send = entry.get('send')
+    if send is None:
+        # {port: X} alone is a long-winded bare entry; accept it as one.
+        return port
+    if not isinstance(send, list) or not send:
+        raise ValueError(f'{field}.send must be a nonempty list drawn from '
+                         f"{', '.join(EGRESS_CLASSES)}")
+    classes = []
+    for name in send:
+        string(name, f'{field}.send')
+        if name not in EGRESS_CLASSES:
+            raise ValueError(f'{field}.send: unknown class {name!r}; '
+                             f"known: {', '.join(EGRESS_CLASSES)}")
+        if name not in classes:
+            classes.append(name)
+    return EgressFilter(port, tuple(classes))
+
+
 def parse_midi_outputs(data):
     """The top-level midi_outputs list: egress mirror port selectors.
 
@@ -238,7 +280,7 @@ def parse_midi_outputs(data):
     if not isinstance(outputs, list) or not outputs:
         raise ValueError('midi_outputs must be a nonempty list of ports '
                          '(omit it for the default single output)')
-    return tuple(port_matcher(value, f'midi_outputs[{i}]')
+    return tuple(egress_entry(value, f'midi_outputs[{i}]')
                  for i, value in enumerate(outputs))
 
 

@@ -276,6 +276,19 @@ def test_midi_outputs_parse_names_substrings_and_indices(tmp_path):
     assert result.midi_outputs == ('Midi Out 1', 'Midi Out 2', 2)
 
 
+def test_midi_outputs_parse_per_port_filters(tmp_path):
+    from showsync.setlist import EgressFilter
+    path = write_set(tmp_path, dict(midi_outputs=[
+        {'port': 'KeyStep', 'send': ['clock']},
+        {'port': 'Midi Out 2', 'send': ['clock', 'cues', 'clock']},  # dupe folds
+        {'port': 1},            # long-winded bare entry: full egress
+        'Midi Out 1']))         # bare string back-compat
+    result = load_setlist(path, duration_probe=lambda _: 60)
+    assert result.midi_outputs == (EgressFilter('KeyStep', ('clock',)),
+                                   EgressFilter('Midi Out 2', ('clock', 'cues')),
+                                   1, 'Midi Out 1')
+
+
 def test_midi_outputs_default_is_empty(tmp_path):
     path = write_set(tmp_path, {})
     assert load_setlist(path, duration_probe=lambda _: 60).midi_outputs == ()
@@ -287,7 +300,13 @@ def test_midi_outputs_default_is_empty(tmp_path):
     ([''], r'midi_outputs\[0\]'),
     ([-1], r'midi_outputs\[0\]'),
     ([True], r'midi_outputs\[0\]'),
-    ([{'port': 1}], r'midi_outputs\[0\]'),
+    ([{'send': ['clock']}], r'midi_outputs\[0\] needs a port'),
+    ([{'port': 'KeyStep', 'send': []}], r'midi_outputs\[0\].send must be a nonempty list'),
+    ([{'port': 'KeyStep', 'send': 'clock'}], r'midi_outputs\[0\].send must be a nonempty list'),
+    ([{'port': 'KeyStep', 'send': ['notes']}], r'unknown class'),
+    ([{'port': 'KeyStep', 'send': [1]}], r'midi_outputs\[0\].send'),
+    ([{'port': '', 'send': ['clock']}], r'midi_outputs\[0\].port'),
+    ([{'port': 'KeyStep', 'send': ['clock'], 'extra': 1}], 'unknown fields'),
 ])
 def test_invalid_midi_outputs_have_context(tmp_path, outputs, message):
     path = write_set(tmp_path, dict(midi_outputs=outputs))

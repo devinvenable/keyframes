@@ -135,7 +135,7 @@ def test_virtual_port_failure_degrades_to_hardware_only(fake_rtmidi, caplog):
 
 def test_dead_port_is_dropped_and_the_show_goes_on(fake_rtmidi, caplog):
     egress = open_egress(['midi out 1', 'KeyStep'], virtual=open_virtual_cue_port())
-    victim = next(port for name, port in egress.ports if name == PORTS[0])
+    victim = next(port for name, port, _ in egress.ports if name == PORTS[0])
     def explode(data):
         raise RuntimeError('USB gone')
     victim.send_message = explode
@@ -164,3 +164,50 @@ def test_empty_selection_still_offers_the_virtual_cue_port(fake_rtmidi):
     assert egress.names == [f'{VIRTUAL_PORT_NAME} (virtual)']
     egress.send(0xF8)
     assert ('send', VIRTUAL_PORT_NAME, (0xF8,)) in fake_rtmidi.log
+
+
+# --- per-port egress filtering (task 261: rig topology v3) ---
+
+# Every class of byte the engine actually emits: clock, the three realtime
+# transport bytes, and cue traffic (PC, the Keyframes CCs, file-event notes).
+CLASSED = [((0xF8,), 'clock'),
+           ((0xFA,), 'transport'), ((0xFB,), 'transport'), ((0xFC,), 'transport'),
+           ((0xC0, 3), 'cues'), ((0xB0 | 15, 102, 1), 'cues'),
+           ((0x90, 60, 100), 'cues')]
+
+
+def sends_to(log, destination):
+    return [entry[2] for entry in log if entry[0] == 'send' and entry[1] == destination]
+
+
+def test_clock_only_port_hears_clock_and_nothing_else(fake_rtmidi):
+    from showsync.setlist import EgressFilter
+    egress = open_egress([EgressFilter('KeyStep', ('clock',)), 'midi out 1'],
+                         virtual=open_virtual_cue_port())
+    for message, _ in CLASSED:
+        egress.send(list(message) if len(message) > 1 else message[0])
+    assert sends_to(fake_rtmidi.log, PORTS[2]) == [(0xF8,)]
+    # Bare entries and the virtual cue port still carry the full egress.
+    everything = [message for message, _ in CLASSED]
+    assert sends_to(fake_rtmidi.log, PORTS[0]) == everything
+    assert sends_to(fake_rtmidi.log, VIRTUAL_PORT_NAME) == everything
+
+
+def test_transport_and_cues_subset(fake_rtmidi):
+    from showsync.setlist import EgressFilter
+    egress = open_egress([EgressFilter('midi out 2', ('transport', 'cues'))])
+    for message, _ in CLASSED:
+        egress.send(list(message) if len(message) > 1 else message[0])
+    expected = [message for message, kind in CLASSED if kind != 'clock']
+    assert sends_to(fake_rtmidi.log, PORTS[1]) == expected
+
+
+def test_duplicate_selections_merge_their_filters(fake_rtmidi):
+    from showsync.setlist import EgressFilter
+    egress = open_egress([EgressFilter('midi out 2', ('clock',)),
+                          EgressFilter(PORTS[1], ('transport',))])
+    assert egress.hardware_names == [PORTS[1]]  # the jack opened once
+    egress.send(0xF8)
+    egress.send(0xFA)
+    egress.send([0xC0, 3])
+    assert sends_to(fake_rtmidi.log, PORTS[1]) == [(0xF8,), (0xFA,)]
