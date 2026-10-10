@@ -91,7 +91,10 @@ def test_cc_remaps_reach_live_gui_and_headless_handlers(
     owner.clock = ClockEngine([], lambda: None, lambda _: None,
                               keystep_send=lambda status: sent.append(status) or True)
     listener = next(i for i in instances if i.callback is not None)
-    for cc in (51, 54, 20, 21):
+    for cc in (51, 54):
+        listener.callback(([0xB0, cc, 127], 0))
+    assert sent == []  # remapping must disable the old CCs, not just emit two bytes
+    for cc in (20, 21):
         listener.callback(([0xB0, cc, 127], 0))
     assert sent == [STOP, START]
     assert owner.audio is None  # a KeyStep Play press never starts the set
