@@ -167,7 +167,7 @@ def test_transport_effective_source_and_precedence(window_factory, monkeypatch, 
     def inputs(preferred):
         port = Mock()
         opened.append(port)
-        return [port]
+        return [('KeyStep', port)]
     monkeypatch.setattr(transport, 'open_midi_inputs', inputs)
     settings = QSettings(str(tmp_path / 'receive.ini'), QSettings.IniFormat)
     settings.setValue('receiveMidiTransport', saved)
@@ -184,7 +184,7 @@ def test_transport_effective_source_and_precedence(window_factory, monkeypatch, 
 
 def test_transport_toggle_disconnects_handlers_and_persists(window_factory, monkeypatch):
     port = Mock()
-    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred: [port])
+    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred: [('KeyStep', port)])
     w = window_factory()
     starts = Mock()
     monkeypatch.setattr(w, 'play', starts)

@@ -446,14 +446,14 @@ def test_midi_transport_flag_drives_set_like_gui(qtbot, window_factory, monkeypa
         callback = None
         closed = False
 
-        def set_callback(self, callback):
-            self.callback = callback
+        def set_callback(self, callback, data=None):
+            self.callback = lambda event: callback(event, data)
 
         def close_port(self):
             self.closed = True
 
     fake = FakeInput()
-    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred=None: [fake])
+    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred=None: [('TBOX', fake)])
     w = window_factory(document(tmp_path), midi_transport=True)
     assert w.midi_input is not None and fake.callback is not None
     fake.callback(([0xF8], 0.0))  # clock ticks never reach the handler

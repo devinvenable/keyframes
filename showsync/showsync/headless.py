@@ -17,13 +17,15 @@ from .identity import application_arguments, configure_identity
 class HeadlessShow(QObject):
     # Cross-thread bridge: rtmidi delivers transport bytes on its own
     # thread; the queued signal hands them to the GUI thread.
-    transport_received = Signal(int)
+    transport_received = Signal(object)
 
     def __init__(self, document, *, start_engines, settings, quit,
-                 devices=None, autostart=None, midi_transport=False):
+                 devices=None, autostart=None, midi_transport=False,
+                 keystep_stop_cc=51, keystep_start_cc=54):
         super().__init__()
         self.document, self.start_engines = document, start_engines
         self.devices, self.quit = devices, quit
+        self.keystep_stop_cc, self.keystep_start_cc = keystep_stop_cc, keystep_start_cc
         self.audio = self.clock = self.close_engines = None
         self.midi_input = None
         from .video_window import VideoWindow
@@ -92,7 +94,10 @@ class HeadlessShow(QObject):
                                and not (p := self.audio.position()).playing and not p.ended),
             start=self.play, resume=self.pause, stop=self.stop_set,
             egress_age=lambda: (self.clock.transport_egress_age()
-                                if self.clock is not None else math.inf))
+                                if self.clock is not None else math.inf),
+            relay=lambda status: (self.clock.relay_keystep_transport(status)
+                                  if self.clock is not None else False),
+            keystep_stop_cc=self.keystep_stop_cc, keystep_start_cc=self.keystep_start_cc)
         self.midi_input = connect_transport(
             self, self.transport, self.devices.midi if self.devices else None)
 
@@ -126,7 +131,8 @@ class HeadlessShow(QObject):
 
 
 def headless_loop(document, *, start_engines, remember=None, settings=None,
-                  devices=None, autostart=None, midi_transport=False):
+                  devices=None, autostart=None, midi_transport=False,
+                  keystep_stop_cc=51, keystep_start_cc=54):
     """Run one headless show to completion; returns the process exit code."""
     app = QApplication.instance() or QApplication(application_arguments())
     configure_identity()
@@ -136,7 +142,8 @@ def headless_loop(document, *, start_engines, remember=None, settings=None,
         remember(document.path)
     show = HeadlessShow(document, start_engines=start_engines, settings=settings,
                         quit=app.exit, devices=devices, autostart=autostart,
-                        midi_transport=midi_transport)
+                        midi_transport=midi_transport,
+                        keystep_stop_cc=keystep_stop_cc, keystep_start_cc=keystep_start_cc)
     # Qt's event loop swallows SIGINT/SIGTERM; exit the loop cleanly instead
     # so engines close (sending MIDI Stop) and the process exits 0.
     previous = {sig: signal.signal(sig, lambda *_: show.request_quit())

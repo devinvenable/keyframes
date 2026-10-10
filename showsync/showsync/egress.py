@@ -69,24 +69,36 @@ class MidiEgress:
         return [name for name, _, _ in self.ports]
 
     def send(self, message):
+        self._send(message, (self.ports, self.shared))
+
+    def send_keystep_transport(self, status):
+        """Relay only to already-open KeyStep hardware; keep its class filter."""
+        return self._send(status, (self.ports,), keystep_only=True)
+
+    def _send(self, message, groups, *, keystep_only=False):
         data = [message] if isinstance(message, int) else message
         status = data[0]
         # 0xFA Start / 0xFB Continue / 0xFC Stop are the transport class.
         bit = CLOCK_BIT if status == 0xF8 else \
             TRANSPORT_BIT if 0xFA <= status <= 0xFC else CUES_BIT
-        for destinations in (self.ports, self.shared):
+        sent = False
+        for destinations in groups:
             for entry in list(destinations):
                 name, port, mask = entry
+                if keystep_only and 'keystep' not in name.lower():
+                    continue
                 if not mask & bit:
                     continue
                 try:
                     port.send_message(data)
+                    sent = True
                 except Exception as exc:
                     # Mid-show failure (unplugged interface): drop the mirror
                     # and play on — the remaining ports keep the show alive.
                     destinations.remove(entry)
                     LOG.warning('MIDI output %r failed (%s) — continuing without it',
                                 name, exc)
+        return sent
 
     def close(self):
         ports, self.ports = self.ports, []

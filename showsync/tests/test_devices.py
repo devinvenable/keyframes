@@ -108,6 +108,7 @@ def test_cli_precedence_and_audio_only(rig, monkeypatch):
     selection.resolve(devices.midi_outputs(), devices.audio_outputs())
     kw['start_engines'](None)
     egress.assert_called_once_with(['TBOX Out 2'], virtual=None)
+    assert clock.call_args.kwargs['keystep_send'] == egress.return_value.send_keystep_transport
     assert audio.call_args.kwargs['device'] == 8
     selection.choose('TBOX Out 2', 'Stage (ALSA)')
     assert appstate.device_choices() == {'midi': 'TBOX Out 1', 'audio': 'Speakers (ALSA)'}

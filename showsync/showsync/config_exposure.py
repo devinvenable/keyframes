@@ -45,6 +45,8 @@ CLI = {
     'headless': cli_only('Launch without an editor; cannot be an editor preference.'),
     'autostart': cli_only('Unattended launch countdown, not persisted to avoid surprise playback.'),
     'midi_transport': gui('MainWindow.transport_action'),
+    'keystep_stop_cc': cli_only('Hardware MIDI Control Center remap for this rig; launch override shared by GUI and headless, not set metadata.'),
+    'keystep_start_cc': cli_only('Hardware MIDI Control Center remap for this rig; launch override shared by GUI and headless, not set metadata.'),
     'clock_offset': gui('MainWindow.offset_action'),
     'export_bundle': gui('MainWindow.export_bundle'),
     'import_bundle': gui('MainWindow.import_bundle'),
@@ -142,7 +144,7 @@ PROCESS_ENV = {
 # pygame. Register future arguments here with a reason or a real UI exposure.
 KEYFRAMES_CLI = {key: cli_only('Separate Keyframes process option; set via LIVE_KEYFRAMES_ARGS / PERFORM_KEYFRAMES_ARGS or its CLI.')
                  for key in ('--bank', '--midi-file', '--loop', '--channel', '--port',
-                             '--note-source', '--start-note', '--num-keys', '--min-note',
+                             '--midi-io', '--note-source', '--start-note', '--num-keys', '--min-note',
                              '--no-latch', '--bpm', '--zoom-ring', '--windowed',
                              '--display-mode', '--midi-log', '--packaging-smoke-test', '--size')}
 # Persistent app files are preferences/derived UI state, not a second set schema.

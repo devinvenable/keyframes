@@ -1,4 +1,4 @@
-"""MIDI realtime transport input: hardware Play/Stop drives the set."""
+"""Realtime transport drives the set; KeyStep button CCs control only its rig."""
 import logging
 
 START, CONTINUE, STOP = 0xFA, 0xFB, 0xFC
@@ -29,13 +29,18 @@ class TransportControl:
     the window right after a boundary is ignored; pressing again works."""
 
     def __init__(self, *, is_active, is_playing, is_paused, start, resume, stop,
-                 egress_age=None):
+                 egress_age=None, relay=None, keystep_stop_cc=51, keystep_start_cc=54):
         self.is_active, self.is_playing, self.is_paused = is_active, is_playing, is_paused
         self.start, self.resume, self.stop = start, resume, stop
         self.egress_age = egress_age
+        self.relay = relay
+        self.keystep_ccs = {keystep_stop_cc: STOP, keystep_start_cc: START}
+        self._pressed = set()
 
     def handle(self, status):
         """Apply one transport byte; return the action taken, or None."""
+        if isinstance(status, tuple):
+            return self._keystep_cc(status)
         if status in NAMES and self.egress_age is not None:
             age = self.egress_age()
             if age < ECHO_WINDOW:
@@ -48,6 +53,25 @@ class TransportControl:
             logging.info('MIDI transport %s (0x%02X): %s',
                          NAMES[status], status, action or 'ignored (already in state)')
         return action
+
+    def _keystep_cc(self, message):
+        # Only connect_transport's KeyStep USB callback supplies CC tuples.
+        # Share the latch across channels/ports to debounce mirrored presses.
+        _, cc, value = message
+        if cc not in self.keystep_ccs:
+            return None
+        if value == 0:
+            self._pressed.discard(cc)
+        elif value == 127 and cc not in self._pressed:
+            self._pressed.add(cc)
+            status = self.keystep_ccs[cc]
+            if self.relay is not None and self.relay(status):
+                logging.info('KeyStep CC%d value 127: translated to realtime %s '
+                             '(0x%02X), relay-only', cc, NAMES[status], status)
+                return 'relayed ' + NAMES[status]
+            logging.info('KeyStep CC%d: relay unavailable (no active KeyStep '
+                         'transport egress)', cc)
+        return None
 
     def _action(self, status):
         if status == START:
@@ -84,9 +108,9 @@ class TransportInputs:
 
 
 def connect_transport(owner, control, preferred=None):
-    """Open the MIDI inputs and route Start/Continue/Stop bytes to `control`.
+    """Route realtime transport and KeyStep USB button CCs to `control`.
 
-    `owner` must expose a `transport_received` Qt signal; emitting through it
+    `owner` must expose a `transport_received` object signal; emitting through it
     hops from the rtmidi callback thread to the GUI thread. Returns the open
     inputs as one closeable object (caller calls close_port()), or None when
     no input could be opened."""
@@ -101,18 +125,22 @@ def connect_transport(owner, control, preferred=None):
     owner.transport_received.connect(control.handle)
     transport_bytes = (START, CONTINUE, STOP)
 
-    def callback(event, _data=None):
+    def callback(event, source):
         message = event[0]
         if message and message[0] in transport_bytes:
             owner.transport_received.emit(message[0])
+        elif ('keystep' in source.lower() and len(message) == 3
+              and message[0] & 0xF0 == 0xB0
+              and message[1] in control.keystep_ccs):
+            owner.transport_received.emit(tuple(message))
 
-    for midi_in in inputs:
-        midi_in.set_callback(callback)
-    return TransportInputs(inputs)
+    for name, midi_in in inputs:
+        midi_in.set_callback(callback, name)
+    return TransportInputs([midi_in for _, midi_in in inputs])
 
 
 def open_midi_inputs(preferred=None):
-    """Open every hardware MIDI input port for transport listening.
+    """Open every hardware MIDI input, returning (name, input) pairs.
 
     The Start-sending device can enter through any jack of a multi-port
     interface (a KeyStep behind a TBOX 2x2 shows up on whichever of its two
@@ -147,5 +175,5 @@ def open_midi_inputs(preferred=None):
             midi_in.delete()
             continue
         logging.info('MIDI transport input: listening on %r', ports[index])
-        inputs.append(midi_in)
+        inputs.append((ports[index], midi_in))
     return inputs

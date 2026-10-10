@@ -13,7 +13,8 @@ LOG = logging.getLogger(__name__)
 
 class ClockEngine:
     def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep,
-                 clock_offset_ms=0, send_transport=True, events=None, controls=None):
+                 clock_offset_ms=0, send_transport=True, events=None, controls=None,
+                 keystep_send=None):
         self.maps, self.position, self.send = maps, position, send
         self.now, self.sleep = now, sleep
         # Optional per-song visual-control messages (indexable like maps, one
@@ -23,6 +24,7 @@ class ClockEngine:
         self.controls = controls
         self.clock_offset_ms = clock_offset_ms
         self.send_transport = send_transport
+        self.keystep_send = keystep_send
         # Optional per-song MidiEvent lists (indexable like maps). File events
         # ride this thread on the same clock_time, so ramps and the clock
         # offset move ticks and file playback together.
@@ -58,6 +60,17 @@ class ClockEngine:
         if self._transport_stamp is None:
             return math.inf
         return self.now() - self._transport_stamp
+
+    def relay_keystep_transport(self, status):
+        """Send a rig-only button command without changing playback or clock.
+
+        Stamp before sending, just like clock transport, so the DIN/TBOX
+        round trip is covered by TransportControl's existing echo window.
+        """
+        if not self.send_transport or self.keystep_send is None:
+            return False
+        self._transport_stamp = self.now()
+        return self.keystep_send(status)
 
     def step(self):
         """Process current state/tick; return seconds until next work (fake-clock API)."""

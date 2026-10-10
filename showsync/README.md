@@ -216,6 +216,21 @@ show its effective ON/OFF value and source. Explicit `--midi-transport` takes
 precedence without overwriting the preference; `live.sh` and `perform.sh`
 already pass that flag. Headless runs still use the CLI flag only.
 
+With receive transport enabled, KeyStep USB **CC51 value 127** (Stop) and
+**CC54 value 127** (Play) relay realtime Stop/Start only to the already-open
+KeyStep output. Backing playback and clock keep running. Releases (value 0)
+rearm the buttons; repeated held presses are ignored. Other inputs' CCs are
+ignored. The relay requires active playback engines, **Send MIDI Start/Stop**
+enabled, and a KeyStep output that allows `transport` in its `send` filter.
+Its realtime return through DIN/TBOX is suppressed for one second after egress,
+using the same echo gate as normal clock transport. Each translation logs at INFO.
+
+If MIDI Control Center remaps the buttons, launch ShowSync with
+`--keystep-stop-cc 51 --keystep-start-cc 54` (substitute your distinct CC numbers,
+0–127). These hardware-specific launch options apply in GUI and headless mode;
+they are not saved in setlists. Incoming realtime Start/Continue/Stop retains
+its existing set-control behavior outside the echo window.
+
 Configuration coverage is recorded in `showsync/config_exposure.py` and checked
 by `tests/test_config_parity.py`. New CLI or accepted YAML fields need a GUI
 exposure or a reasoned `cli_only` entry. Launch/capture options, arbitrary tempo

@@ -122,8 +122,8 @@ class FakeMidiIn:
     def open_port(self, index):
         self.opened = index
 
-    def set_callback(self, callback):
-        self.callback = callback
+    def set_callback(self, callback, data=None):
+        self.callback = lambda event: callback(event, data)
 
     def close_port(self):
         self.closed = True
@@ -150,20 +150,20 @@ def test_opens_every_hardware_port(monkeypatch):
     ports = ['Midi Through 14:0', 'TBOX 2X2 MIDI 1', 'TBOX 2X2 MIDI 2']
     fake_rtmidi(monkeypatch, ports)
     inputs = open_midi_inputs(None)
-    assert [i.opened for i in inputs] == [1, 2]
+    assert [i.opened for _, i in inputs] == [1, 2]
 
 
 def test_exact_configured_name_orders_first_but_excludes_nothing(monkeypatch):
     ports = ['Midi Through 14:0', 'TBOX 2X2 MIDI 1', 'TBOX 2X2 MIDI 2']
     fake_rtmidi(monkeypatch, ports)
     inputs = open_midi_inputs('TBOX 2X2 MIDI 2')
-    assert [i.opened for i in inputs] == [2, 1]
+    assert [i.opened for _, i in inputs] == [2, 1]
 
 
 def test_input_skips_software_ports(monkeypatch):
     ports = ['Midi Through 14:0', 'Virtual Raw MIDI 0-0', 'TBOX 2X2 MIDI 1']
     fake_rtmidi(monkeypatch, ports)
-    assert [i.opened for i in open_midi_inputs('not-connected')] == [2]
+    assert [i.opened for _, i in open_midi_inputs('not-connected')] == [2]
 
 
 def test_input_returns_empty_without_hardware(monkeypatch):
@@ -184,7 +184,7 @@ def test_failed_port_open_does_not_block_the_others(monkeypatch):
 
     monkeypatch.setattr(FakeMidiIn, 'open_port', open_port)
     inputs = open_midi_inputs(None)
-    assert [i.opened for i in inputs] == [1]
+    assert [i.opened for _, i in inputs] == [1]
     # instances[0] is the get_ports probe; instances[1] hit 'busy'.
     assert instances[1].deleted
 
@@ -249,7 +249,7 @@ def test_input_never_listens_to_our_own_virtual_cue_egress(monkeypatch):
     # including ourselves — listening would echo our own Start/Stop back in.
     ports = ['ShowSync:ShowSync Cues 128:0', 'TBOX 2X2 MIDI 1']
     fake_rtmidi(monkeypatch, ports)
-    assert [i.opened for i in open_midi_inputs(None)] == [1]
+    assert [i.opened for _, i in open_midi_inputs(None)] == [1]
     # Even a preferred-name match must not open it.
     fake_rtmidi(monkeypatch, ports)
-    assert [i.opened for i in open_midi_inputs('ShowSync:ShowSync Cues 128:0')] == [1]
+    assert [i.opened for _, i in open_midi_inputs('ShowSync:ShowSync Cues 128:0')] == [1]

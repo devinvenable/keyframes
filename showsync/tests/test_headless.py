@@ -185,8 +185,8 @@ def test_boundary_handover_echo_does_not_restart_the_set(qtbot, show_factory, mo
     state-based idempotence alone cannot break this loop."""
     import showsync.transport as transport
     from showsync.clock import ClockEngine
-    port = SimpleNamespace(set_callback=lambda cb: None, close_port=lambda: None)
-    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred=None: [port])
+    port = SimpleNamespace(set_callback=lambda cb, data=None: None, close_port=lambda: None)
+    monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred=None: [('TBOX', port)])
     holder = {}
     starts, closed = [], []
     state = SimpleNamespace(position=Position(0, 0.0, True))

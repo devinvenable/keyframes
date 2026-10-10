@@ -276,12 +276,13 @@ class SongTable(QTableView):
 class MainWindow(QMainWindow):
     # Cross-thread bridge: rtmidi delivers transport bytes on its own
     # thread; the queued signal hands them to the GUI thread.
-    transport_received = Signal(int)
+    transport_received = Signal(object)
 
     def __init__(self, document, *, start_engines, dialogs=None, remember=None,
                  estimator=estimate_grid, trim_suggester=suggest_trim, settings=None,
                  notice='', clock_offset_ms=0, offset_changed=None, devices=None,
-                 midi_transport=None, autostart=None):
+                 midi_transport=None, autostart=None,
+                 keystep_stop_cc=51, keystep_start_cc=54):
         super().__init__()
         if dialogs is None:
             from .dialogs import Dialogs
@@ -291,6 +292,7 @@ class MainWindow(QMainWindow):
         self.clock_offset_ms = clock_offset_ms
         self.offset_changed = offset_changed
         self.devices = devices
+        self.keystep_stop_cc, self.keystep_start_cc = keystep_stop_cc, keystep_start_cc
         self.midi_status = QLabel()
         self.midi_status.setTextFormat(Qt.PlainText)
         self.statusBar().addPermanentWidget(self.midi_status)
@@ -1160,7 +1162,10 @@ class MainWindow(QMainWindow):
                                and not (p := self.audio.position()).playing and not p.ended),
             start=self.play, resume=self.pause, stop=self.stop,
             egress_age=lambda: (self.clock.transport_egress_age()
-                                if self.clock is not None else math.inf))
+                                if self.clock is not None else math.inf),
+            relay=lambda status: (self.clock.relay_keystep_transport(status)
+                                  if self.clock is not None else False),
+            keystep_stop_cc=self.keystep_stop_cc, keystep_start_cc=self.keystep_start_cc)
         self.midi_input = connect_transport(
             self, self.transport, self.devices.midi if self.devices else None)
 
@@ -1311,12 +1316,14 @@ def place_editor(window, screens, spec):
 
 def main_loop(document, *, start_engines, dialogs=None, remember=None, notice='',
               clock_offset_ms=0, offset_changed=None, devices=None,
-              editor_screen=None, midi_transport=None, autostart=None):
+              editor_screen=None, midi_transport=None, autostart=None,
+              keystep_stop_cc=51, keystep_start_cc=54):
     app = QApplication.instance() or QApplication(application_arguments())
     window = MainWindow(document, start_engines=start_engines, dialogs=dialogs,
                         remember=remember, notice=notice, clock_offset_ms=clock_offset_ms,
                         offset_changed=offset_changed, devices=devices,
-                        midi_transport=midi_transport, autostart=autostart)
+                        midi_transport=midi_transport, autostart=autostart,
+                        keystep_stop_cc=keystep_stop_cc, keystep_start_cc=keystep_start_cc)
     if editor_screen is not None:
         place_editor(window, app.screens(), editor_screen)
     window.show()

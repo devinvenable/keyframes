@@ -19,6 +19,13 @@ from .visuals import song_controls
 from .setlist import SetlistError
 
 
+def midi_cc(value):
+    value = int(value)
+    if not 0 <= value <= 127:
+        raise argparse.ArgumentTypeError("CC must be between 0 and 127")
+    return value
+
+
 def build_parser():
     """Declare the CLI without starting Qt, opening ports, or reading state."""
     parser = argparse.ArgumentParser(description='Audio-master backing tracks and MIDI clock')
@@ -48,6 +55,10 @@ def build_parser():
     parser.add_argument('--midi-transport', action='store_true', default=None,
                         help='listen for MIDI realtime Start/Continue/Stop on the MIDI '
                              'input and drive the set like the GUI controls')
+    parser.add_argument('--keystep-stop-cc', type=midi_cc, default=51, metavar='CC',
+                        help='KeyStep Stop button CC (default 51); relay to rig only')
+    parser.add_argument('--keystep-start-cc', type=midi_cc, default=54, metavar='CC',
+                        help='KeyStep Play button CC (default 54); relay to rig only')
     parser.add_argument('--clock-offset', type=float, metavar='MS',
                         help='MIDI clock offset (-250..250 ms); positive = earlier ticks; this run only')
     parser.add_argument('--export-bundle', metavar='ZIP',
@@ -67,6 +78,8 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.keystep_stop_cc == args.keystep_start_cc:
+        parser.error('KeyStep Stop and Start CCs must be different')
     if args.keyframes and not (args.import_bundle or args.export_bundle):
         parser.error('--keyframes only makes sense with --export-bundle or --import-bundle')
     if args.import_bundle:
@@ -174,7 +187,7 @@ def main(argv=None):
             events = MidiEventsView(audio, load_setlist_events(setlist)) if setlist is not None else None
             clock = ClockEngine(audio.maps, audio.position, midi.send,
                                 clock_offset_ms=offset, send_transport=devices.send_transport,
-                                events=events,
+                                events=events, keystep_send=midi.send_keystep_transport,
                                 controls=song_controls(setlist) if setlist is not None else None)
             clock.start()
             audio.start()
@@ -239,7 +252,9 @@ def main(argv=None):
             return headless_loop(document, start_engines=start_engines,
                                  remember=remember_setlist, devices=devices,
                                  autostart=args.autostart,
-                                 midi_transport=bool(args.midi_transport))
+                                 midi_transport=bool(args.midi_transport),
+                                 keystep_stop_cc=args.keystep_stop_cc,
+                                 keystep_start_cc=args.keystep_start_cc)
         except KeyboardInterrupt:
             return 0
         except Exception as exc:
@@ -255,6 +270,8 @@ def main(argv=None):
                          offset_changed=change_offset, devices=devices,
                          editor_screen=args.editor_screen,
                          midi_transport=args.midi_transport,
+                         keystep_stop_cc=args.keystep_stop_cc,
+                         keystep_start_cc=args.keystep_start_cc,
                          autostart=args.autostart)
     except KeyboardInterrupt:
         return 0
