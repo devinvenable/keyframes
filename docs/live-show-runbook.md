@@ -91,6 +91,15 @@ replug does NOT self-heal. Recovery is the normal supervisor path — kill
 or crash ShowSync, it relaunches, KeyStep Play restarts the set from the
 top with all configured ports reopened.
 
+The virtual port exists for ShowSync's whole process life (opened at
+launch, not at Play), which is why the launch order — ShowSync first,
+then Keyframes — matters and is what live.sh already does. Keyframes also
+**re-binds its cue-port connection every ~5 s**, so after a ShowSync
+crash + supervisor relaunch the cues reach Keyframes again within seconds
+— no Keyframes restart needed (a relaunched ShowSync is a new MIDI client
+even when the port name looks identical; Keyframes reopens rather than
+trusting the name).
+
 ## Ending the show
 
 Any of these ends everything cleanly:
