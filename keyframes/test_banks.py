@@ -227,3 +227,27 @@ def test_empty_bank_and_expiring_notice(library, monkeypatch):
     assert drawn == ['Bank: aaa']
     banks.draw_notice(pygame.display.get_surface(), 10 + main.BANK_NOTICE_SECONDS)
     assert len(drawn) == 1
+
+
+def test_bank_state_published_on_load_and_cycle(library, monkeypatch, tmp_path):
+    """KEYFRAMES_BANK_STATE always holds the active bank (live.sh restarts)."""
+    root, banks = library
+    state = tmp_path / 'bank_state'
+    monkeypatch.setenv('KEYFRAMES_BANK_STATE', str(state))
+    banks.load('default', startup=True)
+    assert state.read_text() == 'default\n'
+    banks.cycle(1)  # -> 'other'
+    assert state.read_text() == 'other\n'
+    assert not state.with_name(state.name + '.tmp').exists()
+
+
+def test_bank_state_absent_env_and_write_failure_are_harmless(library, monkeypatch, tmp_path):
+    root, banks = library
+    monkeypatch.delenv('KEYFRAMES_BANK_STATE', raising=False)
+    banks.load('other')  # no env: no file, no error
+    assert not (tmp_path / 'bank_state').exists()
+    # Unwritable destination must not break the switch itself.
+    monkeypatch.setenv('KEYFRAMES_BANK_STATE',
+                       str(tmp_path / 'missing-dir' / 'bank_state'))
+    media, _, _ = banks.load('default')
+    assert banks.name == 'default'

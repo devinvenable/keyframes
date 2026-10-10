@@ -482,6 +482,27 @@ def load_media(start_note, end_note, media_dir=None, mapping_path=None):
 
 
 
+def publish_bank_state(name):
+    """Record the active bank name for the live supervisor (scripts/live.sh).
+
+    When KEYFRAMES_BANK_STATE names a file, it always holds the currently
+    loaded bank — launch bank and F5/F6 switches alike — so a crash-restart
+    can relaunch into the bank that was live on stage, not the one from the
+    original command line. Atomic replace so the supervisor never reads a
+    half-written name. Best effort: publishing state must never break a
+    bank switch mid-show."""
+    path = os.environ.get('KEYFRAMES_BANK_STATE')
+    if not path:
+        return
+    try:
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as fh:
+            fh.write(name + '\n')
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
 class MediaBanks:
     """Stage a bank before publishing it on the single UI/event thread.
 
@@ -541,6 +562,7 @@ class MediaBanks:
         OVERLAYS_CONFIG_PATH = overlays_path
         self.overlays_config = overlays_config
         self.name = name
+        publish_bank_state(name)
         return media, cells, config
 
     def cycle(self, direction):

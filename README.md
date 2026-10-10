@@ -15,3 +15,11 @@ MIDI clock master).
 
 Repo-level infrastructure (`docs/`, `scripts` inside each subproject, agent
 tooling) stays at the root; each program is self-contained in its directory.
+
+Running both together:
+
+- **Live show (no recording)**: `scripts/live.sh --bank <bank> songs/<set>.yaml`
+  — launches ShowSync + Keyframes on the real display with a crash
+  supervisor; see [docs/live-show-runbook.md](docs/live-show-runbook.md).
+- **Recorded take**: `scripts/perform.sh` — same two apps plus screen/audio
+  capture and take sidecars.

@@ -122,6 +122,13 @@ python main.py --windowed --size 1920x1080
 # Press ESC to quit
 ```
 
+### Live bank state (for the live supervisor)
+
+When `KEYFRAMES_BANK_STATE` names a file (set by `scripts/live.sh`),
+Keyframes writes the active bank name there on every bank load — launch
+bank and F5/F6 switches alike — so a crash-restart relaunches into the
+bank that was live on stage. Off by default: no env var, no file.
+
 ### MIDI event log (take sidecar)
 
 During `scripts/perform.sh` captures (which set `KEYFRAMES_MIDI_LOG`), or when
