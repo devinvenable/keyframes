@@ -154,9 +154,13 @@ class MidiClockTracker:
 
     def __init__(self, fallback_bpm=DEFAULT_BPM):
         self.fallback_bpm = fallback_bpm
+        self._max_samples = 48  # 2 beats worth of clocks
+        self.reset()
+
+    def reset(self):
+        """Forget the previous port's tempo when the selected source changes."""
         self._clock_times = []
         self._bpm = None
-        self._max_samples = 48  # 2 beats worth of clocks
 
     def tick(self):
         """Call on each MIDI clock message."""
@@ -2330,8 +2334,8 @@ class MidiEventLogger:
         self.log_event('note_echo_suppressed', port=port,
                        echo_of_port=echo_of_port, **fields)
 
-    def log_filtered_source(self, msg, port):
-        """Count ignored channel traffic, emitting at most once/5s per port.
+    def log_filtered_source(self, msg, port, event='note_source_filtered'):
+        """Count ignored traffic, emitting at most once/5s per port and reason.
 
         Keep one example per summary, not raw copies of an ignored flood.
         Pending counts are flushed on close; a crash can lose counts since
@@ -2339,17 +2343,17 @@ class MidiEventLogger:
         """
         now = time.monotonic()
         stats = self._filtered_sources.setdefault(
-            port, {'counts': {}, 'logged_at': None})
+            (event, port), {'counts': {}, 'logged_at': None})
         counts = stats['counts']
         counts[msg.type] = counts.get(msg.type, 0) + 1
         stats['example'] = msg.dict()
         if stats['logged_at'] is None or now - stats['logged_at'] >= 5.0:
-            self._flush_filtered_source(port, stats)
+            self._flush_filtered_source(event, port, stats)
             stats['logged_at'] = now
 
-    def _flush_filtered_source(self, port, stats):
+    def _flush_filtered_source(self, event, port, stats):
         if stats['counts']:
-            self.log_event('note_source_filtered', port=port,
+            self.log_event(event, port=port,
                            counts=dict(stats['counts']), example=stats['example'])
             stats['counts'].clear()
 
@@ -2369,8 +2373,8 @@ class MidiEventLogger:
                       f"will be lost ({self.path})")
 
     def close(self):
-        for port, stats in self._filtered_sources.items():
-            self._flush_filtered_source(port, stats)
+        for (event, port), stats in self._filtered_sources.items():
+            self._flush_filtered_source(event, port, stats)
         try:
             self._file.close()
         except OSError:
@@ -2424,7 +2428,8 @@ MIDI_FLOOD_PRESERVED_TYPES = frozenset((
 
 
 def read_midi_messages(msg_source, process_cap=MIDI_FLOOD_PROCESS_CAP,
-                       read_cap=MIDI_FLOOD_READ_CAP):
+                       read_cap=MIDI_FLOOD_READ_CAP, *, clock_source_allowed=True,
+                       midi_logger=None, midi_source=None):
     """Pull a bounded batch off one message source.
 
     Returns ``(messages, dropped)`` where ``dropped`` is a ``{type: count}``
@@ -2444,6 +2449,18 @@ def read_midi_messages(msg_source, process_cap=MIDI_FLOOD_PROCESS_CAP,
             pulled.append(msg)
             if len(pulled) >= read_cap:
                 break
+    # Unselected clocks must not consume the processing budget or trigger
+    # flood shedding. Still count every raw read toward the bounded drain.
+    if not clock_source_allowed:
+        accepted = []
+        for msg in pulled:
+            if msg.type == 'clock':
+                if midi_logger:
+                    midi_logger.log_filtered_source(
+                        msg, midi_source, event='clock_source_filtered')
+            else:
+                accepted.append(msg)
+        pulled = accepted
     if len(pulled) <= process_cap:
         return pulled, {}
     messages, dropped = [], {}
@@ -2487,7 +2504,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                           latch_mode=True, display_mode='fill',
                           scenes_config=None, midi_logger=None,
                           midi_source=None, visual_control=None,
-                          note_sources=None):
+                          note_sources=None, clock_sources=None):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
@@ -2495,11 +2512,16 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
     until the minimum duration elapses. Every displayed note-on optionally
     starts a short black retrigger gap. note_sources restricts live channel
     messages to selected ports; None preserves legacy/all-source behavior.
-    System messages and ShowSync Cues bypass that source restriction."""
+    System messages and ShowSync Cues bypass that source restriction.
+    clock_sources independently restricts ticks before the processing cap;
+    None leaves local keyboard/file queues and legacy callers unrestricted."""
     if note_hit_counts is None:
         note_hit_counts = {}
 
-    messages, flood_dropped = read_midi_messages(msg_source)
+    messages, flood_dropped = read_midi_messages(
+        msg_source, clock_source_allowed=(clock_sources is None
+                                        or midi_source in clock_sources),
+        midi_logger=midi_logger, midi_source=midi_source)
 
     now = time.monotonic()
     note_midi_flood(current_state, flood_dropped, midi_source, midi_logger, now)
@@ -3297,6 +3319,43 @@ def draw_grid_preview(screen, cells, scroll_y, preview):
 SHOWSYNC_CUE_PORT = 'ShowSync Cues'
 
 
+def midi_source_candidates(open_names):
+    """Known rig endpoints; never confuse TBOX port 2 or raw RtMidiOut clients."""
+    hardware = [p for p in open_names if SHOWSYNC_CUE_PORT.lower() not in p.lower()]
+    return {
+        'tbox': [p for p in hardware if 'tbox' in p.lower()
+                 and re.search(r'\b(?:in|out|midi)\s*1\b', p, re.IGNORECASE)],
+        'usb': [p for p in hardware if 'keystep' in p.lower()],
+        'cues': [p for p in open_names if SHOWSYNC_CUE_PORT.lower() in p.lower()],
+    }
+
+
+def configure_clock_source(open_names, requested='tbox', midi_logger=None):
+    """Choose exactly one opened input, or no input (the fallback BPM).
+
+    Presence, not tick activity, determines selection. Prefer the rig's
+    hardware return, then the direct ShowSync cue output, then KeyStep USB.
+    """
+    candidates = midi_source_candidates(open_names)
+    order = [requested] + [name for name in ('tbox', 'cues', 'usb')
+                           if name != requested]
+    effective = next((name for name in order if candidates[name]), 'none')
+    selected = candidates.get(effective, [])[:1]
+    warning = None
+    if effective != requested:
+        warning = (f"requested {requested} clock source unavailable; "
+                   + (f"falling back to {effective}" if selected
+                      else "no recognized clock input is open; using fallback BPM"))
+        print(f"WARNING: MIDI CLOCK SOURCE: {warning}", flush=True)
+    print(f"MIDI clock source: {effective} (requested: {requested}); "
+          f"ports: {', '.join(selected) or 'none'}; "
+          f"fallback order: {' > '.join(order)} > fallback BPM", flush=True)
+    if midi_logger:
+        midi_logger.log_event('clock_source', requested=requested, effective=effective,
+                              ports=selected, fallback_order=order, warning=warning)
+    return frozenset(selected)
+
+
 def configure_note_source(open_names, requested='tbox', midi_logger=None):
     """Resolve a performance source from ports actually opened at startup.
 
@@ -3306,11 +3365,7 @@ def configure_note_source(open_names, requested='tbox', midi_logger=None):
     Port 2 belongs to a different rig and must not become the note source.
     """
     hardware = [p for p in open_names if SHOWSYNC_CUE_PORT.lower() not in p.lower()]
-    candidates = {
-        'tbox': [p for p in hardware if 'tbox' in p.lower()
-                 and re.search(r'\b(?:in|out|midi)\s*1\b', p, re.IGNORECASE)],
-        'usb': [p for p in hardware if 'keystep' in p.lower()],
-    }
+    candidates = midi_source_candidates(open_names)
     effective = requested
     warning = None
     if requested == 'all':
@@ -3481,6 +3536,11 @@ def main():
                              "KeyStep USB (usb), or all ports (legacy). Falls back "
                              "to the other rig source if absent; clock and "
                              "ShowSync Cues are independent")
+    parser.add_argument('--clock-source', choices=('tbox', 'cues', 'usb'), default='tbox',
+                        help="Single live clock source (default: tbox). Requested "
+                             "source first, then remaining tbox > cues > usb; "
+                             "uses --bpm if none is open. Notes/cues/transport "
+                             "are independent")
     parser.add_argument('--start-note', type=int, default=DEFAULT_START_NOTE,
                         help=f"Lowest MIDI note number (default: {DEFAULT_START_NOTE})")
     parser.add_argument('--num-keys', type=int, default=DEFAULT_NUM_KEYS,
@@ -3615,6 +3675,9 @@ def main():
     note_sources = (configure_note_source(
         [port.name for port in inports], args.note_source, midi_logger)
         if args.midi_io == 'inproc' or args.midi_file else frozenset())
+    clock_sources = (configure_clock_source(
+        [port.name for port in inports], args.clock_source, midi_logger)
+        if args.midi_io == 'inproc' and not args.midi_file else frozenset())
 
     stall_rearm = None
     stall_log_path = resolve_stall_log_path()
@@ -3897,6 +3960,11 @@ def main():
                         if names != last_port_names:
                             note_sources = configure_note_source(
                                 names, args.note_source, midi_logger)
+                            previous_clock_sources = clock_sources
+                            clock_sources = configure_clock_source(
+                                names, args.clock_source, midi_logger)
+                            if clock_sources != previous_clock_sources:
+                                clock_tracker.reset()
                             last_port_names = names
                     else:
                         print(f"WARNING: {record['message']}", flush=True)
@@ -3914,7 +3982,8 @@ def main():
                                               latch_enabled, args.display_mode,
                                               scenes_config, midi_logger, source_name,
                                               visual_control=visuals,
-                                              note_sources=note_sources)
+                                              note_sources=note_sources,
+                                              clock_sources=clock_sources)
 
             # Apply a bank program change recorded during MIDI processing here on
             # the UI/media thread — the same path (and state resets) as F5/F6.
@@ -3942,6 +4011,13 @@ def main():
                             print(f"MIDI input: {name} (cue port connected)")
                 except Exception as exc:
                     print(f"WARNING: cue port refresh failed: {exc}")
+                names = [port.name for port in inports]
+                if frozenset(names) != frozenset(name for name, _ in live_sources):
+                    previous_clock_sources = clock_sources
+                    clock_sources = configure_clock_source(
+                        names, args.clock_source, midi_logger)
+                    if clock_sources != previous_clock_sources:
+                        clock_tracker.reset()
             if PAN_AUTO_RECENTER:
                 update_pan_recenter(state, now)
             cur_active = state['note_active']
