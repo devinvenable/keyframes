@@ -89,11 +89,23 @@ run_live() {
     LIVE_PID=$!
 }
 
-# Wait until $1 lines matching $2 appear in the launch log (3s cap).
+# Wait until $1 lines matching $2 appear in the launch log (10s cap — the
+# poll exits as soon as the lines land, so the cap only costs on failure;
+# 3s was not enough on a loaded host).
 wait_launches() {
     local count=$1 pattern=$2 i=0
-    while (( i < 60 )); do
+    while (( i < 200 )); do
         [ "$(grep -c "$pattern" "$STUB_LOG" 2>/dev/null)" -ge "$count" ] && return 0
+        sleep 0.05; i=$((i + 1))
+    done
+    return 1
+}
+
+# Wait (10s cap) for an arbitrary condition command to succeed.
+wait_for() {
+    local i=0
+    while (( i < 200 )); do
+        "$@" && return 0
         sleep 0.05; i=$((i + 1))
     done
     return 1
@@ -144,6 +156,7 @@ clear_ctl
 # A real settle here so the launch-order check is not racing the two
 # stubs' first log writes.
 SETTLE_OVERRIDE=1 run_live "$SETLIST"
+wait_launches 1 "^showsync" || true
 wait_launches 1 "^keyframes" || true
 check "showsync launched" grep -q "^showsync .*set.yaml" "$STUB_LOG"
 # Rig topology v3 (D15): the KeyStep transport belongs to Devin's rig, so
@@ -159,18 +172,24 @@ check "keyframes got a bank-state path" \
     grep -q "^keyframes BANK_STATE=/" "$STUB_ENV_LOG"
 end_live
 check "Ctrl+C/TERM tears down cleanly (exit 0)" test "$rc" = 0
-# [-] so pgrep cannot match this checking process's own command line.
+# Scope the pattern to THIS run's $WORK so a parallel/looped instance of the
+# suite cannot trip it, and poll: process reaping can lag live.sh's exit on
+# a loaded host. [-] so pgrep cannot match this checking process's own
+# command line.
 check "stubs are gone after teardown" \
-    bash -c '! pgrep -f "python[-]stub" >/dev/null'
+    wait_for bash -c '! pgrep -f "$1/bin/python[-]stub" >/dev/null' _ "$WORK"
 
 # --- 2b. --midi-transport is pass-through only ------------------------------
 clear_ctl
 run_live --midi-transport "$SETLIST"
+wait_launches 1 "^showsync" || true
 wait_launches 1 "^keyframes" || true
 check "caller's --midi-transport reaches showsync" \
     grep -q "^showsync .*--midi-transport" "$STUB_LOG"
+# Grep the showsync line rather than head -n1: this run has no settle, so
+# under load the keyframes stub can win the race to write the first line.
 check "caller's --midi-transport appears exactly once" \
-    bash -c 'test "$(head -n1 "$1" | grep -o -- "--midi-transport" | wc -l)" = 1' _ "$STUB_LOG"
+    bash -c 'test "$(grep "^showsync" "$1" | grep -o -- "--midi-transport" | wc -l)" = 1' _ "$STUB_LOG"
 end_live
 check "pass-through run teardown clean" test "$rc" = 0
 
@@ -229,7 +248,12 @@ check "showsync-crash teardown clean" test "$rc" = 0
 clear_ctl
 printf 'crash\n' > "$WORK/ctl.keyframes"
 run_live --no-restart "$SETLIST"
-sleep 1.5
+# No fixed sleep: wait for the first launch, then for the supervisor's
+# "Not restarting" message. Once that message is out the launch count can
+# never grow (the no-restart branch never calls start_keyframes), so the
+# exactly-once assertion below is race-free even on a loaded host.
+wait_launches 1 "^keyframes" || true
+wait_for grep -q "Not restarting Keyframes" "$RUN_LOG" || true
 check "--no-restart: keyframes stays down" \
     test "$(grep -c '^keyframes' "$STUB_LOG")" = 1
 end_live
