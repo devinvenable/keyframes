@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "dir": "overlays",
   "fps": 30,
   "interval_min_s": 45,
