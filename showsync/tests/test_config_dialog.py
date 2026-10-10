@@ -186,14 +186,13 @@ def test_transport_toggle_disconnects_handlers_and_persists(window_factory, monk
     port = Mock()
     monkeypatch.setattr(transport, 'open_midi_inputs', lambda preferred: [port])
     w = window_factory()
+    starts = Mock()
+    monkeypatch.setattr(w, 'play', starts)
     w.transport_action.trigger()  # on
     w.transport_action.trigger()  # off
     assert w.settings.value('receiveMidiTransport', type=bool) is False
     port.close_port.assert_called_once()
     w.transport_action.trigger()  # on again
-    starts = Mock()
-    monkeypatch.setattr(w, 'play', starts)
-    w.transport.start = starts
     w.transport_received.emit(transport.START)
     assert starts.call_count == 1
     assert 'GUI choice (remembered)' in w.transport_status.text()
