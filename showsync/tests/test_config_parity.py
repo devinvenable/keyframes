@@ -8,7 +8,8 @@ from showsync.cli import build_parser
 from showsync.config_dialog import OutputEditor, SetSettingsDialog, SongSettingsDialog
 from showsync.device_dialog import DeviceDialog
 from showsync.devices import Devices
-from showsync.setlist import YAML_FIELDS
+from showsync.setlist import YAML_FIELDS, EGRESS_CLASSES
+from showsync.egress import CLASS_BITS
 from test_devices import rig
 from test_gui import document
 
@@ -24,6 +25,8 @@ def assert_covered(declared, registered):
 def test_configuration_surface_has_explicit_exposure(window_factory, tmp_path, qtbot, rig):
     assert_covered([action.dest for action in build_parser()._actions], exposure.CLI)
     assert_covered(YAML_FIELDS, exposure.YAML)
+    assert_covered(EGRESS_CLASSES, exposure.EGRESS)
+    assert_covered(EGRESS_CLASSES, CLASS_BITS)
     for section, fields in YAML_FIELDS.items():
         assert_covered(fields, exposure.YAML[section])
     identity = ast.parse((ROOT / 'showsync/showsync/identity.py').read_text())
@@ -66,7 +69,7 @@ def test_configuration_surface_has_explicit_exposure(window_factory, tmp_path, q
     registries = [exposure.CLI, *exposure.YAML.values(), *exposure.LAUNCHER_FLAGS.values(),
                   exposure.LAUNCHER_ENV, exposure.KEYFRAMES_CLI, exposure.QT_SETTINGS,
                   exposure.APP_STATE, exposure.PERFORM_CONF, exposure.PROCESS_ENV,
-                  exposure.QT_IDENTITY]
+                  exposure.QT_IDENTITY, exposure.EGRESS]
     for registry in registries:
         for name, entry in registry.items():
             assert bool(entry.gui) != bool(entry.cli_only), name

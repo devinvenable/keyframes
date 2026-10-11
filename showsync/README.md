@@ -173,7 +173,7 @@ Cues`** carrying the same egress; the Keyframes app always listens to it by
 name, so visual cues need no cable.
 
 **Set → Set settings…** edits this saved output list, with separate Clock,
-Transport, and Cues checkboxes for each port (for example, clock-only to the
+Transport, Cues, and File checkboxes for each port (for example, clock-only to the
 KeyStep). Remove all rows to use the single output in Preferences. The same
 dialog edits the set title and Keyframes bank list/channel. Supply the complete,
 alphabetically sorted list of Keyframes bank folders, excluding `default`.
@@ -300,14 +300,16 @@ Select a song and use **MIDI file → Browse…** to add a `.mid` or `.midi` fil
 Its events follow the song tempo, including ramps; embedded MIDI tempos are
 ignored. **Loop** repeats the phrase until the song ends. The output dropdown
 chooses a separate synth for file events; blank uses the clock output. Clock and
-Start/Stop still go to the clock output. Missing file outputs warn and fall back
-to that output. **Clear** removes the file and its options.
+Start/Stop still go to the clock output. An explicit output that is missing or
+ambiguous warns and skips file playback; it never falls back to other ports.
+If the selected output is also in `midi_outputs`, its filter applies and the
+existing port is reused. Enable `file` on that entry to receive file playback. **Clear** removes the file and its options.
 
 The original `midi: parts/keys.mid` form still plays once on the clock output.
 For looping or a separate output, use a mapping:
 
 ```yaml
-midi: {file: parts/arp.mid, loop: true, port: 'MIDIPLUS TBOX 2x2 Midi In 2'}
+midi: {file: parts/arp.mid, loop: true, port: 'Midi Out 2'}
 ```
 
 The default loop length is the last wire event's beat rounded up to a four-beat
@@ -318,8 +320,25 @@ the length, including intended trailing silence. Events beyond an explicit
 length are omitted; events exactly at its boundary play before the next loop.
 Each repeat follows the absolute song beat grid, even through tempo ramps.
 Sustain and notes are released at loop boundaries and on pause, skip, or end.
-Port values accept an exact name or zero-based index. Editor saves and show
+Port values accept an exact name, unique substring, or zero-based index. Editor saves and show
 bundles preserve these options; bundled MIDI paths are relocated with the audio.
+
+The `file` egress class covers all messages authored in the MIDI file (notes,
+PC, CC, SysEx, and note cleanup on stop/skip/loop). `cues` covers generated
+Keyframes cues; enabling `file` does not enable those visual PC/CC messages.
+Existing filtered entries that used `cues` for file playback must add `file`.
+Bare output entries still allow every class. For example:
+
+```yaml
+midi_outputs:
+  - {port: KeyStep, send: [clock, transport]}
+  - {port: "Midi Out 2", send: [clock, file]}
+```
+
+Keep each song's `midi.port: "Midi Out 2"` to target David alone. Without a
+per-song destination, file messages are mirrored to outputs allowing `file`
+and to **ShowSync Cues**. With a destination, file playback and its cleanup go
+only to that destination; visual cues still use their normal mirrored route.
 
 ### Per-song Keyframes cues
 

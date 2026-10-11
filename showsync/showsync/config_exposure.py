@@ -96,6 +96,10 @@ YAML = {
                for key in ('bpm_estimated', 'offset_estimated', 'timing_review')},
 }
 
+# Each send class has its own checkbox in both saved and run-only outputs.
+EGRESS = {name: gui('OutputEditor.table')
+          for name in ('clock', 'transport', 'cues', 'file')}
+
 # Launcher-owned options: never silently turn these into persisted app state.
 LAUNCHER_FLAGS = {
     'live.sh': {

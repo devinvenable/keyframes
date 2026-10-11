@@ -213,3 +213,122 @@ def test_duplicate_selections_merge_their_filters(fake_rtmidi):
     egress.send(0xFA)
     egress.send([0xC0, 3])
     assert sends_to(fake_rtmidi.log, PORTS[1]) == [(0xF8,), (0xFA,)]
+
+
+@pytest.mark.parametrize('target', [None, 'KeyStep', PORTS[2], 2,
+                                     'Midi Out 2', PORTS[1], 1,
+                                     'Missing synth', 'Midi Out', 99])
+def test_file_playback_obeys_filters_through_cli(target, fake_rtmidi, monkeypatch, tmp_path):
+    """Real file + CLI wiring + scheduler, with hardware replaced by fakes.
+
+    File PC/CC bytes deliberately match visual cues: only origin differs.
+    """
+    from dataclasses import replace
+    import mido
+    from showsync import cli
+    from showsync.audio import Position
+    from showsync.clock import ClockEngine
+    from showsync.midifile import load_midi_events
+    from showsync.setlist import Setlist, Song, EgressFilter
+    from showsync.tempomap import TempoMap
+    from showsync.visuals import KeyframesCue, song_controls
+
+    path = tmp_path / 'song.mid'
+    source = mido.MidiFile()
+    source.tracks.append(mido.MidiTrack([
+        mido.Message('program_change', channel=15, program=1),
+        mido.Message('control_change', channel=15, control=102, value=0),
+        mido.Message('sysex', data=(0x7e, 0x7f, 9, 1)),
+        mido.Message('note_on', note=60, velocity=100),
+        mido.Message('note_off', note=60, time=480),
+    ]))
+    source.save(path)
+    song = Song('Intro', tmp_path / 'audio.wav', 120, midi=path, midi_port=target,
+                keyframes=KeyframesCue(bank='visuals'))
+    setlist = Setlist('Show', (song,), keyframes_banks=('visuals',), midi_outputs=(
+        EgressFilter('KeyStep', ('clock', 'transport')),
+        EgressFilter('Midi Out 2', ('clock', 'file')),
+    ))
+    position = [Position(0, 0, True)]
+    audio = SimpleNamespace(maps=[TempoMap(120)], position=lambda: position[0],
+                            _layout=SimpleNamespace(setlist=setlist),
+                            start=lambda: None, close=lambda: None)
+    monkeypatch.setattr(cli, 'AudioEngine', lambda *a, **kw: audio)
+    monkeypatch.setattr(ClockEngine, 'start', lambda self: None)
+    monkeypatch.setattr(cli, 'last_setlist', lambda: None)
+    callbacks = {}
+    monkeypatch.setattr(cli, 'main_loop', lambda doc, **kw: callbacks.update(kw) or 0)
+    assert cli.main([]) == 0
+    _, clock, close = callbacks['start_engines'](setlist)
+    clock.step()
+    position[0] = replace(position[0], song_time=.5)
+    clock.step()
+    close()
+
+    file = [event.data for event in load_midi_events(path)]
+    flush = [(0xB0, 64, 0), (0xB0, 123, 0)]
+    cues = list(song_controls(setlist)[0])
+    assert sends_to(fake_rtmidi.log, PORTS[2]) == [(0xFA,), (0xF8,), (0xF8,), (0xFC,)]
+    gets_file = target in (None, 'Midi Out 2', PORTS[1], 1)
+    assert sends_to(fake_rtmidi.log, PORTS[1]) == (
+        file[:-1] + [(0xF8,), file[-1], (0xF8,)] + flush
+        if gets_file else [(0xF8,), (0xF8,)])
+    assert sends_to(fake_rtmidi.log, VIRTUAL_PORT_NAME) == (
+        cues + [(0xFA,)] + file[:-1] + [(0xF8,), file[-1], (0xF8,)] + flush + [(0xFC,)]
+        if target is None else cues + [(0xFA,), (0xF8,), (0xF8,), (0xFC,)])
+    assert sends_to(fake_rtmidi.log, PORTS[0]) == []
+    assert fake_rtmidi.log.count(('open', PORTS[1])) == 1
+    assert fake_rtmidi.log.count(('open', PORTS[2])) == 1
+
+
+def test_file_route_keeps_dead_mirror_dropped(fake_rtmidi):
+    from showsync.setlist import EgressFilter
+    egress = open_egress([EgressFilter('Midi Out 2', ('clock', 'file'))],
+                         virtual=open_virtual_cue_port())
+    route = egress.open_file_output('Midi Out 2')
+    port = egress.ports[0][1]
+    def unplugged(message):
+        raise RuntimeError('disconnected')
+    port.send_message = unplugged
+    route.send_message((0x90, 60, 100))
+    # A later song must not reopen a failed mirror as an unfiltered output.
+    egress.open_file_output(1).send_message((0x90, 61, 100))
+    egress.send(0xF8)
+    assert egress.hardware_names == []
+    assert sends_to(fake_rtmidi.log, PORTS[1]) == []
+    assert sends_to(fake_rtmidi.log, VIRTUAL_PORT_NAME) == [(0xF8,)]
+    assert fake_rtmidi.log.count(('open', PORTS[1])) == 1
+
+
+def test_file_route_close_preserves_mirror_and_owns_separate_synth(fake_rtmidi):
+    from showsync.setlist import EgressFilter
+    egress = open_egress([EgressFilter('KeyStep', ('clock', 'transport'))])
+    egress.open_file_output('KeyStep').close_port()
+    assert not [e for e in fake_rtmidi.log if e[0] == 'close']
+    route = egress.open_file_output('Midi Out 2')
+    route.send_message((0x90, 60, 100))
+    route.close_port()
+    egress.send(0xF8)
+    assert sends_to(fake_rtmidi.log, PORTS[1]) == [(0x90, 60, 100)]
+    assert sends_to(fake_rtmidi.log, PORTS[2]) == [(0xF8,)]
+    assert [e for e in fake_rtmidi.log if e[0] == 'close'] == [('close', PORTS[1])]
+
+
+@pytest.mark.parametrize('failure', ['open', 'missing', 'ambiguous'])
+def test_failed_mirror_open_cannot_be_reopened_unfiltered(failure, fake_rtmidi, monkeypatch):
+    from showsync.setlist import EgressFilter
+    original = fake_rtmidi.open_port
+    def fail_once(self, index):
+        monkeypatch.setattr(fake_rtmidi, 'open_port', original)
+        raise RuntimeError('busy')
+    if failure == 'open':
+        monkeypatch.setattr(fake_rtmidi, 'open_port', fail_once)
+    elif failure == 'missing':
+        fake_rtmidi.ports = PORTS[:2]
+    else:
+        fake_rtmidi.ports = PORTS + ['KeyStep Second']
+    egress = open_egress([EgressFilter('KeyStep', ('clock', 'transport'))])
+    fake_rtmidi.ports = list(PORTS)
+    egress.open_file_output(PORTS[2]).send_message((0x90, 60, 100))
+    assert sends_to(fake_rtmidi.log, PORTS[2]) == []
+    assert ('open', PORTS[2]) not in fake_rtmidi.log

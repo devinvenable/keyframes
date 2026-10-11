@@ -188,6 +188,7 @@ def main(argv=None):
             clock = ClockEngine(audio.maps, audio.position, midi.send,
                                 clock_offset_ms=offset, send_transport=devices.send_transport,
                                 events=events, keystep_send=midi.send_keystep_transport,
+                                event_output=midi.open_file_output,
                                 controls=song_controls(setlist) if setlist is not None else None)
             clock.start()
             audio.start()

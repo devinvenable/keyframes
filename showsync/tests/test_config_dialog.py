@@ -36,12 +36,12 @@ def test_set_settings_menu_saves_filters_setup_and_title(window_factory, tmp_pat
     reopened = Document.load(doc.path)
     assert reopened.title == 'New title'
     assert reopened.keyframes == (('aged', 'insect'), 7)
-    assert reopened.setlist().midi_outputs == (EgressFilter('TBOX Out 2', ('clock',)),)
+    assert reopened.setlist().midi_outputs == (EgressFilter('TBOX Out 2', ('clock', 'file')),)
     assert '# keep set comment' in doc.path.read_text()
     unchanged = doc.path.read_text()
     reopened.save()
     assert doc.path.read_text() == unchanged
-    assert 'TBOX Out 2 (clock)' in w.midi_status.text()
+    assert 'TBOX Out 2 (clock, file)' in w.midi_status.text()
     w.play()
     assert not w.set_settings_action.isEnabled() and not w.song_settings_action.isEnabled()
 
@@ -108,7 +108,7 @@ def test_invalid_or_cancelled_configuration_does_not_mutate(tmp_path, qtbot):
     assert doc.title == 'Stage test'
     dialog.banks.setText('aged')
     dialog.outputs.add_output('TBOX')
-    for column in (1, 2, 3):
+    for column in range(1, dialog.outputs.table.columnCount()):
         dialog.outputs.table.item(0, column).setCheckState(Qt.Unchecked)
     dialog.accept()
     assert 'nonempty' in dialog.error.text() and doc.midi_outputs == ()
@@ -146,7 +146,7 @@ def test_run_override_dialog_reaches_cli_engine_and_can_be_cleared(rig, monkeypa
     doc.midi_outputs = ('Set port',)
     _, _, close = kw['start_engines'](doc.setlist())
     close()
-    assert tuple(egress.call_args.args[0]) == (EgressFilter('TBOX Out 2', ('clock',)),)
+    assert tuple(egress.call_args.args[0]) == (EgressFilter('TBOX Out 2', ('clock', 'file')),)
     dialog.override_outputs.setChecked(False)
     dialog.accept()
     _, _, close = kw['start_engines'](doc.setlist())

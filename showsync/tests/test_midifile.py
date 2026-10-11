@@ -265,7 +265,7 @@ def test_mid_loop_cleanup_and_resume(action):
 
 
 @pytest.mark.parametrize('selection', ['Missing synth', 99])
-def test_unavailable_file_output_falls_back_to_clock(selection, monkeypatch, caplog):
+def test_unavailable_file_output_skips_playback(selection, monkeypatch, caplog):
     import sys
     from types import SimpleNamespace
     class Output:
@@ -275,9 +275,9 @@ def test_unavailable_file_output_falls_back_to_clock(selection, monkeypatch, cap
     fake = Fake([TempoMap(120)], events=looping_view(midi_port=selection))
     fake.run_until(.1)
     fake.engine.close()
-    assert fake.sent()[0][1] == EVENTS[0].data
-    assert [data for _, data in fake.sent()[-2:]] == [(0xB0, 64, 0), (0xB0, 123, 0)]
-    assert 'using clock port' in caplog.text
+    assert fake.sent() == []
+    assert any(data == CLOCK for _, data in fake.messages)
+    assert 'playing without MIDI file' in caplog.text
     assert str(selection) in caplog.text
 
 

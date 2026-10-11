@@ -71,7 +71,7 @@ class Song:
         return TempoMap(self.bpm, events, duration, max(0.0, self.offset - self.trim))
 
 
-EGRESS_CLASSES = ('clock', 'transport', 'cues')
+EGRESS_CLASSES = ('clock', 'transport', 'cues', 'file')
 
 
 @dataclass(frozen=True)
@@ -258,7 +258,7 @@ def port_matcher(value, field):
 
 def egress_entry(value, field):
     """One midi_outputs entry: a bare selector (full egress) or a
-    {port: ..., send: [clock|transport|cues, ...]} subset."""
+    {port: ..., send: [clock|transport|cues|file, ...]} subset."""
     if not isinstance(value, dict):
         return port_matcher(value, field)
     entry = mapping(value, YAML_FIELDS['egress'], field)

@@ -14,7 +14,7 @@ LOG = logging.getLogger(__name__)
 class ClockEngine:
     def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep,
                  clock_offset_ms=0, send_transport=True, events=None, controls=None,
-                 keystep_send=None):
+                 keystep_send=None, event_output=None):
         self.maps, self.position, self.send = maps, position, send
         self.now, self.sleep = now, sleep
         # Optional per-song visual-control messages (indexable like maps, one
@@ -34,7 +34,10 @@ class ClockEngine:
         self._loop_beats = None
         self._iteration = 0
         self._event_port = None
-        self._event_send = send
+        self._open_event_output = event_output or open_midi_port
+        self._default_event_send = (event_output(None).send_message
+                                    if event_output is not None else send)
+        self._event_send = self._default_event_send
         self._channels = set()
         self._key = None
         self._active = False
@@ -98,11 +101,13 @@ class ClockEngine:
                 self._loop_beats = playback.loop_beats if playback.events else None
                 if playback.events and playback.port is not None:
                     try:
-                        self._event_port = open_midi_port(playback.port)
+                        self._event_port = self._open_event_output(playback.port)
                         self._event_send = self._event_port.send_message
                     except Exception as exc:
-                        LOG.warning('MIDI file output %r unavailable (%s) — using clock port',
+                        LOG.warning('MIDI file output %r unavailable (%s) — playing without MIDI file',
                                     playback.port, exc)
+                        self._song_events = ()
+                        self._loop_beats = None
             elif self.events is not None:
                 self._song_events = self.events[p.song_index]
             self._cursor = 0
@@ -196,7 +201,7 @@ class ClockEngine:
                 self._event_port.close_port()
             finally:
                 self._event_port = None
-                self._event_send = self.send
+                self._event_send = self._default_event_send
 
     def _run(self):
         self.priority_raised = raise_thread_priority()

@@ -1,0 +1,21 @@
+--- a/songs/fullshow-set.yaml
++++ b/songs/fullshow-set.yaml
+@@ -7,15 +7,15 @@
+ audio_root: fullshow
+ 
+ # Rig topology v3 (D15): Devin is his rig's transport master. ShowSync sends
+-# CLOCK ONLY - to the KeyStep (USB tempo sync; its clock toggle stays USB)
+-# and to David (TBOX Out 2, plus his per-song midi: files below). Devin's
++# Clock + transport to the KeyStep (USB sync; its clock toggle stays USB);
++# clock + file playback to David (TBOX Out 2), excluding visual cues. Devin's
+ # synths hang off the KeyStep's DIN OUT via the thru box, never off the
+ # TBOX; TBOX Out 1 stays an unconnected spare.
+ midi_outputs:
+   - {port: KeyStep, send: [clock, transport]}  # KeyStep USB - clock + the K104
+                                                # bar-quantized Stop/Start that
+                                                # re-anchors the drums each song
+-  - {port: "Midi Out 2", send: [clock]}  # TBOX Out 2 - David's rig, clock only
++  - {port: "Midi Out 2", send: [clock, file]}  # David: clock + .mid, no visual cues
+ 
+ keyframes:
+   banks: [brain-surgery, insect-war-aged, robot-society-symbols]   # complete sorted list (PC 1, 2, 3)
