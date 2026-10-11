@@ -47,6 +47,7 @@ CLI = {
     'midi_transport': gui('MainWindow.transport_action'),
     'keystep_stop_cc': cli_only('Hardware MIDI Control Center remap for this rig; launch override shared by GUI and headless, not set metadata.'),
     'keystep_start_cc': cli_only('Hardware MIDI Control Center remap for this rig; launch override shared by GUI and headless, not set metadata.'),
+    'keystep_start_quantize': cli_only('Rig-wide KeyStep restart policy, shared by GUI and headless launch; default four-beat bar alignment, with beat/off overrides for hardware troubleshooting, not song metadata.'),
     'clock_offset': gui('MainWindow.offset_action'),
     'export_bundle': gui('MainWindow.export_bundle'),
     'import_bundle': gui('MainWindow.import_bundle'),

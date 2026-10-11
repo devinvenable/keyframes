@@ -225,6 +225,16 @@ enabled, and a KeyStep output that allows `transport` in its `send` filter.
 Its realtime return through DIN/TBOX is suppressed for one second after egress,
 using the same echo gate as normal clock transport. Each translation logs at INFO.
 
+Play waits for the next four-beat bar by default. The clock thread emits Start
+immediately before the boundary clock tick so the sequencer returns on the one.
+Use `--keystep-start-quantize beat` for the next beat, or
+`--keystep-start-quantize off` for immediate Play. Stop always sends immediately
+and cancels any waiting Start; pressing Play again while waiting keeps the same
+next boundary. Pausing, stopping, or resetting the show also clears a waiting
+Start. These launch options apply in both GUI and headless mode. Bars are four
+beats, independent of MIDI file loop length. INFO logs report when Start is
+armed (including ticks until the boundary) and when it is emitted on the grid.
+
 If MIDI Control Center remaps the buttons, launch ShowSync with
 `--keystep-stop-cc 51 --keystep-start-cc 54` (substitute your distinct CC numbers,
 0–127). These hardware-specific launch options apply in GUI and headless mode;

@@ -59,6 +59,9 @@ def build_parser():
                         help='KeyStep Stop button CC (default 51); relay to rig only')
     parser.add_argument('--keystep-start-cc', type=midi_cc, default=54, metavar='CC',
                         help='KeyStep Play button CC (default 54); relay to rig only')
+    parser.add_argument('--keystep-start-quantize', choices=('off', 'beat', 'bar'), default='bar',
+                        help='relay KeyStep Play on the next clock grid boundary '
+                             '(default bar = 4 beats); off sends immediately; Stop is always immediate')
     parser.add_argument('--clock-offset', type=float, metavar='MS',
                         help='MIDI clock offset (-250..250 ms); positive = earlier ticks; this run only')
     parser.add_argument('--export-bundle', metavar='ZIP',
@@ -188,6 +191,7 @@ def main(argv=None):
             clock = ClockEngine(audio.maps, audio.position, midi.send,
                                 clock_offset_ms=offset, send_transport=devices.send_transport,
                                 events=events, keystep_send=midi.send_keystep_transport,
+                                keystep_start_quantize=args.keystep_start_quantize,
                                 event_output=midi.open_file_output,
                                 controls=song_controls(setlist) if setlist is not None else None)
             clock.start()

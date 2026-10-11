@@ -14,7 +14,9 @@ LOG = logging.getLogger(__name__)
 class ClockEngine:
     def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep,
                  clock_offset_ms=0, send_transport=True, events=None, controls=None,
-                 keystep_send=None, event_output=None):
+                 keystep_send=None, event_output=None, keystep_start_quantize='bar'):
+        if keystep_start_quantize not in ('off', 'beat', 'bar'):
+            raise ValueError('keystep_start_quantize must be off, beat, or bar')
         self.maps, self.position, self.send = maps, position, send
         self.now, self.sleep = now, sleep
         # Optional per-song visual-control messages (indexable like maps, one
@@ -25,6 +27,12 @@ class ClockEngine:
         self.clock_offset_ms = clock_offset_ms
         self.send_transport = send_transport
         self.keystep_send = keystep_send
+        self.keystep_start_quantize = keystep_start_quantize
+        # Song meter is currently fixed at four quarter-note beats per bar;
+        # MIDI file loop length is phrase length, not a time signature.
+        self._keystep_grid = {'off': 0, 'beat': 24, 'bar': 96}[keystep_start_quantize]
+        self._keystep_pending = False
+        self._keystep_lock = threading.RLock()
         # Optional per-song MidiEvent lists (indexable like maps). File events
         # ride this thread on the same clock_time, so ramps and the clock
         # offset move ticks and file playback together.
@@ -65,13 +73,21 @@ class ClockEngine:
         return self.now() - self._transport_stamp
 
     def relay_keystep_transport(self, status):
-        """Send a rig-only button command without changing playback or clock.
+        """Arm Start on the clock grid; Stop always cancels and sends now."""
+        with self._keystep_lock:
+            if status == STOP:
+                self._keystep_pending = False
+            if not self.send_transport or self.keystep_send is None:
+                return False
+            if status == START and self._keystep_grid:
+                self._keystep_pending = True
+                LOG.info('Start armed (quantize=%s, fires in %d ticks)',
+                         self.keystep_start_quantize, (-self._tick) % self._keystep_grid)
+                return True
+            return self._send_keystep_transport(status)
 
-        Stamp before sending, just like clock transport, so the DIN/TBOX
-        round trip is covered by TransportControl's existing echo window.
-        """
-        if not self.send_transport or self.keystep_send is None:
-            return False
+    def _send_keystep_transport(self, status):
+        # Stamp at emission, before even a synchronous DIN/TBOX echo.
         self._transport_stamp = self.now()
         return self.keystep_send(status)
 
@@ -87,9 +103,16 @@ class ClockEngine:
                 self._send_transport_byte(STOP)
             self._active = False
         if not p.playing or p.ended:
+            with self._keystep_lock:
+                self._keystep_pending = False
             return .001
         if reset:
-            self._tick = 0
+            with self._keystep_lock:
+                self._tick = 0
+                # A new song/epoch sends its own Start; no stale button arm
+                # may restart the sequencer later in that song.
+                if self._key is not None:
+                    self._keystep_pending = False
             self._last_sent_time = self._last_target = None
             self._song_events = ()
             self._loop_beats = None
@@ -166,9 +189,19 @@ class ClockEngine:
             interval = max(0, target - self._last_target)
             remaining = max(remaining, self._last_sent_time + interval / 2 - audio_time)
         if remaining <= 1e-9:
-            self.send(CLOCK)
-            self._last_sent_time, self._last_target = audio_time, target
-            self._tick += 1
+            emitted_start = False
+            with self._keystep_lock:
+                if self._keystep_pending and self._tick % self._keystep_grid == 0:
+                    self._keystep_pending = False
+                    if self.send_transport and self.keystep_send is not None:
+                        emitted_start = self._send_keystep_transport(START)
+                # Start resets the slave; this immediately following F8 is
+                # its first tick. Keep arm/cancel out of this send pair.
+                self.send(CLOCK)
+                self._last_sent_time, self._last_target = audio_time, target
+                self._tick += 1
+            if emitted_start:
+                LOG.info('Start emitted on grid')
             remaining = tempo.T(self._tick / 24) - clock_time
             if self._tick > self._startup_until + 1:
                 remaining = max(remaining, (tempo.T(self._tick / 24) - target) / 2)
@@ -225,6 +258,8 @@ class ClockEngine:
                 self._close_event_port()
 
     def _stop(self):
+        with self._keystep_lock:
+            self._keystep_pending = False
         if self._active:
             try:
                 try:
