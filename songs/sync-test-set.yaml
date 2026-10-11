@@ -1,0 +1,9 @@
+title: "Sync drift test (one song)"
+# T302: single real show song for background jitter measurement via a null
+# sink (measure_jitter.py --setlist). Song stanza copied verbatim from
+# three-song-set.yaml.
+audio_root: .
+songs:
+  - name: "Neon Undertow"          # 112.003 fitted
+    file: neon_undertow_trimmed.wav
+    bpm: 112.003456
