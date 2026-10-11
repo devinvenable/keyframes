@@ -58,6 +58,21 @@ def test_dropped_ticks_and_underruns_still_fail():
     assert not measure_jitter.evaluate(*streams(), dropped_ticks=0, audio_underruns=2)['passed']
 
 
+def test_setlist_run_seconds_covers_trim_and_gap(tmp_path):
+    import numpy as np
+    import soundfile as sf
+
+    from showsync.setlist import Setlist, Song
+
+    rate = 8000
+    a, b = tmp_path / 'a.wav', tmp_path / 'b.wav'
+    sf.write(a, np.zeros(rate * 4, dtype='float32'), rate)   # 4s
+    sf.write(b, np.zeros(rate * 10, dtype='float32'), rate)  # 10s
+    setlist = Setlist('t', (Song('a', a, 120),
+                            Song('b', b, 120, trim=3, gap=1.5)))
+    assert measure_jitter.setlist_run_seconds(setlist) == pytest.approx(4 + 10 - 3 + 1.5)
+
+
 def test_count_mismatch_raises():
     sent, received = streams()
     with pytest.raises(RuntimeError):

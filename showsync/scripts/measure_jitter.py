@@ -6,6 +6,7 @@ existing loopMIDI/hardware loop with --input-port and --output-port. No simulate
 transport is substituted if a device cannot be opened.
 """
 import argparse
+import contextlib
 import gc
 import json
 import multiprocessing
@@ -25,7 +26,7 @@ import soundfile as sf
 from showsync.audio import AudioEngine
 from showsync.clock import CLOCK, ClockEngine
 from showsync.egress import ALL_CLASSES, CLOCK_BIT, CUES_BIT, MidiEgress, TRANSPORT_BIT
-from showsync.setlist import Setlist, Song
+from showsync.setlist import Setlist, Song, load_setlist
 from showsync.tempomap import TempoEvent
 
 # Mirror fan-outs cycle these per-port class masks so the measured run
@@ -33,6 +34,12 @@ from showsync.tempomap import TempoEvent
 # v3 KeyStep/David ports), and a transport+cues port.
 MIRROR_MASKS = [('full', ALL_CLASSES), ('clock', CLOCK_BIT),
                 ('transport+cues', TRANSPORT_BIT | CUES_BIT)]
+
+
+def setlist_run_seconds(setlist):
+    """Total playback seconds of a real setlist: file duration less trim, plus gap."""
+    return sum(sf.info(str(song.file)).duration - song.trim + song.gap
+               for song in setlist.songs)
 
 
 def evaluate(sent, received, dropped_ticks, audio_underruns):
@@ -104,6 +111,10 @@ def receive_process(pipe, selection, token):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seconds', type=float, default=15)
+    parser.add_argument('--setlist', type=Path, metavar='YAML',
+                        help='play this real setlist (songs, tempo maps) instead of '
+                             'the synthetic 440Hz tone; --seconds is ignored and the '
+                             'run covers the full setlist')
     parser.add_argument('--audio-device', type=lambda s: int(s) if s.isdecimal() else s)
     parser.add_argument('--input-port')
     parser.add_argument('--output-port')
@@ -117,7 +128,7 @@ def main():
                              'fan-out (tasks 259/261); the gate still judges the '
                              'measured send timestamps')
     args = parser.parse_args()
-    if args.seconds < 3:
+    if args.setlist is None and args.seconds < 3:
         parser.error('--seconds must be at least 3')
     midi_out = audio = clock = receiver = pipe = None
     mirrors = []
@@ -163,14 +174,24 @@ def main():
         if mirrors:
             result['mirror_ports'] = len(mirrors)
             result['mirror_filters'] = [name for name, _, _ in mirror_entries]
-        with tempfile.TemporaryDirectory(prefix='showsync-jitter-') as directory:
-            path = Path(directory) / 'probe.wav'
-            # Low-level original tone; real output stream stays active throughout.
-            rate = 44100
-            data = (.005 * np.sin(2 * np.pi * 440 * np.arange(round(args.seconds * rate)) / rate)).astype('float32')
-            sf.write(path, data, rate)
-            song = Song('jitter probe', path, 120, tempo=(TempoEvent(1, 160, args.seconds - 2),))
-            audio = AudioEngine(Setlist('jitter probe', (song,)), device=args.audio_device)
+        with contextlib.ExitStack() as stack:
+            if args.setlist is not None:
+                setlist = load_setlist(args.setlist)
+                run_seconds = setlist_run_seconds(setlist)
+                result['setlist'] = str(args.setlist)
+                result['songs'] = [song.name for song in setlist.songs]
+            else:
+                directory = stack.enter_context(
+                    tempfile.TemporaryDirectory(prefix='showsync-jitter-'))
+                path = Path(directory) / 'probe.wav'
+                # Low-level original tone; real output stream stays active throughout.
+                rate = 44100
+                data = (.005 * np.sin(2 * np.pi * 440 * np.arange(round(args.seconds * rate)) / rate)).astype('float32')
+                sf.write(path, data, rate)
+                song = Song('jitter probe', path, 120, tempo=(TempoEvent(1, 160, args.seconds - 2),))
+                setlist = Setlist('jitter probe', (song,))
+                run_seconds = args.seconds
+            audio = AudioEngine(setlist, device=args.audio_device)
             if args.freeze_gc:
                 import sounddevice  # Finish native backend imports before freezing.
                 audio.prepare()
@@ -190,7 +211,7 @@ def main():
             clock = ClockEngine(audio.maps, audio.position, send)
             clock.start()
             audio.start()
-            deadline = time.monotonic() + args.seconds + 15
+            deadline = time.monotonic() + run_seconds + 15
             while not audio.position().ended and time.monotonic() < deadline:
                 if audio.error or clock.error:
                     raise RuntimeError(audio.error or clock.error)
