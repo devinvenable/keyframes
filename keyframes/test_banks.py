@@ -251,3 +251,56 @@ def test_bank_state_absent_env_and_write_failure_are_harmless(library, monkeypat
                        str(tmp_path / 'missing-dir' / 'bank_state'))
     media, _, _ = banks.load('default')
     assert banks.name == 'default'
+
+
+def test_cycle_policy_is_opt_in_and_bank_local(library):
+    root, banks = library
+    policy = root / 'banks' / 'other' / 'playback.json'
+    banks.load('other')
+    assert not banks.cycle_unmapped
+    policy.write_text('{"cycle_unmapped": true}')
+    banks.load('other')
+    assert banks.cycle_unmapped
+    banks.load('default')
+    assert not banks.cycle_unmapped
+    policy.write_text('{"cycle_unmapped": "true"}')
+    banks.load('other')
+    assert not banks.cycle_unmapped
+
+
+def test_cycle_playback_covers_range_without_mutating_manifest(library, tmp_path):
+    root, banks = library
+    mapping, _, config = banks.load('other')
+    before = (root / 'banks' / 'other' / 'mapping.json').read_bytes()
+    extra = pygame.Surface((8, 8))
+    extra.fill('blue')
+    mapping[49] = {'type': 'image', 'surface': extra, 'name': 'second.png'}
+    original = dict(mapping)
+    state = {'surface': None, 'video_player': None, 'note_active': None}
+    log = tmp_path / 'fallback.jsonl'
+    logger = main.MidiEventLogger(str(log))
+    for note in range(36, 100):
+        q = queue.Queue()
+        q.put(mido.Message('note_on', note=note, velocity=100))
+        main.process_midi_messages(q, 36, 99, mapping, (32, 32), state,
+                                  scenes_config=config, cycle_unmapped=True,
+                                  midi_logger=logger)
+        assert state['note_active'] == note
+        assert state['surface'] is mapping[48 + (note - 48) % 2]['surface']
+    logger.close()
+    assert all(r['mapped'] for r in map(json.loads, log.read_text().splitlines())
+               if r.get('type') == 'note_on')
+    assert mapping == original
+    assert (root / 'banks' / 'other' / 'mapping.json').read_bytes() == before
+    # Explicit pins always win, even for a non-contiguous map.
+    mapping[55] = mapping.pop(49)
+    assert main.playback_media(mapping, 55, True) is mapping[55]
+    assert main.playback_media(mapping, 60, False) is None
+
+
+def test_startup_reports_actual_sparse_coverage(library, capsys):
+    _, banks = library
+    banks.load('other')
+    text = capsys.readouterr().out
+    assert '1/64 playable notes mapped (playable range 36-99)' in text
+    assert 'Mapped notes: [48]' in text

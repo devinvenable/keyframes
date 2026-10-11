@@ -226,8 +226,8 @@ MIDI-file playback does not start a helper in either mode.
 During `scripts/perform.sh` captures (which set `KEYFRAMES_MIDI_LOG`), or when
 run manually with `--midi-log <path>`, Keyframes appends incoming MIDI
 events from accepted sources to a JSON Lines sidecar — ground truth of the performance (which keys
-fired when), and for sequenced material the clock stream *is* the beat grid, so
-later edits never have to re-derive tempo from audio. Off by default: normal
+fired when). Accepted MIDI clock is summarized as an arrival-rate tempo estimate;
+the sidecar no longer preserves individual clock ticks or an exact beat grid. Off by default: normal
 playing writes no files.
 
 One JSON object per line. The first line is a self-describing reference:
@@ -244,16 +244,18 @@ One JSON object per line. The first line is a self-describing reference:
   `recording_start` epoch = `t_rec`, seconds on the recorded video's timeline.
 - Real note-ons (velocity > 0) carry `mapped`: whether the note currently
   triggers media (in range, on the listened channel, and mapped to a file).
-- All message types are logged (`control_change`, `program_change`,
-  `pitchwheel`, `clock`, ...). Clock ticks appear only when the connected
-  sequencer actually sends MIDI clock, and can dominate the file (24/beat).
+- Non-clock messages are logged individually (`control_change`, `program_change`,
+  `pitchwheel`, transport, notes). Accepted clocks produce one `clock_summary`
+  per port every five seconds, with `count`, `first_monotonic`, `last_monotonic`,
+  and estimated `bpm` (24 ticks/beat; null for a single tick). Buffered arrivals
+  can distort this estimate. Pending counts flush on clean close.
 - A `note_source` startup record identifies the requested/effective source
   and selected ports. Ignored channel messages produce `note_source_filtered`
   summaries instead of raw events: counts by message type and one example,
   at most once per five seconds per port. Pending counts flush on clean close;
   a crash can lose ignored-source counts since the last summary.
 - Crash-safe: performance events are flushed per line, so a killed process
-  loses at most buffered clock ticks. Stale events drained at startup are
+  can lose up to five seconds of pending clock counts. Stale events drained at startup are
   never logged.
 
 At take end, `perform.sh` derives a best-effort `<take>.mid`
@@ -515,9 +517,10 @@ or contain unmapped media; use the grid to assign keys.
 The **brain-surgery** bank for **Slow and Easy** starts at the KeyStep's bottom
 key, MIDI note **41**. Notes **41–54** hold the curated stills in source-number
 order: 02 BW, 04, 06, 07, 09 BW, 10 BW, 13, 14, 15, 16, 17 color, 17 BW,
-18 BW, 20 BW. Notes **55–58** hold the 13–16 orbit MP4s. These are unchanged
-copies from `generated/brain-surgery/`: 1024×1024 PNGs and silent 960×960 clips
-(97 frames at 24 fps, about four seconds). The bank inherits global scene and
+18 BW, 20 BW. Notes **55–58** hold the 13–16 looping orbit GIFs
+(480×480, 61 frames at 15 fps, about four seconds); stills are 1024×1024 PNGs.
+Other notes hold the current picture by default. See the
+[bank coverage policy](banks/README.md) for optional runtime cycling. The bank inherits global scene and
 overlay settings. Launch with `python main.py --bank brain-surgery`.
 
 The live `songs/fullshow-set.yaml` is local and ignored by Git. After installing
@@ -551,3 +554,19 @@ selection is deferred to a later version; ShowSync behavior is unchanged.
 - Multi-monitor aware — automatically picks a landscape display
 - `--zoom-ring` gives each MIDI note its own 16-step repeat-hit cycle: first hit is normal size, then each hit on that note scales slightly larger until it wraps back to normal
 - Latch mode is on by default, so short percussive MIDI notes still leave the last hit visible; use `--no-latch` or press **L** at runtime to return to note-off release behavior
+
+### Visual stagnation diagnostics
+
+`KEYFRAMES_STALL_LOG=/path/to/stall.log` enables both the existing ten-second
+render-stall stack dump and a displayed-pixel stagnation detector. While a
+plain video/GIF is active, the detector samples 32×18 displayed pixels roughly
+every 0.37 seconds. More than five seconds unchanged emits one
+`display_stagnation` record to the stall log and the MIDI sidecar (if enabled),
+including media path, note, duration, loop and finished flags. Content movement
+or a new player rearms detection. Grid view, scenes, still images and completed
+non-looping videos are excluded because their holds can be intentional. A
+static passage can still trigger a diagnostic; it never restarts media.
+
+A failed GIF rewind now reopens the capture instead of marking playback
+permanently finished. Failed reads or decode exceptions preserve the last
+frame and retry with a one-second backoff, avoiding a busy recovery loop.
