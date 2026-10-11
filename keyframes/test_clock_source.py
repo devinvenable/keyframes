@@ -118,7 +118,7 @@ def test_rejected_clocks_have_bounded_summaries_and_close_flush(rig, tmp_path):
     summaries = [r for r in records if r.get('event') == 'clock_source_filtered']
     assert [r['counts'] for r in summaries] == [{'clock': 1}, {'clock': 3}, {'clock': 1}]
     assert all(r['port'] == RAW for r in summaries)
-    assert [r['port'] for r in records if r.get('type') == 'clock'] == [PORT_MIRROR]
+    assert [r['port'] for r in records if r.get('event') == 'clock_summary'] == [PORT_MIRROR]
 
 
 @pytest.mark.parametrize('mode', ['inproc', 'process'])
@@ -154,7 +154,7 @@ def test_main_wires_clock_selection(rig, tmp_path, monkeypatch, mode, args, miss
     records = [json.loads(line) for line in path.read_text().splitlines()]
     selected = next(r for r in records if r.get('event') == 'clock_source')
     assert selected['ports'] == [expected]
-    assert [r['port'] for r in records if r.get('type') == 'clock'] == [expected]
+    assert [r['port'] for r in records if r.get('event') == 'clock_summary'] == [expected]
 
 
 @pytest.mark.parametrize('mode', ['inproc', 'process'])
@@ -214,5 +214,5 @@ def test_main_reselects_fallback_after_cue_disappears_and_returns(
     records = [json.loads(line) for line in path.read_text().splitlines()]
     selections = [r['ports'] for r in records if r.get('event') == 'clock_source']
     assert selections == [[CUE], [], [renamed]]
-    assert [r['port'] for r in records if r.get('type') == 'clock'] == [CUE, renamed]
+    assert [r['port'] for r in records if r.get('event') == 'clock_summary'] == [CUE, renamed]
     assert observed_bpm == [137, 137, 137]

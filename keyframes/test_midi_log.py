@@ -94,12 +94,15 @@ def test_events_logged_with_required_fields(tmp_path):
 
 
 def test_other_types_logged_with_type(tmp_path):
-    # "log type for anything else": clock and transport still get a line.
+    # Transport remains verbatim; accepted clock is summarized on close.
     log = tmp_path / 'take.midi.jsonl'
     logger = MidiEventLogger(str(log))
     run_messages([mido.Message('clock'), mido.Message('start')], logger)
     logger.close()
-    assert [r['type'] for r in read_log(log)[1:]] == ['clock', 'start']
+    records = read_log(log)[1:]
+    assert records[0]['type'] == 'start'
+    assert records[1]['event'] == 'clock_summary'
+    assert records[1]['count'] == 1
 
 
 def test_events_logged_before_any_filtering(tmp_path):
@@ -152,14 +155,17 @@ def test_performance_events_flushed_per_line(tmp_path):
     assert records[-1]['type'] == 'note_on' and records[-1]['velocity'] == 9
 
 
-def test_clock_ticks_may_ride_the_buffer_but_flush_with_next_event(tmp_path):
+def test_clock_ticks_aggregate_without_delaying_notes(tmp_path):
     log = tmp_path / 'take.midi.jsonl'
     logger = MidiEventLogger(str(log))
     for _ in range(3):
         logger.log_message(mido.Message('clock'), 'p')
     logger.log_message(mido.Message('note_on', note=40, velocity=9), 'p')
     types = [r['type'] for r in read_log(log)[1:]]
-    assert types == ['clock', 'clock', 'clock', 'note_on']
+    assert types == ['note_on']
+    logger.close()
+    assert read_log(log)[-1]['event'] == 'clock_summary'
+    assert read_log(log)[-1]['count'] == 3
 
 
 def test_write_failure_never_raises(tmp_path, capsys):
@@ -237,3 +243,30 @@ def test_mid_cli_survives_truncated_final_line(tmp_path, capsys):
     assert midi_log_to_mid.main([str(log), str(out), '--t0', '1000.0']) == 0
     loaded = mido.MidiFile(str(out))
     assert sum(1 for m in loaded.tracks[0] if m.type == 'note_on') == 1
+
+
+def test_accepted_clock_summary_counts_tempo_ports_and_partial_close(tmp_path, monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(main.time, 'monotonic', lambda: now[0])
+    log = tmp_path / 'clock.jsonl'
+    logger = MidiEventLogger(str(log))
+    for i in range(241):  # 48 ticks/s = 120 BPM, including endpoints
+        now[0] = 100 + i / 48
+        logger.log_message(mido.Message('clock'), 'A')
+    rows = read_log(log)[1:]
+    assert len(rows) == 1
+    assert rows[0]['event'] == 'clock_summary'
+    assert rows[0]['count'] == 241 and rows[0]['port'] == 'A'
+    assert rows[0]['bpm'] == pytest.approx(120)
+    logger.log_message(mido.Message('clock'), 'B')
+    logger.log_message(mido.Message('stop'), 'A')
+    assert read_log(log)[-1]['type'] == 'stop'
+    now[0] += 6
+    logger.flush_clock_summaries(now[0])  # no new ticks needed to flush
+    assert read_log(log)[-1]['port'] == 'B'
+    assert read_log(log)[-1]['bpm'] is None
+    logger.log_message(mido.Message('clock'), 'A')
+    logger.close()
+    summaries = [r for r in read_log(log) if r.get('event') == 'clock_summary']
+    assert sum(r['count'] for r in summaries) == 243
+    assert not any(r.get('type') == 'clock' for r in read_log(log))

@@ -512,7 +512,11 @@ def load_media(start_note, end_note, media_dir=None, mapping_path=None):
 
     num_files = len(media_by_file)
     num_videos = sum(1 for m in media_by_file.values() if m['type'] == 'video')
-    print(f"Loaded {num_files} media files ({num_videos} videos), mapped across notes {start_note}-{end_note}")
+    notes = sorted(note_to_media)
+    print(f"Loaded {num_files} media files ({num_videos} videos); "
+          f"{len(notes)}/{end_note - start_note + 1} playable notes mapped "
+          f"(playable range {start_note}-{end_note})")
+    print(f"Mapped notes: {notes}")
     print(f"Video notes: {sorted(n for n, m in note_to_media.items() if m['type'] == 'video')}")
     return note_to_media
 
@@ -553,6 +557,7 @@ class MediaBanks:
         self.default_paths = (IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH)
         self.default_overlays = OVERLAYS_CONFIG_PATH
         self.overlays_config = None  # published by load()
+        self.cycle_unmapped = False
         self.name = 'default'
         self.notice = ''
         self.notice_until = 0
@@ -592,11 +597,21 @@ class MediaBanks:
             media or {}, (GRID_THUMB_W, GRID_THUMB_H), media_dir)
         config = load_scenes_config(scenes_path)
         overlays_config = load_overlays_config(overlays_path)
+        # A performance-only fallback, separate from the editor's sparse 1:1
+        # manifest. Default off; a bank must explicitly opt in.
+        playback_path = Path(media_dir) / 'playback.json'
+        try:
+            playback = json.loads(playback_path.read_text())
+        except (OSError, ValueError):
+            playback = {}
+        cycle_unmapped = (isinstance(playback, dict)
+                          and playback.get('cycle_unmapped') is True)
         # Nothing below can fail while loading/decoding a bank. Publish only
         # after every new cache/config is ready, before another event is handled.
         IMAGES_DIR, MAPPING_PATH, SCENES_CONFIG_PATH = media_dir, mapping_path, scenes_path
         OVERLAYS_CONFIG_PATH = overlays_path
         self.overlays_config = overlays_config
+        self.cycle_unmapped = cycle_unmapped
         self.name = name
         publish_bank_state(name)
         return media, cells, config
@@ -765,17 +780,47 @@ class VideoPlayer:
         self.last_surface = None
         self.finished = False
         self._next_frame_due = None
+        self._retry_at = None
+        self._decode_warned = False
+
+    def _retry_decode(self, now, reason):
+        # Never permanently finish a looping stream after a transient failure.
+        # Reopen on a later tick, with backoff even when the file stays broken.
+        if not self._decode_warned:
+            print(f"WARNING: video decode failed ({self.path}): {reason}; retrying")
+            self._decode_warned = True
+        self.release()
+        self._retry_at = now + 1.0
+        self._next_frame_due = None
+        return self.last_surface
+
+    def _rewind(self):
+        if not self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0):
+            self.release()
+            self.cap = open_video_capture(self.path)
 
     def _consume_frame(self):
         """Advance one frame without rendering it; rewind a looping stream."""
         if self.cap.grab():
             return True
         if self.loop:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self._rewind()
             return self.cap.grab()
         return False
 
     def get_frame(self):
+        now = self.clock()
+        if self._retry_at is not None and now < self._retry_at:
+            return self.last_surface
+        try:
+            if self._retry_at is not None:
+                self.cap = open_video_capture(self.path)
+                self._retry_at = None
+            return self._get_frame(now)
+        except Exception as exc:
+            return self._retry_decode(now, exc)
+
+    def _get_frame(self, now):
         """Return the frame due now as a pygame surface.
 
         At end-of-stream a looping player (animated GIFs) rewinds and keeps
@@ -784,7 +829,6 @@ class VideoPlayer:
             return self.last_surface
 
         if self.fps:
-            now = self.clock()
             if self._next_frame_due is None:
                 self._next_frame_due = now
             if now < self._next_frame_due and self.last_surface is not None:
@@ -805,10 +849,12 @@ class VideoPlayer:
 
         ret, frame = self.cap.read()
         if not ret and self.loop:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self._rewind()
             ret, frame = self.cap.read()
         if not ret:
-            # Video ended (or the loop rewind failed) — freeze on last frame
+            if self.loop:
+                return self._retry_decode(now, 'loop rewind returned no frame')
+            # Non-looping video intentionally holds its final frame.
             self.finished = True
             return self.last_surface
 
@@ -2282,6 +2328,59 @@ def resolve_midi_log_path(cli_value, environ=None):
     return cli_value or environ.get('KEYFRAMES_MIDI_LOG') or None
 
 
+class DisplayStagnationWatchdog:
+    """Sample displayed pixels while a plain video/GIF should be moving.
+
+    Enabled with the render watchdog's KEYFRAMES_STALL_LOG. A small pixel
+    sample is evidence of stagnation, not proof of a decoder fault: a clip
+    may deliberately contain a static passage. Never restart media here.
+    Scenes own their animation/hold semantics and are excluded.
+    """
+
+    def __init__(self, path, midi_logger=None):
+        self.path = path
+        self.midi_logger = midi_logger
+        self._player = None
+        self._sample = None
+        self._next_sample = 0.0
+        self._changed_at = 0.0
+        self._reported = False
+
+    def observe(self, screen, state, now):
+        player = state.get('video_player')
+        if (state.get('active_scene') is not None or player is None
+                or (player.finished and not player.loop)):
+            self._player = None
+            return
+        if player is not self._player:
+            self._player = player
+            self._sample = None
+            self._next_sample = now
+        if now < self._next_sample:
+            return
+        # Non-integral interval reduces aliasing with short looping clips.
+        self._next_sample = now + 0.37
+        sample = pygame.image.tobytes(pygame.transform.scale(screen, (32, 18)), 'RGB')
+        if sample != self._sample:
+            self._sample = sample
+            self._changed_at = now
+            self._reported = False
+        elif not self._reported and now - self._changed_at > 5.0:
+            self._reported = True
+            fields = dict(path=player.path, note=state.get('note_active'),
+                          stagnant_seconds=now - self._changed_at,
+                          loop=player.loop, finished=player.finished)
+            if self.midi_logger:
+                self.midi_logger.log_event('display_stagnation', **fields)
+            try:
+                with open(self.path, 'a', encoding='utf-8') as fh:
+                    fh.write(json.dumps(dict(event='display_stagnation',
+                                             epoch=time.time(), monotonic=now,
+                                             **fields)) + '\n')
+            except OSError:
+                pass  # Diagnostic failure must never stop a show.
+
+
 class MidiEventLogger:
     """Append accepted-source MIDI events to a JSONL sidecar, one object per
     line, flushed per event so the file is intact even if the process is
@@ -2298,6 +2397,7 @@ class MidiEventLogger:
         self._file = open(path, 'a', encoding='utf-8')
         self._warned = False
         self._filtered_sources = {}
+        self._clock_sources = {}
         self._write({'event': 'log_open', 'epoch': time.time(),
                      'monotonic': time.monotonic()})
 
@@ -2306,7 +2406,17 @@ class MidiEventLogger:
         `mapped` is set only for real note-ons (velocity > 0): whether the
         note currently triggers media (in range, on the listened channel,
         and mapped to a file — post-task-231 semantics)."""
-        record = {'epoch': time.time(), 'monotonic': time.monotonic(),
+        now = time.monotonic()
+        if msg.type == 'clock':
+            stats = self._clock_sources.setdefault(
+                port, {'count': 0, 'first': now, 'last': now})
+            if not stats['count']:
+                stats['first'] = now
+            stats['count'] += 1
+            stats['last'] = now
+            self.flush_clock_summaries(now)
+            return
+        record = {'epoch': time.time(), 'monotonic': now,
                   'port': port}
         fields = msg.dict()
         fields.pop('time', None)  # mido delta time, always 0 on live input
@@ -2314,6 +2424,24 @@ class MidiEventLogger:
         if mapped is not None:
             record['mapped'] = mapped
         self._write(record)
+
+    def flush_clock_summaries(self, now=None, *, force=False):
+        """Flush each port every 5s, including a partial window on close.
+
+        BPM is an arrival-rate estimate (24 ticks/beat), not a tempo map;
+        buffered bursts and transport pauses can affect it.
+        """
+        if now is None:
+            now = time.monotonic()
+        for port, stats in self._clock_sources.items():
+            if stats['count'] and (force or now - stats['first'] >= 5.0):
+                elapsed = stats['last'] - stats['first']
+                bpm = ((stats['count'] - 1) * 60 / (24 * elapsed)
+                       if elapsed > 0 else None)
+                self.log_event('clock_summary', port=port, count=stats['count'],
+                               first_monotonic=stats['first'],
+                               last_monotonic=stats['last'], bpm=bpm)
+                stats['count'] = 0
 
     def log_event(self, event, **fields):
         """Record a non-message diagnostic event (e.g. 'midi_flood') with the
@@ -2360,12 +2488,8 @@ class MidiEventLogger:
     def _write(self, record):
         try:
             self._file.write(json.dumps(record) + '\n')
-            # Flush per event so a kill never loses performance events —
-            # EXCEPT clock ticks (24/beat, ~40/s): those ride the stdio
-            # buffer and land with the next non-clock event or close. At
-            # worst a kill drops a fraction of a beat of grid, never a note.
-            if record.get('type') != 'clock':
-                self._file.flush()
+            # Only pending clock aggregates can be lost to a kill (up to 5s).
+            self._file.flush()
         except (OSError, ValueError):
             if not self._warned:
                 self._warned = True
@@ -2373,6 +2497,7 @@ class MidiEventLogger:
                       f"will be lost ({self.path})")
 
     def close(self):
+        self.flush_clock_summaries(force=True)
         for (event, port), stats in self._filtered_sources.items():
             self._flush_filtered_source(event, port, stats)
         try:
@@ -2497,6 +2622,15 @@ def note_midi_flood(current_state, dropped, midi_source, midi_logger=None,
               f"processing capped at {MIDI_FLOOD_PROCESS_CAP}/frame")
 
 
+def playback_media(note_to_media, note, cycle_unmapped=False):
+    """Resolve a playable note without adding aliases to the editable map."""
+    media = note_to_media.get(note)
+    if media is None and cycle_unmapped and note_to_media:
+        notes = sorted(note_to_media)
+        media = note_to_media[notes[(note - notes[0]) % len(notes)]]
+    return media
+
+
 def process_midi_messages(msg_source, start_note, end_note, note_to_media, target_size,
                           current_state, channel=None, clock_tracker=None,
                           min_note_beats=None, zoom_ring_enabled=False,
@@ -2504,7 +2638,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
                           latch_mode=True, display_mode='fill',
                           scenes_config=None, midi_logger=None,
                           midi_source=None, visual_control=None,
-                          note_sources=None, clock_sources=None):
+                          note_sources=None, clock_sources=None,
+                          cycle_unmapped=False):
     """Process MIDI messages and update current display state.
     Returns updated current_state dict with 'surface', 'video_player', 'note_active'.
     If channel is set, only messages on that channel are processed.
@@ -2547,7 +2682,8 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             if msg.type == 'note_on' and msg.velocity > 0:
                 mapped = ((channel is None or msg.channel == channel)
                           and start_note <= msg.note <= end_note
-                          and note_to_media.get(msg.note) is not None)
+                          and playback_media(note_to_media, msg.note,
+                                             cycle_unmapped) is not None)
             midi_logger.log_message(msg, midi_source, mapped)
 
         # Handle MIDI clock regardless of channel filter
@@ -2617,7 +2753,7 @@ def process_midi_messages(msg_source, start_note, end_note, note_to_media, targe
             # normal/negative. A different note always shows normally. Video is
             # untouched (it restarts on retrigger). last_note holds across
             # note-offs in both latch and non-latch modes.
-            media = note_to_media.get(note)
+            media = playback_media(note_to_media, note, cycle_unmapped)
             # Per-song overrides layered over the bank defaults; read at
             # note time so a cue arriving earlier in this same batch of
             # messages already applies to this trigger.
@@ -3683,6 +3819,8 @@ def main():
     stall_log_path = resolve_stall_log_path()
     if stall_log_path:
         stall_rearm = arm_stall_watchdog(stall_log_path)
+    display_watchdog = (DisplayStagnationWatchdog(stall_log_path, midi_logger)
+                        if stall_log_path else None)
 
     print("Keyboard: Z-M (lower octave), Q-P (upper octave). L: toggle latch. ESC to quit.")
     print("Tab: toggle grid/media-manager view (Up/Down or mouse wheel to scroll).")
@@ -3950,7 +4088,8 @@ def main():
                                           note_hit_counts, assign_if_selected,
                                           latch_enabled, args.display_mode,
                                           scenes_config, midi_logger, queue_source,
-                                          visual_control=visuals)
+                                          visual_control=visuals,
+                                          cycle_unmapped=banks.cycle_unmapped)
             # Only the helper owns native ports in the default mode. Its queues
             # feed the same routing/flood path as legacy inputs, on this thread.
             if live_midi is not None:
@@ -3983,7 +4122,8 @@ def main():
                                               scenes_config, midi_logger, source_name,
                                               visual_control=visuals,
                                               note_sources=note_sources,
-                                              clock_sources=clock_sources)
+                                              clock_sources=clock_sources,
+                                              cycle_unmapped=banks.cycle_unmapped)
 
             # Apply a bank program change recorded during MIDI processing here on
             # the UI/media thread — the same path (and state resets) as F5/F6.
@@ -3991,6 +4131,8 @@ def main():
 
             # Track note triggers for the grid's flash highlight (works in both views)
             now = time.monotonic()
+            if midi_logger:
+                midi_logger.flush_clock_summaries(now)
             # Follow ShowSync's virtual cue port across a ShowSync relaunch (see
             # cue_port_refresh). A refresh failure must never break the render loop.
             if (not args.midi_file and args.midi_io == 'inproc'
@@ -4062,6 +4204,9 @@ def main():
             else:
                 draw_performance_frame(screen, state, target_size, now,
                                        args.display_mode)
+            if display_watchdog:
+                # Sample before text notices/help can disguise a stuck picture.
+                display_watchdog.observe(screen, state if not grid_mode else {}, now)
 
             if now < latch_notice_until:
                 notice_font = pygame.font.SysFont(None, 36)
