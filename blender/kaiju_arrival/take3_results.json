@@ -1,0 +1,289 @@
+{
+  "status": "PASS",
+  "stage": "Endpoint preview only; camera move deferred by Devin",
+  "source": "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/take_B.blend",
+  "source_sha256": "d26bc5cfacda9db3c251c1034b68a96cddce0da95e71af823e69d21690dd9c71",
+  "blend": "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B_hold_left_third/hold_B_left_third.blend",
+  "blend_sha256": "2efe2644d44fc1148b8934f9d1c2a2f1f01dbdb774acb97cc6201299af959d14",
+  "frame": 86,
+  "original_position": [
+    -15.0,
+    -5.0,
+    0.699999988079071
+  ],
+  "position": [
+    -18.600000381469727,
+    4.599998474121094,
+    0.699999988079071
+  ],
+  "distance_from_landing": 75.18723373809878,
+  "original_distance": 85.44003745317531,
+  "closer_percent": 12,
+  "original_elevation": 28.999997197425678,
+  "elevation": 31.49999887879367,
+  "beetle_bounds": [
+    0.11876585334539413,
+    0.023150958120822906,
+    0.5479007959365845,
+    0.9366685152053833
+  ],
+  "silhouette_center_x": 0.3333333333333333,
+  "lens": 72.0,
+  "sensor_width": 170.0,
+  "locked_state_sha256": "492430636c6366ad3becd72ac10b78ef28626692967c0344055c28651cf9b5b1",
+  "exact_lens_frames_compared": 108,
+  "dust_changes": "None",
+  "negative_checks": [
+    {
+      "mutation": "Unmodified B hold is centered",
+      "assertion": "Actor silhouette must center on left third"
+    },
+    {
+      "mutation": "Unmodified B stand-off",
+      "assertion": "Endpoint must move materially closer than B"
+    },
+    {
+      "mutation": "Unmodified B upward tilt",
+      "assertion": "Endpoint must tilt further upward than B"
+    },
+    {
+      "mutation": "Restore narrow sensor and crop the close hold",
+      "assertion": "('Actor/horn cropped', [-1.3002724647521973, -1.7517871856689453, 0.7261983156204224, 2.5620455741882324])"
+    }
+  ],
+  "current_deliverable": "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B_hold_left_third/stills/frame_0086.png",
+  "png_sha256": "29dd66f303ea174ac93e9565b298cdb11cbc3426ab4ef31607705ad03697d63c",
+  "resolution": [
+    1920,
+    1080
+  ],
+  "cycles_samples": 64,
+  "grade": {
+    "blender": "4.1.1",
+    "frames": 1,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "exposure": -0.8,
+    "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+  },
+  "source_hashes_unchanged": {
+    "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/take_B.blend": "d26bc5cfacda9db3c251c1034b68a96cddce0da95e71af823e69d21690dd9c71",
+    "/home/devin/src/2026/videdit/work/kaiju_arrival_312_take2/B/take_B.blend": "99e2c9fd35ed8152659ce19d2283f34e0c7b2278f42d2e7ee50ab83780e0db7b",
+    "/home/devin/src/2026/videdit/work/kaiju_arrival_311_beetle_only/beetle_arrival_final.blend": "def2538ba5138197a5ccc8761382bd473330133be12d42ef26537f0a02efea88"
+  },
+  "motion_previews": "Stopped on Devin direction; partial EXRs are not delivered clips",
+  "initial_stills": {
+    "A": [
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/A/stills/frame_0001.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/A/stills/frame_0040.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/A/stills/frame_0052.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/A/stills/frame_0058.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/A/stills/frame_0063.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/A/stills/frame_0086.png"
+    ],
+    "B": [
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/stills/frame_0001.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/stills/frame_0040.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/stills/frame_0052.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/stills/frame_0058.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/stills/frame_0063.png",
+      "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/stills/frame_0086.png"
+    ]
+  },
+  "pixel_review": {
+    "method": "Direct visual inspection of the graded PNG via view_image",
+    "revised_frame_86": "PASS: full horn and both feet visible; beetle silhouette on left third, stronger upward perspective; foliage horizon retained; no lens-obscuring dust.",
+    "initial_A_and_B_frames_52_58_63": "PASS: dust is a low contact cloud, can cover soles at burst, but body and background remain readable. No dust thinning or pullback used.",
+    "initial_A_and_B_frame_1": "Empty valley; waiting beetle excluded."
+  },
+  "initial_candidate_verification": {
+    "A": {
+      "status": "PASS",
+      "camera_position": [
+        5.0,
+        -35.0,
+        1.0
+      ],
+      "sensor_width": 130.0,
+      "elevation_degrees": {
+        "1": 3.999993401661485,
+        "40": 3.9999968250953626,
+        "44": 3.9999951133784224,
+        "52": 11.651254334017086,
+        "58": 20.573840368064925,
+        "63": 24.000005547626134,
+        "86": 24.000005547626134
+      },
+      "exact_lens_frames_compared": 108,
+      "camera_negative_checks": [
+        {
+          "mutation": "Unfixed T312 B camera",
+          "assertion": "Camera must be at ground level, at most one unit high"
+        },
+        {
+          "mutation": "Unfixed T312 B tilt",
+          "assertion": "Zoom must reveal at least 15 degrees of upward tilt"
+        },
+        {
+          "mutation": "Restore distant station but keep ground-level height",
+          "assertion": "Camera must be near landing mark, below 150-unit stand-off"
+        },
+        {
+          "mutation": "Aim opening at waiting actor",
+          "assertion": "Waiting beetle may appear in opening: BK | hip chassis"
+        },
+        {
+          "mutation": "Restore old narrow field of view at the feet",
+          "assertion": "('Beetle cropped', 40, [-0.3044138252735138, 0.8116978406906128, 0.21227438747882843, 2.0742807388305664])"
+        }
+      ],
+      "animation_status": "PASS",
+      "animation_negative_checks": [
+        {
+          "mutation": "Restore superseded visible robot placement",
+          "assertion": "Robot must stay entirely behind the arrival camera"
+        },
+        {
+          "mutation": "Remove leap height",
+          "assertion": "Airborne beat must clear the ground by 30 units"
+        },
+        {
+          "mutation": "Raise landing four units",
+          "assertion": "Contact beat must plant soles on the ground"
+        },
+        {
+          "mutation": "Remove zoom",
+          "assertion": "Zoom must finish at a tight lens"
+        },
+        {
+          "mutation": "Start powder before foot contact",
+          "assertion": "Powder must stay invisible before contact"
+        },
+        {
+          "mutation": "Delay powder birth beyond contact",
+          "assertion": "Powder must be born on the exact contact frame"
+        },
+        {
+          "mutation": "Remove impact powder",
+          "assertion": "Dust must expand after impact"
+        },
+        {
+          "mutation": "Keep powder aloft like buoyant smoke",
+          "assertion": "Powder must return to ground height after impact"
+        },
+        {
+          "mutation": "Remove post-impact dust dilution",
+          "assertion": "Powder must dilute after its short impact burst"
+        }
+      ],
+      "partial_clip_exr_frames": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52
+      ]
+    },
+    "B": {
+      "status": "PASS",
+      "camera_position": [
+        -15.0,
+        -5.0,
+        0.699999988079071
+      ],
+      "sensor_width": 170.0,
+      "elevation_degrees": {
+        "1": 12.999996746886637,
+        "40": 13.000003756737845,
+        "44": 13.00000550920068,
+        "52": 19.121006673638504,
+        "58": 26.259080425853657,
+        "63": 28.999997197425678,
+        "86": 28.999997197425678
+      },
+      "exact_lens_frames_compared": 108,
+      "camera_negative_checks": [
+        {
+          "mutation": "Unfixed T312 B camera",
+          "assertion": "Camera must be at ground level, at most one unit high"
+        },
+        {
+          "mutation": "Unfixed T312 B tilt",
+          "assertion": "Zoom must reveal at least 15 degrees of upward tilt"
+        },
+        {
+          "mutation": "Restore distant station but keep ground-level height",
+          "assertion": "Camera must be near landing mark, below 150-unit stand-off"
+        },
+        {
+          "mutation": "Aim opening at waiting actor",
+          "assertion": "Waiting beetle may appear in opening: BK | hip chassis"
+        },
+        {
+          "mutation": "Restore old narrow field of view at the feet",
+          "assertion": "('Beetle cropped', 40, [-0.6306665539741516, 0.7171546816825867, 0.14675043523311615, 2.2701122760772705])"
+        }
+      ],
+      "animation_status": "PASS",
+      "animation_negative_checks": [
+        {
+          "mutation": "Restore superseded visible robot placement",
+          "assertion": "Robot must stay entirely behind the arrival camera"
+        },
+        {
+          "mutation": "Remove leap height",
+          "assertion": "Airborne beat must clear the ground by 30 units"
+        },
+        {
+          "mutation": "Raise landing four units",
+          "assertion": "Contact beat must plant soles on the ground"
+        },
+        {
+          "mutation": "Remove zoom",
+          "assertion": "Zoom must finish at a tight lens"
+        },
+        {
+          "mutation": "Start powder before foot contact",
+          "assertion": "Powder must stay invisible before contact"
+        },
+        {
+          "mutation": "Delay powder birth beyond contact",
+          "assertion": "Powder must be born on the exact contact frame"
+        },
+        {
+          "mutation": "Remove impact powder",
+          "assertion": "Dust must expand after impact"
+        },
+        {
+          "mutation": "Keep powder aloft like buoyant smoke",
+          "assertion": "Powder must return to ground height after impact"
+        },
+        {
+          "mutation": "Remove post-impact dust dilution",
+          "assertion": "Powder must dilute after its short impact burst"
+        }
+      ],
+      "partial_clip_exr_frames": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51
+      ]
+    }
+  }
+}
