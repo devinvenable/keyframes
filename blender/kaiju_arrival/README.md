@@ -185,3 +185,84 @@ settling, framing, and robot exclusion. Pixel inspection is still mandatory.
 After a pick, use the existing final linear-EXR rendering, pinned grade, encoding,
 full decode, and source-hash QA pipeline; do not interpret preview completion as
 approval to start that stage.
+
+## T313: at the feet, with an upward reveal — preview choice gate
+
+Outputs: `/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/`.
+**Preview only; final rendering remains gated on Devin's camera pick.**
+
+Start with `review.html`, which embeds both clips and all twelve graded stills.
+`camera_choices.jpg` compares the opening, contact and hold. Per-take timing
+sheets show frames 1/40/52/58/63/86. The two MP4s contain every source frame
+40–86 at 24 fps (47 frames / 1.958 seconds), at 480×270 / 4 Cycles samples.
+Stills are 960×540 / 16 samples. All pass through the existing SHA-pinned
+Blender 4.1.1 film compositor and AgX, without the old salvage trim.
+
+| Take | Tripod position | Landing distance | Tilt, frames 44–63 | Sensor | 36mm-sensor equivalent |
+| --- | --- | --- | --- | --- | --- |
+| A — Ground approach | (5, −35, 1) | 120.8 | 4° → 24° | 130 mm | 8.9–19.9 mm |
+| B — At the feet | (−15, −5, 0.7) | 85.4 | 13° → 29° | 170 mm | 6.8–15.2 mm |
+
+**Recommended: B** for the strongest near-feet perspective. A has a less
+extreme station and gives the airborne beat more breathing room. Both camera
+positions remain fixed; a smooth horizontal pan ends at contact, while the
+upward tilt continues until frame 63 and remains fixed through the hold.
+
+The sensor change is deliberate, authorized by pm-midi-1 on 2026-10-12. The
+old 36mm sensor / 72mm endpoint has only about 16° of vertical field of view;
+framing the 100.6-unit actor with that optical setup requires several hundred
+units of stand-off. It cannot deliver the requested near-feet perspective.
+The wider sensors retain the exact original 32–72mm curve, including the 2.25×
+focal change and every timing key. Thus the optical field of view changes,
+while the fast push-in timing is preserved. The manifest labels this explicitly.
+
+`take3.py` derives each preview from the saved T312 B scene. It preserves all
+noncamera evaluated transforms and animation curves across 108 frames, the
+HDRI node graph/image/rotation/strength, robot placement and visibility, and
+actor and dust timing. Unused legacy actions are retained with fake users so
+Blender cannot discard them on this additional save/reload. The T312 source
+and original T311 master hashes are checked by the review packager.
+
+`verify_take3.py` checks the saved derivative against T312 B, verifies a
+sub-150-unit station at height ≤1, a ≥15° upward reveal during frames 44–63,
+a ≥20° upward hold, an empty opening, and actor/horn clearance at frame 40
+and every frame 44–108. Its opening frustum check also handles the waiting
+actor behind the close camera's near plane. Negative controls reject the
+unfixed T312 B camera and tilt, an opening aimed at the waiting actor, and
+restoration of the original narrow sensor. Exact in-memory values are restored;
+mutated scenes are never saved. Existing `verify.py` checks contact, dust birth
+and settling, rigid geometry, opponent separation and robot exclusion.
+
+The scene checks do not replace rendered-pixel review at 52/58/63/86. The dust
+remains unchanged in these candidates: no thinning, no moved lobes, no camera
+pullback to escape a volume. Both tripod stations sit outside the contact
+cloud; the visible powder may cover the soles during the burst but should
+leave the body and background readable.
+
+```bash
+SHOT=/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3
+SOURCE=/home/devin/src/2026/videdit/work/kaiju_arrival_312_take2/B/take_B.blend
+BLENDER=/home/devin/bin/blender-5.1.2-linux-x64/blender
+PYTHON=/home/devin/src/2026/videdit/venv/bin/python
+
+for take in A B; do
+  "$BLENDER" -b --python-exit-code 1 --python blender/kaiju_arrival/take3.py -- \
+    --source "$SOURCE" --output "$SHOT/$take" --take "$take"
+  "$BLENDER" -b --python-exit-code 1 --python blender/kaiju_arrival/verify_take3.py -- \
+    --source "$SOURCE" --take "$SHOT/$take/take_$take.blend" \
+    --output "$SHOT/$take/locked_verification.json" --negative-checks
+  "$BLENDER" -b "$SHOT/$take/take_$take.blend" --python-exit-code 1 \
+    --python blender/kaiju_arrival/verify.py -- \
+    --output "$SHOT/$take/animation_verification.json" --negative-checks
+done
+
+# Detached workers avoid the terminal render-timeout failure from T312.
+nohup "$PYTHON" -u blender/kaiju_arrival/take3_preview.py --directory "$SHOT" \
+  > "$SHOT/preview.log" 2>&1 < /dev/null &
+# Run after both workers finish successfully:
+"$PYTHON" blender/kaiju_arrival/take3_review.py --directory "$SHOT"
+```
+
+The preview renderer uses bounded subprocesses, checks the scene hash before
+and after rendering, decodes each MP4 fully and checks its dimensions, frame
+count, frame rate and duration. It does not start any final-quality render.
