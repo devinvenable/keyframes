@@ -23,11 +23,13 @@ def check_zoom():assert cam.data.lens>=70,'Zoom must finish at a tight lens'
 def check_preimpact():assert bpy.data.objects['Arrival | powder 00'].scale.x<.03,'Powder must stay invisible before contact'
 def check_birth():assert bpy.data.objects['Arrival | powder 00'].scale.x>2,'Powder must be born on the exact contact frame'
 def check_dust():assert bpy.data.objects['Arrival | powder 00'].scale.x>2,'Dust must expand after impact'
+def check_settled():assert bpy.data.objects['Arrival | powder 00'].location.z<1,'Powder must return to ground height after impact'
+def check_diluted():assert bpy.data.materials['Arrival | fullers earth 0'].node_tree.nodes['Powder settling density'].inputs[1].default_value<.06,'Powder must dilute after its short impact burst'
 def projected(objects):
     points=[world_to_camera_view(s,cam,o.matrix_world@Vector(c)) for o in objects for c in o.bound_box]
     return [min(p.x for p in points),min(p.y for p in points),max(p.x for p in points),max(p.y for p in points)]
 
-report={'shot':bpy.data.filepath,'samples':{},'negative_checks':[]}
+report={'shot':bpy.data.filepath,'samples':{},'negative_checks':[],'render_settings':{'resolution':[s.render.resolution_x,s.render.resolution_y],'samples':s.cycles.samples,'volume_step_rate':s.cycles.volume_step_rate,'volume_max_steps':s.cycles.volume_max_steps},'dust_counts':{'lobes':sum(o.name.startswith('Arrival | powder') for o in s.objects),'clumps':sum(o.name.startswith('Arrival | thrown grit') for o in s.objects)}}
 for f in [1,29,40,51,52,54,58,63,86,108]:
     s.frame_set(f);bpy.context.view_layer.update()
     report['samples'][str(f)]={'floor':floor(),'lens':cam.data.lens,'beetle_bounds':projected(meshes)}
@@ -37,6 +39,7 @@ for f in [1,29,40,51,52,54,58,63,86,108]:
     if f>=52:check_landing()
     if f>=63:check_zoom()
     if f==58:check_dust()
+    if f==86 and s.get('quality')=='final':check_settled();check_diluted()
     if f in [40,86,108]:
         bounds=projected(meshes)
         assert bounds[0]>.015 and bounds[1]>.015 and bounds[2]<.985 and bounds[3]<.985, ('Beetle cropped',f,bounds)
@@ -72,4 +75,9 @@ if a.negative_checks:
     mutation(51,bpy.data.objects['Arrival | powder 00'],'scale',Vector((5,)*3),check_preimpact,'Start powder before foot contact')
     mutation(52,bpy.data.objects['Arrival | powder 00'],'scale',Vector((.001,)*3),check_birth,'Delay powder birth beyond contact')
     mutation(58,bpy.data.objects['Arrival | powder 00'],'scale',Vector((.001,)*3),check_dust,'Remove impact powder')
+    if s.get('quality')=='final':
+        s.frame_set(86);powder=bpy.data.objects['Arrival | powder 00'];loc=powder.location.copy();loc.z+=10
+        mutation(86,powder,'location',loc,check_settled,'Keep powder aloft like buoyant smoke')
+        density=bpy.data.materials['Arrival | fullers earth 0'].node_tree.nodes['Powder settling density'].inputs[1]
+        mutation(86,density,'default_value',.9,check_diluted,'Remove post-impact dust dilution')
 report['status']='PASS';a.output.write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))

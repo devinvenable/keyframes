@@ -1,4 +1,4 @@
-"""Encode the reviewed 24fps draft and make a labeled beat contact sheet."""
+"""Encode the 24fps arrival shot and make a labeled beat contact sheet."""
 import argparse
 import hashlib
 import json
@@ -14,6 +14,7 @@ for path in paths:
 video=d/('beetle_arrival_final.mp4' if a.final else 'beetle_arrival_preview.mp4')
 run(['ffmpeg','-hide_banner','-loglevel','error','-y','-framerate','24','-start_number','1','-i',frames/'frame_%04d.png','-frames:v','108','-c:v','libx264','-crf','16' if a.final else '18','-preset','slow','-pix_fmt','yuv420p','-movflags','+faststart',video])
 probe=json.loads(run(['ffprobe','-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=width,height,r_frame_rate,nb_read_frames,duration','-of','json',video]))['streams'][0]
+assert (probe['width'],probe['height'])==((1920,1080) if a.final else (960,540)),probe
 assert probe['r_frame_rate']=='24/1' and int(probe['nb_read_frames'])==108,probe
 assert abs(float(probe['duration'])-4.5)<.001,probe
 run(['ffmpeg','-v','error','-i',video,'-f','null','-'])
@@ -33,6 +34,6 @@ sheet.save(d/'key_beats.jpg',quality=94)
 source=d.parent/'kaiju_beetle_307';original=json.loads((source/'review_manifest.json').read_text())
 source_checks={name:hashlib.sha256((source/name).read_bytes()).hexdigest()==entry['sha256'] for name,entry in original['artifacts'].items()}
 assert all(source_checks.values()),'T307 source artifact changed'
-report={'video':probe,'video_sha256':hashlib.sha256(video.read_bytes()).hexdigest(),'all_T307_artifact_hashes_unchanged':source_checks,'outputs':{'preview':str(video),'contact_sheet':str(d/'key_beats.jpg'),'scene':str(d/('beetle_arrival_final.blend' if a.final else 'beetle_arrival.blend')),'stills':str(stills)},'grade':json.loads((frames/'grade.json').read_text()),'status':'PASS'}
+report={'video':probe,'video_sha256':hashlib.sha256(video.read_bytes()).hexdigest(),'all_T307_artifact_hashes_unchanged':source_checks,'outputs':{'video':str(video),'contact_sheet':str(d/'key_beats.jpg'),'scene':str(d/('beetle_arrival_final.blend' if a.final else 'beetle_arrival.blend')),'stills':str(stills)},'grade':json.loads((frames/'grade.json').read_text()),'status':'PASS'}
 (d/('final_media_verification.json' if a.final else 'media_verification.json')).write_text(json.dumps(report,indent=2))
 print(json.dumps(report,indent=2))
