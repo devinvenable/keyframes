@@ -287,7 +287,7 @@ Round 01: `/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/round_01/`.
 is 5% closer than the T313 left-third endpoint (71.4279 units), with the same
 31.5° upward tilt, height, lens and sensor. Bounding-box margins are 3.35%
 above the horn and 2.19% below the feet; pixel inspection confirms no clipping.
-This remains an endpoint review, pending Devin's next nudge or selection.
+Devin approved this endpoint as final on 2026-10-12.
 
 Reuse the T313 reproduction commands with this round's directory, passing
 `--closer-percent 5 --keep-tilt --negative-checks` to `take3_hold.py` and using
@@ -297,3 +297,31 @@ while solving yaw so an already-keyed endpoint cannot reset the trial rotation.
 `take314_results.json` records saved-scene locks, the source hash chain, media
 hashes, margins and review. Mutation checks reject zero camera movement and
 a 0.1° tilt change at their respective assertions, with exact file restoration.
+
+The follow-up move is saved in `../move_01/arrival_move.blend`. Its tripod
+position is fixed; the existing focal curve supplies the push-in. The horizontal
+pan eases from the original B opening bearing during frames 20–52, while tilt
+eases from 13° to 31.5° during frames 44–63. From frame 63 onward the quaternion
+is copied exactly from the approved hold. `take314_move.py` verifies the saved
+move against the approved source, including all actor/dust animation, lens
+frames, HDRI, station, optics, opening tilt and settled pan. The old frozen
+endpoint fails the opening-tilt assertion in a negative mutation check.
+
+Only `move_01/stills/frame_0001.png` and `frame_0052.png` were rendered as graded
+1080p / 64-sample checks. The opening is empty; contact shows the full horn,
+both feet on the ground, and small low dust puffs. The approved frame 86 is
+reused from round 01. Full animation rendering remains pending review.
+
+`first_visible.py` rejects guaranteed-empty frames using mesh bounds against
+the camera frustum, then uses full-resolution Workbench silhouette/depth masks
+to account for opaque occlusion. **First visible frame: 31**, with 2,499 solid
+beetle pixels entering from the left. Frames 1–30 are empty (1.25 seconds at
+24 fps). This measures the solid silhouette before film distortion/glare,
+without treating volumetric dust domains as opaque boxes. Evidence is in
+`move_01/visibility/visibility.json` and `mask_0031.png`.
+
+Build the move with `take314_move.py --source <round_01 blend> --output <move_01>`
+under Blender 5.1.2, then use the standard render/grade commands with
+`--frames 1,52 --samples 64 --percent 100`. Run `first_visible.py --output
+<move_01/visibility>` with the saved move loaded in Blender 5.1.2. These scripts
+do not overwrite the approved source or retime the actor.

@@ -1,0 +1,226 @@
+{
+  "status": "PASS",
+  "source": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/round_01/hold_B_left_third.blend",
+  "source_sha256": "149ea3815da36578c284dec5fa6612ae5d8fb399defbd929d252db1cebeff35f",
+  "blend": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/move_01/arrival_move.blend",
+  "blend_sha256": "62106d06e923d885c9cc07632275951ec30c4fb7d94901911524bd93754a9d76",
+  "station": [
+    -19.920000076293945,
+    8.120002746582031,
+    0.699999988079071
+  ],
+  "endpoint_quaternion": [
+    0.4886154532432556,
+    0.8724856376647949,
+    -0.004263321869075298,
+    -0.0023875741753727198
+  ],
+  "tilt_degrees": [
+    13,
+    31.500002884111222
+  ],
+  "tilt_frames": [
+    44,
+    63
+  ],
+  "pan_frames": [
+    20,
+    52
+  ],
+  "locked_state_sha256": "52643158730e77fd86e3691de9cd1af3c24b2a51048de36570a15422fc3db000",
+  "exact_lens_frames_compared": 108,
+  "endpoint_bounds": [
+    0.1083676666021347,
+    0.021924655884504318,
+    0.5582990050315857,
+    0.9664981961250305
+  ],
+  "check_frames": {
+    "1": {
+      "path": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/move_01/stills/frame_0001.png",
+      "sha256": "b3b78166b58ee2ac9ad08f37ecb1602f3949b87f522dd3f6d1a755d8ad2912ec"
+    },
+    "52": {
+      "path": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/move_01/stills/frame_0052.png",
+      "sha256": "7a5f75ba71216f3fa26a3389dbeed29f30e0b5b3776b1859bd135d3ba3e67bd6"
+    }
+  },
+  "resolution": [
+    1920,
+    1080
+  ],
+  "cycles_samples": 64,
+  "grade": {
+    "blender": "4.1.1",
+    "frames": 2,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "exposure": -0.8,
+    "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+  },
+  "visibility": {
+    "method": "1920x1080 un-antialiased white beetle / black opaque occluders depth mask; no film effects or volume domains",
+    "frames": [
+      {
+        "frame": 1,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 2,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 3,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 4,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 5,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 6,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 7,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 8,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 9,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 10,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 11,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 12,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 13,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 14,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 15,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 16,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 17,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 18,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 19,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 20,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 21,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 22,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 23,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 24,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 25,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 26,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 27,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 28,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 29,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 30,
+        "white_pixels": 0,
+        "proof": "All beetle bounds outside camera frustum"
+      },
+      {
+        "frame": 31,
+        "white_pixels": 2499,
+        "mask": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/move_01/visibility/mask_0031.png"
+      }
+    ],
+    "first_visible_frame": 31
+  },
+  "pixel_review": {
+    "1": "Empty valley; beetle absent",
+    "52": "Full horn and both feet visible; grounded contact with low dust puffs"
+  },
+  "negative_test": "Frozen hold rejected at opening tilt assertion; restored move passed including save/reload"
+}
