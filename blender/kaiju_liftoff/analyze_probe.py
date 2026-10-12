@@ -69,7 +69,7 @@ def main():
     results = {'alignment': geometry, 'measurements': {}}
     paths = [a.reference] + [a.directory / name for name in [
         'matched_source_quality.png', 'grade_from_png.png', 'historical_profile.png',
-        'extension_grade.png', 'canon_I48.png', 'progress_tail.png']]
+        'extension_grade.png', 'canon_I48.png', 'progress_tail.png', 'grade_bypass.png']]
     for path in paths:
         if path.exists():
             results['measurements'][path.stem] = measure(path, reference)
@@ -80,9 +80,11 @@ def main():
         assert not negative['passed'], 'Alignment gate accepted a 20-preview-pixel shift'
         raw = results['measurements']['matched_source_quality']['rgb_mae']
         graded = results['measurements']['grade_from_png']['rgb_mae']
+        bypass = results['measurements']['grade_bypass']['rgb_mae']
         assert graded < raw / 2, 'Recovered grade does not improve RGB error by 2x'
+        assert bypass >= raw / 2, 'Bypassed grade unexpectedly passes the improvement gate'
         results['negative_controls'] = dict(shifted_camera=negative,
-                                            grade_bypass_fails_improvement=raw >= raw / 2)
+                                            grade_bypass_fails_improvement=bypass >= raw / 2)
     (a.directory / 'analysis.json').write_text(json.dumps(results, indent=2))
     plate(paths[:2], ['A: teaser endpoint', 'B: April 25 source-quality probe'],
           a.directory / 'ab_source.png')
