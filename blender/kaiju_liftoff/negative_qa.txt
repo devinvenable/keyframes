@@ -1,3 +1,5 @@
 PASS: frozen_camera rejected on assertion: Camera freezes during the continuation
 PASS: lingering_rings rejected on assertion: Ring survives at 15
 PASS: no_liftoff rejected on assertion: Robot does not complete the authored climb
+PASS: arm_mismatch rejected on assertion: Join pose changed from teaser-matched target: 0.10422766208648682
+PASS: scale_mismatch rejected on assertion: Robot scale does not match footage fit

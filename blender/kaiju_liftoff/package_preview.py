@@ -4,7 +4,10 @@ from pathlib import Path
 
 
 def run(args):
-    return subprocess.run(args,check=True,capture_output=True,text=True).stdout
+    result=subprocess.run(args,capture_output=True,text=True)
+    if result.returncode:
+        raise RuntimeError(f"Command failed ({result.returncode}): {args[0]}\n{result.stderr}")
+    return result.stdout
 
 
 def probe(path):
@@ -26,22 +29,27 @@ def main():
         target.symlink_to(source)
     preview=d/'kaiju_liftoff_preview.mp4';combined=d/'teaser2_with_liftoff_preview.mp4'
     run(['ffmpeg','-hide_banner','-loglevel','error','-y','-framerate','12',
-        '-i',str(seq/'frame_%04d.png'),'-frames:v','108','-c:v','libx264',
+        '-i',str(seq/'frame_%04d.png'),'-frames:v','108',
+        '-vf','pad=ceil(iw/2)*2:ceil(ih/2)*2','-c:v','libx264',
         '-preset','medium','-crf','18','-pix_fmt','yuv420p','-movflags','+faststart',str(preview)])
     reference=probe(a.reference)
     assert int(reference['nb_read_frames'])==436 and reference['r_frame_rate']=='24/1',reference
     # First 436 frames are the original teaser; source frame 1 of the extension
     # is deliberately excluded. Original audio ends at the cut; extension is silent.
+    # concat clears frame durations; restore CFR durations and retain the final
+    # duplicate explicitly so MP4 decoders do not discard a zero-duration tail.
     filters=(
         '[0:v]scale=960:540:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[v0];'
-        '[1:v]fps=24,scale=960:540:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[v1];'
-        '[v0][v1]concat=n=2:v=1:a=0[v];'
+        '[1:v]fps=24,tpad=stop_mode=clone:stop=1,trim=end_frame=216,'
+        'scale=960:540:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[v1];'
+        '[v0][v1]concat=n=2:v=1:a=0,fps=24:eof_action=pass,'
+        'tpad=stop_mode=clone:stop=1,trim=end_frame=652[v];'
         '[0:a]atrim=duration=18.166666667,asetpts=PTS-STARTPTS,'
         'afade=t=out:st=17.916666667:d=0.25,apad=whole_dur=27.166666667[a]')
     run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',str(a.reference),
         '-i',str(preview),'-filter_complex',filters,'-map','[v]','-map','[a]',
-        '-c:v','libx264','-crf','18','-preset','medium','-pix_fmt','yuv420p',
-        '-c:a','aac','-b:a','160k','-t','27.166666667','-movflags','+faststart',str(combined)])
+        '-fps_mode','cfr','-c:v','libx264','-crf','18','-preset','medium','-pix_fmt','yuv420p',
+        '-c:a','aac','-b:a','160k','-movflags','+faststart',str(combined)])
     audit={}
     for path,frames,fps in [(preview,108,'12/1'),(combined,652,'24/1')]:
         info=probe(path)
