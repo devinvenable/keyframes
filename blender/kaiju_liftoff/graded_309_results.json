@@ -1,0 +1,44 @@
+{
+  "chain": "inverse AgX (5.1.2 OCIO) -> kaiju_1960s compositor (Blender 4.1.1) -> forward AgX -> RGB -3 trim",
+  "frames": [
+    2,
+    217
+  ],
+  "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+  "inverse": {
+    "seconds": 257.08254202175885,
+    "ocio_version": "2.6.0",
+    "config_sha256": "27282e81548ac61eb561a9ea6672412d9a20731c12c0f1f256f562e2443a1021",
+    "worst_clipped_channel_fraction": 0.0011839313271604938
+  },
+  "compositor": {
+    "frames": 216,
+    "seconds": 476.44374286942184,
+    "blender_version": "4.1.1"
+  },
+  "first_frame_yavg": 78.0366,
+  "media": {
+    "kaiju_liftoff_final_graded.mp4": {
+      "width": 1920,
+      "height": 1080,
+      "r_frame_rate": "24/1",
+      "duration": "9.000000",
+      "nb_read_frames": "216",
+      "sha256": "0c89aa66893c470a3106d6c3f31e2f350cae7c2b73069c84339f8c6b9c265c73"
+    },
+    "teaser2_with_liftoff_final_graded.mp4": {
+      "width": 1920,
+      "height": 1080,
+      "r_frame_rate": "24/1",
+      "duration": "27.166667",
+      "nb_read_frames": "652",
+      "sha256": "bb2f0a3b8234c56d383ca7b16a4eab4c361f9a286a9fcb35870df2b30eac1953"
+    },
+    "seam_yavg": {
+      "teaser_last": 77.946,
+      "extension_first": 78.0581,
+      "difference": 0.11209999999999809
+    }
+  },
+  "status": "PASS"
+}
