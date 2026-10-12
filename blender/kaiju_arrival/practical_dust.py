@@ -58,7 +58,7 @@ def build(interp,key):
             t=max(0,(f-birth)/24)
             o.location=origin+direction*(speed*(1-math.exp(-t*2.6))/2.6)
             o.location.z=.6+max(0,vz*t-14*t*t)
-            grow=.001 if f<birth else interp(f-birth,[(0,.32),(3,.85),(8,1.25),(18,1.5),(56,1.9)])
+            grow=.001 if f<birth else interp(f-birth,[(0,.72),(3,.95),(8,1.25),(18,1.5),(56,1.9)])
             # Powders settle into a thin irregular ground veil, not a rising wall.
             settling=max(.22,1-t*.48)
             o.scale=(size*grow,size*grow*width,size*grow*flatten*settling)
