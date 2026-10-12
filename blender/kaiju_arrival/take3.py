@@ -21,7 +21,7 @@ TAKES = {
     'A': {'label': 'Ground approach', 'position': (5, -35, 1),
           'sensor_width': 130, 'opening_elevation': 4, 'hold_elevation': 24},
     'B': {'label': 'At the feet', 'position': (-15, -5, .7),
-          'sensor_width': 160, 'opening_elevation': 13, 'hold_elevation': 29},
+          'sensor_width': 170, 'opening_elevation': 13, 'hold_elevation': 29},
 }
 
 
