@@ -190,15 +190,12 @@ for i in range(20):
  bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2,radius=1);o=link(bpy.context.object);o.name=f'Dust | ground roll {i:02}';o.data.materials.append(dust)
  for f,spread,size,height in [(1,12,.001,1),(103+i%9,12,.001,1),(130+i%9,18,.7,2.5),(174,37,1.4,4),(217,65,1.7,3)]:
   key(o,'location',f,base+v*spread+Vector((0,0,height)));key(o,'scale',f,(radius*size,radius*size*.8,radius*size*.38))
-# Camera: numerical fit to real reference, continuous low drift before tilting up.
+# Camera: approved low drift through full thrust, then a sweeping crane rise.
 c=s.camera;c.animation_data_clear();c.constraints.clear();c.rotation_mode='QUATERNION'
 cm=json.loads((a.camera or Path(__file__).with_name('camera_match.json')).read_text());base=Vector(cm['location']);c.data.lens=cm['lens'];c.data.dof.focus_distance=100;c.data.dof.aperture_fstop=5.6
-for f in range(1,218):
- t=(f-1)/24
- loc=base+Vector((1.5*t-0.52*t*t,-2.14*t,0))
- # Camera stays close to the ground. Delayed tilt lets feet clear the arch in frame.
- climb=max(0,(f-120)/97);target=Vector((0,80,45+64*climb**1.8))
- key(c,'location',f,loc);key(c,'rotation_quaternion',f,(target-loc).to_track_quat('-Z','Y'))
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from camera_motion import animate_camera
+animate_camera(c,base)
 # Linear baked channels; mechanical sparse channels ease with clamped handles.
 def curves(action):
  return [fc for layer in action.layers for st in layer.strips for bag in st.channelbags for fc in bag.fcurves]
