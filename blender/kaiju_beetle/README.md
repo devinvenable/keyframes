@@ -23,6 +23,8 @@ Outputs live outside Git, in:
 - `verification.json` — closed-solid, hierarchy, grounding, scale, framing,
   resource, original robot face-assignment and mutation-check results.
 - `build_manifest.json`, `continuity_restoration.json` — source and setup notes.
+- `review_manifest.json` — final file hashes, image dimensions, render settings,
+  and audit summary; also committed beside this README.
 
 These are posed review shots, not an animated fight. The stills were visually
 iterated against the actual teaser and reviewed by the PM under Devin's
