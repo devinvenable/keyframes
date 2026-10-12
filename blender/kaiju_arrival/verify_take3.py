@@ -127,6 +127,15 @@ def main():
     upward_reveal(scene)
     bounds = framing(scene)
     if args.negative_checks:
+        saved_position = scene.camera.location.copy()
+        try:
+            # Isolate proximity: keeping the new low height must not let the
+            # old distant station pass the feet-level composition contract.
+            scene.camera.location = (95, -325, saved_position.z)
+            reject(lambda: worm_camera(scene), 'Restore distant station but keep ground-level height')
+        finally:
+            scene.camera.location = saved_position
+        worm_camera(scene)
         scene.frame_set(1)
         saved_rotation = scene.camera.rotation_quaternion.copy()
         try:
