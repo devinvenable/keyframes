@@ -7,7 +7,9 @@ import bpy
 from mathutils import Vector
 from bpy_extras.object_utils import world_to_camera_view
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--negative-checks',action='store_true')
+p.add_argument('--entry-reveal-through',type=int,default=0,help='Explicit partial-entry framing allowance; never extends to contact')
 a=p.parse_args(sys.argv[sys.argv.index('--')+1:]);s=bpy.context.scene
+assert 0 <= a.entry_reveal_through < 52, 'Entry framing allowance must end before contact'
 assert (s.frame_start,s.frame_end,s.render.fps)==(1,108,24),'Shot must be 108 frames at 24 fps'
 root=bpy.data.objects['BK | ROOT | placement'];cam=s.camera
 soles=[bpy.data.objects['BK | sole '+side] for side in ['L','R']]
@@ -30,6 +32,7 @@ def projected(objects):
     return [min(p.x for p in points),min(p.y for p in points),max(p.x for p in points),max(p.y for p in points)]
 
 report={'shot':bpy.data.filepath,'samples':{},'negative_checks':[],'render_settings':{'resolution':[s.render.resolution_x,s.render.resolution_y],'samples':s.cycles.samples,'volume_step_rate':s.cycles.volume_step_rate,'volume_max_steps':s.cycles.volume_max_steps},'dust_counts':{'lobes':sum(o.name.startswith('Arrival | powder') for o in s.objects),'clumps':sum(o.name.startswith('Arrival | thrown grit') for o in s.objects)}}
+report['entry_reveal_through']=a.entry_reveal_through
 for f in [1,29,40,51,52,54,58,63,86,108]:
     s.frame_set(f);bpy.context.view_layer.update()
     report['samples'][str(f)]={'floor':floor(),'lens':cam.data.lens,'beetle_bounds':projected(meshes)}
@@ -40,9 +43,19 @@ for f in [1,29,40,51,52,54,58,63,86,108]:
     if f>=63:check_zoom()
     if f==58:check_dust()
     if f==86 and s.get('quality')=='final':check_settled();check_diluted()
-    if f in [40,86,108]:
+    if f in [40,86,108] and f>a.entry_reveal_through:
         bounds=projected(meshes)
         assert bounds[0]>.015 and bounds[1]>.015 and bounds[2]<.985 and bounds[3]<.985, ('Beetle cropped',f,bounds)
+if a.entry_reveal_through:
+    # Use the actual rigid mesh rather than rotated box corners for the tight
+    # approved contact pose. No part may leave the image after the entry reveal.
+    report['post_entry_mesh_bounds']={}
+    for f in range(a.entry_reveal_through+1,109):
+        s.frame_set(f);bpy.context.view_layer.update()
+        points=[world_to_camera_view(s,cam,o.matrix_world@v.co) for o in meshes for v in o.data.vertices]
+        bounds=[min(p.x for p in points),min(p.y for p in points),max(p.x for p in points),max(p.y for p in points)]
+        assert min(p.z for p in points)>0 and min(bounds[:2])>0 and max(bounds[2:])<1, ('Post-entry beetle cropped',f,bounds)
+        report['post_entry_mesh_bounds'][str(f)]=bounds
 for f in range(52,109):
     s.frame_set(f);check_landing()
 rig=bpy.data.objects['actor_kaiju_robot'];robot=bpy.data.objects['kaiju_robot_mesh']
