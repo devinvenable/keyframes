@@ -5,7 +5,7 @@
   "camera_min_step": 0.08916688211689165,
   "camera_max_step": 0.33855048009208527,
   "climb_world_units": 76.0,
-  "ring_reflections_end_frame": 19,
+  "ring_reflections_end_frame": 15,
   "missing_images": [],
   "fps": 24,
   "extension_frames": 216,

@@ -1,0 +1,3 @@
+PASS: frozen_camera rejected on assertion: Camera freezes during the continuation
+PASS: lingering_rings rejected on assertion: Ring survives at 19
+PASS: no_liftoff rejected on assertion: Robot does not complete the authored climb

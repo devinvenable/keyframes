@@ -17,7 +17,7 @@ assert all(tuple(round(c,5) for c in v.co) in source_vertices for v in bpy.data.
 positions=[];heights=[];ring_tail=[]
 for f in range(1,218):
  s.frame_set(f);bpy.context.view_layer.update();positions.append(s.camera.matrix_world.translation.copy());heights.append(rig.matrix_world.translation.z)
- if f>=19:
+ if f>=15:
   assert all(max(o.scale)<=.00101 for o in s.objects if o.name.startswith('actor_plasma_ring')),f'Ring survives at {f}'
 steps=[(b-a).length for a,b in zip(positions,positions[1:])]
 assert min(steps)>.02,'Camera freezes during the continuation'
@@ -27,5 +27,5 @@ assert max(abs(z-heights[0]) for z in heights[:95])<.001,'Robot rises before ign
 assert s.render.fps==24 and (s.frame_start,s.frame_end)==(1,217),'Incorrect timeline'
 missing=[im.name for im in bpy.data.images if im.source=='FILE' and not im.packed_file and (not im.filepath or not Path(bpy.path.abspath(im.filepath)).exists())]
 assert not missing,f'Missing image dependencies: {missing}'
-report={'status':'PASS','join_pose_max_error':pose_error,'body_vertices_unchanged':True,'camera_min_step':min(steps),'camera_max_step':max(steps),'climb_world_units':heights[-1]-heights[0],'ring_reflections_end_frame':19,'missing_images':missing,'fps':24,'extension_frames':216,'extension_seconds':9,'checks':'All 217 evaluated frames checked for camera motion, lift timing and ring cutoff; source pose and body vertices checked at join.'}
+report={'status':'PASS','join_pose_max_error':pose_error,'body_vertices_unchanged':True,'camera_min_step':min(steps),'camera_max_step':max(steps),'climb_world_units':heights[-1]-heights[0],'ring_reflections_end_frame':15,'missing_images':missing,'fps':24,'extension_frames':216,'extension_seconds':9,'checks':'All 217 evaluated frames checked for camera motion, lift timing and ring cutoff; source pose and body vertices checked at join.'}
 a.output.write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))

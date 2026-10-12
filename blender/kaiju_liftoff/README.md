@@ -24,7 +24,7 @@ design remain a separate creative pass. Low samples soften dust and metal detail
 
 | Extension time | Beat |
 | --- | --- |
-| 0–0.75 s | Existing ring reflections finish and disappear. |
+| 0–0.58 s | Existing ring reflections finish and disappear. |
 | 0.9–2.6 s | Two dorsal armor doors unlock and swing outward. |
 | 1.7–3.7 s | Twin engine cassettes rise from the back bay, then sweep around the shoulders on hydraulic yokes. Firing arm settles into a brace. |
 | 3.9–5.0 s | Pilot throats ignite, white/amber jets grow, warm light reaches the sandstone, dust spreads, body compresses before release. |
@@ -52,7 +52,7 @@ and materials are used, rather than recreating the robot from the Runway mock.
 
 The reference rings have already left the photographed view. During the brief
 carryover their camera visibility is disabled while their actual glossy and
-lighting contributions continue. Their geometry scales away at frame 19. Ring
+lighting contributions continue. Their geometry scales away at frame 15. Ring
 material animation is rebased along with transforms; later source volleys cannot
 reappear during ascent. The booster throats have their own blue pilot light.
 

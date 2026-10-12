@@ -151,12 +151,12 @@ for o in list(s.objects):
  if o.name.startswith('actor_plasma_ring'):
   o.visible_camera=False  # Last teaser rings have already left the photographed view.
   samples=[]
-  for f in range(1,19):
+  for f in range(1,15):
    s.frame_set(495+f);samples.append((o.location.copy(),o.rotation_euler.copy(),o.scale.copy()))
   o.animation_data_clear()
   for f,(loc,rot,sc) in enumerate(samples,1):
    key(o,'location',f,loc);key(o,'rotation_euler',f,rot);key(o,'scale',f,sc)
-  key(o,'scale',19,(.001,.001,.001));key(o,'scale',217,(.001,.001,.001))
+  key(o,'scale',15,(.001,.001,.001));key(o,'scale',217,(.001,.001,.001))
 for mat in bpy.data.materials:
  if mat.name.startswith('PlasmaRing') and mat.node_tree.animation_data and mat.node_tree.animation_data.action:
   act=mat.node_tree.animation_data.action.copy();mat.node_tree.animation_data.action=act
