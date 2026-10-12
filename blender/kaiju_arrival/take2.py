@@ -16,7 +16,7 @@ from mathutils import Vector
 TAKES = {
     'A': {'label': 'Low classic', 'position': (130, -340, 9)},
     'B': {'label': 'Ground hero', 'position': (95, -325, 4), 'target_lift': 3},
-    'C': {'label': 'Low oblique', 'position': (180, -385, 7)},
+    'C': {'label': 'Low oblique', 'position': (180, -385, 7), 'opening_target_x': 35},
 }
 
 
@@ -78,6 +78,9 @@ def main():
     for frame, target in enumerate(targets, 1):
         scene.frame_set(frame)
         target.z += TAKES[args.take].get('target_lift', 0)
+        # The wider C station otherwise reveals a sliver of the waiting actor.
+        # A gentle opening pan reaches the approved target before the fast zoom.
+        target.x += TAKES[args.take].get('opening_target_x', 0) * max(0, (44 - frame) / 43)
         camera.rotation_quaternion = (target - camera.location).to_track_quat('-Z', 'Y')
         camera.keyframe_insert(data_path='rotation_quaternion', frame=frame)
         assert camera.data.lens == lenses[frame - 1], 'Approved lens curve changed'

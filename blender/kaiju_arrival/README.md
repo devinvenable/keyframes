@@ -122,6 +122,9 @@ transforms and animation curves across all 108 frames, including powder material
 animation. The 32–72 mm lens curve is preserved exactly, including the original
 last zoom key at frame 63. The new camera tracks the original target and impact
 recoil, with a constant 3-unit target lift for B to retain horn clearance.
+C opens with its target shifted 35 units right, easing back to the approved
+target by frame 44. This keeps the waiting beetle fully outside C's wider opening
+and finishes before the fast zoom. Actor and lens animation remain unchanged.
 
 | Take | Camera position | Intent |
 | --- | --- | --- |
@@ -176,7 +179,8 @@ done
 
 The saved-take verifier rejects the original T311 camera and sky-only world,
 and rejects actor-scale and lens-curve mutations, restoring exact in-memory
-copies after each mutation. Existing T311 checks cover contact, dust birth and
+copies after each mutation. It also rejects the unfixed wide C opening that
+revealed a beetle sliver at the left edge. Existing T311 checks cover contact, dust birth and
 settling, framing, and robot exclusion. Pixel inspection is still mandatory.
 After a pick, use the existing final linear-EXR rendering, pinned grade, encoding,
 full decode, and source-hash QA pipeline; do not interpret preview completion as

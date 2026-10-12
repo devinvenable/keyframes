@@ -7,6 +7,7 @@ from pathlib import Path
 
 import bpy
 from mathutils import Vector
+from bpy_extras.object_utils import world_to_camera_view
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from take2 import locked_state
@@ -38,6 +39,14 @@ def foliage(scene):
     assert any(node.type == 'BACKGROUND' and any(
         link.to_node.type == 'OUTPUT_WORLD' for link in node.outputs[0].links
     ) for node in backgrounds), 'Natural environment must feed the visible world directly'
+
+
+def empty_start(scene):
+    bpy.context.view_layer.update()
+    points = [world_to_camera_view(scene, scene.camera, obj.matrix_world @ Vector(corner))
+              for obj in scene.objects if obj.name.startswith('BK |') and obj.type == 'MESH'
+              for corner in obj.bound_box]
+    assert max(point.x for point in points) < 0, 'Opening must exclude the entire waiting beetle'
 
 
 def main():
@@ -80,7 +89,18 @@ def main():
     foliage(scene)
     motion()
     zoom()
+    scene.frame_set(1)
+    empty_start(scene)
     if args.negative_checks:
+        camera = scene.camera
+        position, rotation = camera.location.copy(), camera.rotation_quaternion.copy()
+        try:
+            camera.location = (180, -385, 7)
+            camera.rotation_quaternion = (Vector((0, 108, 48)) - camera.location).to_track_quat('-Z', 'Y')
+            reject(lambda: empty_start(scene), 'Restore unfixed C opening with visible beetle sliver')
+        finally:
+            camera.location, camera.rotation_quaternion = position, rotation
+        empty_start(scene)
         root = bpy.data.objects['BK | ROOT | placement']
         scale = root.scale.copy()
         try:
