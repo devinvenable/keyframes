@@ -12,7 +12,28 @@ from bpy_extras.object_utils import world_to_camera_view
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from take2 import locked_state
-from verify_take2 import empty_start, foliage, lenses
+from verify_take2 import foliage, lenses
+
+
+def empty_start(scene):
+    # The close B camera puts the waiting actor behind its near plane. A
+    # projected-X test alone reverses sign there and falsely reports visibility.
+    bpy.context.view_layer.update()
+    camera = scene.camera
+    inverse = camera.matrix_world.inverted()
+    corners = camera.data.view_frame(scene=scene)
+    left, right = min(p.x / -p.z for p in corners), max(p.x / -p.z for p in corners)
+    bottom, top = min(p.y / -p.z for p in corners), max(p.y / -p.z for p in corners)
+    for obj in scene.objects:
+        if not obj.name.startswith('BK |') or obj.type != 'MESH':
+            continue
+        points = [inverse @ obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+        outside = (all(p.z >= 0 for p in points)
+                   or all(p.x < left * -p.z for p in points)
+                   or all(p.x > right * -p.z for p in points)
+                   or all(p.y < bottom * -p.z for p in points)
+                   or all(p.y > top * -p.z for p in points))
+        assert outside, f'Waiting beetle may appear in opening: {obj.name}'
 
 
 def world_state(scene):
@@ -106,6 +127,14 @@ def main():
     upward_reveal(scene)
     bounds = framing(scene)
     if args.negative_checks:
+        scene.frame_set(1)
+        saved_rotation = scene.camera.rotation_quaternion.copy()
+        try:
+            scene.camera.rotation_quaternion = (Vector((-380, 75, 50)) - scene.camera.location).to_track_quat('-Z', 'Y')
+            reject(lambda: empty_start(scene), 'Aim opening at waiting actor')
+        finally:
+            scene.camera.rotation_quaternion = saved_rotation
+        empty_start(scene)
         # Optical negative control: restore the old sensor while retaining
         # the close camera. The full-body assertion must reject this crop.
         saved_sensor = scene.camera.data.sensor_width
