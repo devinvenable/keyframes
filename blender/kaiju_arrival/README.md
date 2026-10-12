@@ -95,3 +95,10 @@ thin ground haze, an immediately expanding powder skirt, and fading dust density
 The earlier `/home/devin/src/2026/videdit/work/kaiju_arrival_311/` renders are
 superseded staging with a visible robot. The delivered beetle-only framing keeps
 the robot in the scene and out of frame throughout all 108 frames.
+
+For the robot shot, switch the scene camera to **Robot reverse | same tripod**.
+It is aimed at the persistent robot mark at 50 mm. **SceneCamera** retains the
+complete approved beetle arrival animation. Named **Shot target** empties mark
+both opponents for subsequent camera work; switching cameras does not re-stage
+either character. The reverse camera is a saved starting composition, not a
+rendered or approved robot-shot deliverable.

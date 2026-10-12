@@ -170,6 +170,18 @@ s.view_settings.view_transform='AgX';s.view_settings.look='None';s.view_settings
 for name,f in [('Empty valley establishing',1),('Beetle airborne',40),('Slam contact',52),('Dust burst',58),('Zoom ends',63),('Fighting pose',86)]:s.timeline_markers.new(name,frame=f)
 s['source_scene']=str(a.source.resolve());s['shot']='Beetle arrival T311'
 s['look']='Render linear EXR then kaiju_1960s compositor in Blender 4.1.1, exposure -0.8'
+# Persistent two-opponent set: a saved reverse camera shares the same tripod.
+# These non-rendering controls do not alter the active arrival camera or image.
+for label,position in [('Beetle landing',(-45,75,46)),('Robot',tuple(rig.location+Vector((0,0,45))))]:
+    mark=bpy.data.objects.new('Shot target | '+label,None);s.collection.objects.link(mark)
+    mark.location=position;mark.empty_display_type='SPHERE';mark.empty_display_size=5
+reverse_data=bpy.data.cameras.new('Robot reverse | lens');reverse_data.lens=50;reverse_data.clip_end=5000
+reverse=bpy.data.objects.new('Robot reverse | same tripod',reverse_data);s.collection.objects.link(reverse)
+reverse.location=cam.location.copy();reverse.rotation_mode='QUATERNION'
+reverse.rotation_quaternion=(bpy.data.objects['Shot target | Robot'].location-reverse.location).to_track_quat('-Z','Y')
+reverse['purpose']='Switch scene camera here for a robot shot; opponent placement is persistent.'
+cam['purpose']='Approved animated beetle arrival; robot remains outside this camera.'
+s['master_set']='Two opponents on a persistent 650-unit battle axis. Active camera: beetle arrival. Alternate camera: Robot reverse | same tripod.'
 s.frame_set(86)
 bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(a.output/'beetle_arrival.blend'))
