@@ -36,7 +36,7 @@ def build(interp,key):
         edge.inputs['To Min'].default_value=1;edge.inputs['To Max'].default_value=0;l.new(distance.outputs['Value'],edge.inputs[0])
         shape=n.new('ShaderNodeMath');shape.operation='MULTIPLY';l.new(grain.outputs[0],shape.inputs[0]);l.new(edge.outputs[0],shape.inputs[1])
         den=n.new('ShaderNodeMath');den.name='Powder settling density';den.operation='MULTIPLY';l.new(shape.outputs[0],den.inputs[0])
-        for f,value in [(1,.9),(52,.9),(56,.8),(62,.53),(70,.22),(80,.065),(92,.015),(108,.002)]:
+        for f,value in [(1,2.7),(52,2.7),(56,2.4),(62,1.5),(70,.38),(80,.065),(92,.015),(108,.002)]:
             den.inputs[1].default_value=value*(.8+j*.10);den.inputs[1].keyframe_insert(data_path='default_value',frame=f)
         l.new(den.outputs[0],vol.inputs['Density']);l.new(vol.outputs[0],out.inputs['Volume']);materials.append(m)
     # Clustered side jets, not evenly spaced points on a circular smoke ring.
@@ -45,7 +45,7 @@ def build(interp,key):
         angle=rng.choice([-.6,.35,2.5,3.8])+rng.gauss(0,.38)
         direction=Vector((math.cos(angle),math.sin(angle),0))
         origin+=Vector((rng.uniform(-5,5),rng.uniform(-4,4),0))
-        speed=rng.uniform(19,62);vz=rng.uniform(6,19);size=10 if i==0 else rng.uniform(4,10)
+        speed=rng.uniform(19,62);vz=rng.uniform(6,19);size=14 if i==0 else rng.uniform(6,14)
         birth=52 if i<12 else rng.choice([52,53,54])
         bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=3,radius=1)
         o=bpy.context.object;o.name=f'Arrival | powder {i:02}';o.data.materials.append(materials[i%5])
