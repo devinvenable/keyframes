@@ -89,6 +89,8 @@ def main():
         preflight(d, scripts)
         audit = json.loads((d/'final_media_verification.json').read_text())
         assert audit['status'] == 'PASS' and audit['joined_frames'] == 652
+        assert audit['render_settings']['candidate_sha256'] == sha(d/'kaiju_liftoff_cinematic.blend'), \
+            'Camera candidate changed during final render'
         quality = audit['render_settings']['quality']
         assert quality['samples'] == 4096 and abs(quality['adaptive_threshold']-.01) < 1e-6
         assert quality['volume_step_rate'] == 1 and quality['volume_max_steps'] == 1024
