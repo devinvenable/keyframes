@@ -279,3 +279,21 @@ persistent terminal/PTY session; a background child of a short-lived tool shell
 may be terminated even with nohup. The preview pipeline checks scene hashes,
 encodes 24fps clips, and fully decodes and verifies media, but the paused T313
 clips have not completed this stage. No final movie has been rendered.
+
+## T314: endpoint distance iteration
+
+Round 01: `/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/round_01/`.
+`stills/frame_0086.png` is one graded 1920×1080 / 64-sample frame. The camera
+is 5% closer than the T313 left-third endpoint (71.4279 units), with the same
+31.5° upward tilt, height, lens and sensor. Bounding-box margins are 3.35%
+above the horn and 2.19% below the feet; pixel inspection confirms no clipping.
+This remains an endpoint review, pending Devin's next nudge or selection.
+
+Reuse the T313 reproduction commands with this round's directory, passing
+`--closer-percent 5 --keep-tilt --negative-checks` to `take3_hold.py` and using
+the prior `B_hold_left_third/hold_B_left_third.blend` as its source.
+Each round uses a fresh output directory. The copied camera action is detached
+while solving yaw so an already-keyed endpoint cannot reset the trial rotation.
+`take314_results.json` records saved-scene locks, the source hash chain, media
+hashes, margins and review. Mutation checks reject zero camera movement and
+a 0.1° tilt change at their respective assertions, with exact file restoration.

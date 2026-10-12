@@ -1,0 +1,73 @@
+{
+  "status": "PASS",
+  "stage": "Endpoint preview only; camera move deferred by Devin",
+  "source": "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B_hold_left_third/hold_B_left_third.blend",
+  "source_sha256": "2efe2644d44fc1148b8934f9d1c2a2f1f01dbdb774acb97cc6201299af959d14",
+  "blend": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/round_01/hold_B_left_third.blend",
+  "blend_sha256": "149ea3815da36578c284dec5fa6612ae5d8fb399defbd929d252db1cebeff35f",
+  "frame": 86,
+  "original_position": [
+    -18.600000381469727,
+    4.599998474121094,
+    0.699999988079071
+  ],
+  "position": [
+    -19.920000076293945,
+    8.120002746582031,
+    0.699999988079071
+  ],
+  "distance_from_landing": 71.4278691458919,
+  "original_distance": 75.18723373809878,
+  "closer_percent": 5.0,
+  "original_elevation": 31.49999887879367,
+  "elevation": 31.500002884111222,
+  "beetle_bounds": [
+    0.1083676666021347,
+    0.021924655884504318,
+    0.5582990050315857,
+    0.9664981961250305
+  ],
+  "silhouette_center_x": 0.3333333333333333,
+  "lens": 72.0,
+  "sensor_width": 170.0,
+  "locked_state_sha256": "7cedf5d9be65acc06002174dacbf824602c2094fefcdd0711c24518913e43a32",
+  "exact_lens_frames_compared": 108,
+  "dust_changes": "None",
+  "negative_checks": [
+    {
+      "mutation": "Unmodified B stand-off",
+      "assertion": "Endpoint must match requested distance reduction"
+    },
+    {
+      "mutation": "Restore narrow sensor and crop the close hold",
+      "assertion": "('Actor/horn cropped', [-1.3493748903274536, -1.757577896118164, 0.7753009796142578, 2.7029082775115967])"
+    }
+  ],
+  "top_margin_percent": 3.3501803874969482,
+  "bottom_margin_percent": 2.192465588450432,
+  "current_deliverable": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/round_01/stills/frame_0086.png",
+  "png_sha256": "730115dd87f977b5ed8f21e076f27ae46c14d5f5febea0d79dfa341f3db264ff",
+  "resolution": [
+    1920,
+    1080
+  ],
+  "cycles_samples": 64,
+  "grade": {
+    "blender": "4.1.1",
+    "frames": 1,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "exposure": -0.8,
+    "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+  },
+  "source_hashes_unchanged": {
+    "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B_hold_left_third/hold_B_left_third.blend": "2efe2644d44fc1148b8934f9d1c2a2f1f01dbdb774acb97cc6201299af959d14",
+    "/home/devin/src/2026/videdit/work/kaiju_arrival_313_take3/B/take_B.blend": "d26bc5cfacda9db3c251c1034b68a96cddce0da95e71af823e69d21690dd9c71",
+    "/home/devin/src/2026/videdit/work/kaiju_arrival_312_take2/B/take_B.blend": "99e2c9fd35ed8152659ce19d2283f34e0c7b2278f42d2e7ee50ab83780e0db7b",
+    "/home/devin/src/2026/videdit/work/kaiju_arrival_311_beetle_only/beetle_arrival_final.blend": "def2538ba5138197a5ccc8761382bd473330133be12d42ef26537f0a02efea88"
+  },
+  "pixel_review": "Horn and both feet visible; unchanged low dust at ground; no clipping.",
+  "mutation_tests": {
+    "unchanged_distance": "Rejected at requested distance assertion",
+    "tilt_minus_0_1_degree": "Rejected at preserve upward tilt assertion"
+  }
+}
