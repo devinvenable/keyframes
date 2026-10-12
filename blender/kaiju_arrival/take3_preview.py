@@ -1,7 +1,7 @@
-"""Render/grade draft T313 takes in detached workers; never render a final.
+"""Render/grade draft T313 takes in persistent workers; never render a final.
 
 Each take uses a single render subprocess per sequence for persistent scene
-data. Run this orchestrator detached so a terminal timeout cannot kill a batch.
+data. Run in a persistent terminal session so a tool timeout cannot kill a batch.
 Two takes can render concurrently; these scenes fit together on the 12GB 3060.
 """
 import argparse

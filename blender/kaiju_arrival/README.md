@@ -256,9 +256,8 @@ for take in A B; do
     --output "$SHOT/$take/animation_verification.json" --negative-checks
 done
 
-# Detached workers avoid the terminal render-timeout failure from T312.
-nohup "$PYTHON" -u blender/kaiju_arrival/take3_preview.py --directory "$SHOT" \
-  > "$SHOT/preview.log" 2>&1 < /dev/null &
+# Run in a persistent terminal/PTY session, not a short-lived shell background job.
+"$PYTHON" -u blender/kaiju_arrival/take3_preview.py --directory "$SHOT"
 # Run after both workers finish successfully:
 "$PYTHON" blender/kaiju_arrival/take3_review.py --directory "$SHOT"
 ```
