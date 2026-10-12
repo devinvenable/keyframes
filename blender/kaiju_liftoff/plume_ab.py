@@ -52,6 +52,9 @@ def main():
             stats[name] = plume_stats(image)
             crop = cv2.resize(image[y0:y1, x0:x1], None, fx=2, fy=2,
                               interpolation=cv2.INTER_NEAREST)
+            pad = image.shape[1] - crop.shape[1]
+            crop = cv2.copyMakeBorder(crop, 0, 0, pad // 2, pad - pad // 2,
+                                      cv2.BORDER_CONSTANT, value=(16, 16, 16))
             column = np.vstack([label(image.copy(), f'{name} frame {n}'),
                                 label(crop, f'{name} plume 2x')])
             pair.append(column)
