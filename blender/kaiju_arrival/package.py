@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from PIL import Image, ImageDraw
 p=argparse.ArgumentParser();p.add_argument('--directory',type=Path,required=True)
-a=p.parse_args();d=a.directory.resolve();frames=d/'preview_frames';stills=d/'revised_stills'
+a=p.parse_args();d=a.directory.resolve();frames=d/'preview_frames';stills=d/'final_stills'
 def run(args):return subprocess.run([str(x) for x in args],check=True,capture_output=True,text=True).stdout
 paths=[frames/f'frame_{i:04}.png' for i in range(1,109)]
 for path in paths:
