@@ -80,6 +80,15 @@ class MidiEgress:
         """Relay only to already-open KeyStep hardware; keep its class filter."""
         return self._send(status, (self.ports,), keystep_only=True)
 
+    def send_transport_except_keystep(self, status):
+        """Transport for every destination but KeyStep hardware.
+
+        A resume lands mid-bar, and gear behind the KeyStep re-anchors its
+        pattern on Start — so the clock withholds that Start from the KeyStep
+        and re-anchors it on its own grid tick instead (clock.py), while
+        Keyframes and the other mirrors still hear the immediate resume."""
+        return self._send(status, (self.ports, self.shared), skip_keystep=True)
+
     def open_file_output(self, selection=None):
         """File-only view of the mirrors, or one explicitly selected output.
 
@@ -109,8 +118,8 @@ class MidiEgress:
         output.open_port(index)
         return _FileOutput(MidiEgress([(name, output)]), owned=True)
 
-    def _send(self, message, groups, *, keystep_only=False, file=False,
-              destination=None):
+    def _send(self, message, groups, *, keystep_only=False, skip_keystep=False,
+              file=False, destination=None):
         data = [message] if isinstance(message, int) else message
         status = data[0]
         # 0xFA Start / 0xFB Continue / 0xFC Stop are the transport class.
@@ -123,6 +132,8 @@ class MidiEgress:
                 if destination is not None and name != destination:
                     continue
                 if keystep_only and 'keystep' not in name.lower():
+                    continue
+                if skip_keystep and 'keystep' in name.lower():
                     continue
                 if not mask & bit:
                     continue
