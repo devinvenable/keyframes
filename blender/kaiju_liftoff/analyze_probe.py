@@ -39,10 +39,15 @@ def measure(path, reference):
                'signalstats,metadata=print', '-f', 'null', '-']
     log = subprocess.run(command, capture_output=True, text=True, check=True).stderr
     yavg = float(re.search(r'lavfi.signalstats.YAVG=([0-9.]+)', log)[1])
+    command[command.index('-vf') + 1] = (
+        'scale=out_color_matrix=bt709:out_range=tv,format=yuv444p,signalstats,metadata=print')
+    normalized = subprocess.run(command, capture_output=True, text=True, check=True).stderr
+    yavg_bt709 = float(re.search(r'lavfi.signalstats.YAVG=([0-9.]+)', normalized)[1])
     image = cv2.imread(str(path))
     difference = image.astype(float) - reference.astype(float)
     return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-                yavg=yavg, rgb_mae=float(np.abs(difference).mean()),
+                yavg=yavg, yavg_explicit_bt709=yavg_bt709,
+                rgb_mae=float(np.abs(difference).mean()),
                 rgb_rmse=float(np.sqrt(np.mean(difference ** 2))))
 
 
@@ -68,7 +73,8 @@ def main():
     results = {'alignment': geometry, 'measurements': {}}
     paths = [a.reference] + [a.directory / name for name in [
         'matched_source_quality.png', 'grade_from_png.png', 'historical_profile.png',
-        'extension_grade.png', 'canon_I48.png', 'progress_tail.png', 'grade_bypass.png']]
+        'extension_grade.png', 'canon_I48.png', 'progress_tail.png', 'grade_bypass.png',
+        'extension_grade_trim.png']]
     for path in paths:
         if path.exists():
             results['measurements'][path.stem] = measure(path, reference)
@@ -90,6 +96,11 @@ def main():
     plate([paths[0], paths[1], paths[2]],
           ['A: teaser endpoint', 'B: source-quality probe', 'C: recovered compositor on PNG'],
           a.directory / 'ab_grade.png')
+    if (a.directory / 'extension_grade_trim.png').exists():
+        plate([a.reference, a.directory / 'extension_grade.png',
+               a.directory / 'extension_grade_trim.png'],
+              ['A: teaser 78.066', 'B: recovered chain 80.610',
+               'C: chain + reconstructed RGB trim 78.037'], a.directory / 'ab_extension.png')
     print(json.dumps(results, indent=2))
 
 
