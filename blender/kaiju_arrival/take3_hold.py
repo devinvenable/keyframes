@@ -46,7 +46,10 @@ def main():
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--negative-checks', action='store_true')
+    parser.add_argument('--closer-percent', type=float, default=12)
+    parser.add_argument('--keep-tilt', action='store_true', help='Nudge an existing endpoint without changing its tilt')
     args = parser.parse_args(sys.argv[sys.argv.index('--') + 1:])
+    assert 0 < args.closer_percent < 100
     destination = args.output / 'hold_B_left_third.blend'
     assert destination.resolve() != args.source.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -64,9 +67,12 @@ def main():
     original_distance, original_elevation = distance(scene), elevation(scene, 86)
 
     def closer():
-        assert distance(scene) < original_distance * .95, 'Endpoint must move materially closer than B'
+        assert abs(distance(scene) / original_distance - (1 - args.closer_percent / 100)) < 1e-5, 'Endpoint must match requested distance reduction'
 
     def higher():
+        if args.keep_tilt:
+            assert abs(elevation(scene, 86) - original_elevation) < 1e-4, 'Endpoint must preserve upward tilt'
+            return
         assert elevation(scene, 86) > original_elevation + 2, 'Endpoint must tilt further upward than B'
 
     def reject(check, label):
@@ -78,15 +84,19 @@ def main():
             raise AssertionError(f'Negative check failed to discriminate: {label}')
 
     if args.negative_checks:
-        reject(lambda: composition(scene), 'Unmodified B hold is centered')
+        if not args.keep_tilt:
+            reject(lambda: composition(scene), 'Unmodified B hold is centered')
         reject(closer, 'Unmodified B stand-off')
-        reject(higher, 'Unmodified B upward tilt')
+        if not args.keep_tilt:
+            reject(higher, 'Unmodified B upward tilt')
     # Save a static endpoint camera. Earlier frames deliberately carry no new
     # authored move: Devin will work backwards from this composition.
-    camera.animation_data.action = original_action.copy()
+    endpoint_action = original_action.copy()
+    # A copied, already-keyed hold can re-evaluate during the bounds solve.
+    camera.animation_data.action = None
     mark = Vector((-45, 75, original_position.z))
-    camera.location = mark + (original_position - mark) * .88
-    pitch = math.radians(31.5)
+    camera.location = mark + (original_position - mark) * (1 - args.closer_percent / 100)
+    pitch = math.radians(original_elevation if args.keep_tilt else 31.5)
     lo, hi = -math.pi / 2, math.pi / 2
     for _ in range(40):
         yaw = (lo + hi) / 2
@@ -99,6 +109,7 @@ def main():
         else:
             hi = yaw
     endpoint_rotation = camera.rotation_quaternion.copy()
+    camera.animation_data.action = endpoint_action
     for frame in range(1, 109):
         scene.frame_set(frame)
         camera.rotation_quaternion = endpoint_rotation
@@ -121,7 +132,7 @@ def main():
     assert lenses(scene) == expected_lenses, 'Lens timing changed'
     assert world_state(scene) == expected_world, 'Environment changed'
     scene.frame_set(86)
-    scene['shot'] = 'T313 B revised endpoint: left third, 12% closer, 31.5-degree upward tilt'
+    scene['shot'] = f'B revised endpoint: left third, {args.closer_percent:g}% closer, {math.degrees(pitch):g}-degree upward tilt'
     scene['take3_hold_only'] = 'Frame 86 composition review only; earlier camera move awaits direction'
     bpy.context.preferences.filepaths.save_version = 0
     bpy.ops.wm.save_as_mainfile(filepath=str(destination.resolve()))
@@ -143,9 +154,11 @@ def main():
         'blend': str(destination.resolve()), 'blend_sha256': hashlib.sha256(destination.read_bytes()).hexdigest(),
         'frame': 86, 'original_position': list(original_position),
         'position': list(scene.camera.location), 'distance_from_landing': distance(scene),
-        'original_distance': original_distance, 'closer_percent': 12,
+        'original_distance': original_distance, 'closer_percent': args.closer_percent,
         'original_elevation': original_elevation, 'elevation': elevation(scene, 86),
         'beetle_bounds': bounds(scene), 'silhouette_center_x': 1 / 3,
+        'top_margin_percent': 100 * (1 - bounds(scene)[3]),
+        'bottom_margin_percent': 100 * bounds(scene)[1],
         'lens': scene.camera.data.lens, 'sensor_width': scene.camera.data.sensor_width,
         'locked_state_sha256': expected, 'exact_lens_frames_compared': 108,
         'dust_changes': 'None', 'negative_checks': negative,
