@@ -160,5 +160,7 @@ if __name__ == '__main__':
             else:
                 raise AssertionError(f'Negative control incorrectly passed: {case}')
         report['negative_controls'] = failures
+    report['baseline_sha256'] = hashlib.sha256(a.baseline.read_bytes()).hexdigest()
+    report['candidate_sha256'] = hashlib.sha256(a.candidate.read_bytes()).hexdigest()
     a.output.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))

@@ -1,0 +1,45 @@
+{
+  "status": "PASS",
+  "lock_frames": [
+    1,
+    111
+  ],
+  "lock_quarter_frames": 441,
+  "lock_matrix_max_error": 0.0,
+  "non_camera_frames_identical": 217,
+  "non_camera_data_identical": [
+    "actions",
+    "camera_data",
+    "cycles",
+    "geometry",
+    "images",
+    "lights",
+    "materials",
+    "render",
+    "view"
+  ],
+  "camera_min_step": 0.029161725893479512,
+  "camera_max_step": 1.3882965621576084,
+  "camera_max_acceleration": 0.050519966820818545,
+  "camera_max_turn_radians": 0.0149863725528121,
+  "final_glide_max_step": 0.029169900234534935,
+  "elevated_camera_bottom_ray_min_z": 0.04361153393983841,
+  "camera_start": [
+    29.79916000366211,
+    -3.427370309829712,
+    1.5
+  ],
+  "camera_end": [
+    -42.29993438720703,
+    -37.149993896484375,
+    22.100000381469727
+  ],
+  "negative_controls": {
+    "unfixed_camera": "Camera never cranes upward",
+    "join_drift": "Approved camera window changed: 1.0",
+    "changed_lift": "Non-camera data/settings changed: ['actions']",
+    "camera_jump": "Frozen or discontinuous camera"
+  },
+  "baseline_sha256": "5d0c3fed617ef38631d67adecb69c839fff5e2270e47047a70be343d5e4ca00d",
+  "candidate_sha256": "2722acfa0501720a0648a964b2860d0f7e15c912f1da188db87c22c9e0235f5e"
+}

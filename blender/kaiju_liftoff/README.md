@@ -1,4 +1,4 @@
-# Kaiju booster liftoff — task 305
+# Kaiju booster liftoff — tasks 305 and 306
 
 A nine-second Blender continuation of `teaser2.mp4`, using the original
 mountain-valley scene and skinned robot. All art outputs are separate from
@@ -6,7 +6,113 @@ Devin's originals in:
 
 `/home/devin/src/2026/videdit/work/liftoff_305/`
 
-## Review deliverables
+## Cinematic camera revision (T306)
+
+`kaiju_liftoff_shot.blend` remains the untouched approved T305 baseline.
+`kaiju_liftoff_cinematic.blend` changes only its camera animation. Every camera
+sample through frame **111** is identical, including quarter-frame samples.
+After full thrust, the camera sweeps left and pulls back, then cranes from 1.5
+to 22.1 world units. It tilts into the sky and finishes the move at frame 205,
+leaving a half-second slow glide. Lens stays at 12 mm. Robot, ring, hatch,
+booster, exhaust and dust animation remain unchanged.
+
+The rise is delayed until frame 144: the original shallow fog volume has a
+visible flat upper boundary from elevated viewpoints. Once the camera leaves
+the haze, even the bottom of its view points above the horizon. This keeps the
+finite stage out of shot without changing the environment or effect assets.
+
+`cinematic_verification.json` records comparison against the actual packed
+baseline, including geometry, used packed textures, materials, lights, camera
+data, render settings, non-camera actions and every evaluated animation frame.
+Blender discards unused image datablocks on save, so only images with users
+participate. Negative controls reopen the candidate before each in-memory
+mutation; none of the saved assets are changed. The original passive camera,
+a changed join key, altered lift, and abrupt camera jump must all fail.
+
+The refreshed draft uses `cinematic_v4_frames/` and the same public preview
+filenames below. Frames 2–110 reuse the approved 8-sample images because both
+the scene and camera match exactly; later frames are newly rendered. The old
+previews are preserved as `*_approved_t305.mp4`.
+
+Devin pre-approved the final render on 2026-10-11, relayed by `pm-midi-1` during
+T306. No further visual approval is required after draft QA. The actual source
+settings are **4096 maximum Cycles samples, adaptive threshold 0.01, original
+volume quality and AgX color settings**, not the 64-sample cap in the saved
+T305 draft. `render_final.py` restores those settings from the source before
+rendering every frame 2–217 at 1920×1080/24 fps. The final artifacts are:
+
+- `kaiju_liftoff_final.blend` — packed scene with restored source quality.
+- `cinematic_final_frames/` — 216 native frames and render settings/provenance.
+- `kaiju_liftoff_final.mp4` — 216 frames, 9 seconds, 1080p24.
+- `teaser2_with_liftoff_final.mp4` — 652 frames, 27.1667 seconds, 1080p24.
+- `final_media_verification.json` — frame counts, dimensions, decode checks,
+  content hashes and render settings. Its PASS confirms encoding completed;
+  a running render alone is not a completed deliverable.
+
+The extension remains silent. No sound design is added by this camera task.
+
+```bash
+blender -b /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_shot.blend \
+  --python-exit-code 1 --python blender/kaiju_liftoff/rework_camera.py -- \
+  --output /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_cinematic.blend
+
+blender -b --python-exit-code 1 --python blender/kaiju_liftoff/verify_camera.py -- \
+  --baseline /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_shot.blend \
+  --candidate /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_cinematic.blend \
+  --output /home/devin/src/2026/videdit/work/liftoff_305/cinematic_verification.json \
+  --negative-controls
+
+blender -b /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_cinematic.blend \
+  --python-exit-code 1 --python blender/kaiju_liftoff/render_preview.py -- \
+  --output /home/devin/src/2026/videdit/work/liftoff_305/cinematic_v4_frames \
+  --animation --step 2 --percent 33 --samples 8
+
+python3 blender/kaiju_liftoff/package_preview.py \
+  --directory /home/devin/src/2026/videdit/work/liftoff_305 \
+  --frames-directory /home/devin/src/2026/videdit/work/liftoff_305/cinematic_v4_frames \
+  --reference /home/devin/src/2026/videdit/work/liftoff_refs/teaser2.mp4
+
+blender -b --python-exit-code 1 --python blender/kaiju_liftoff/render_final.py -- \
+  --source /home/devin/src/2026/videdit/work/kaiju_mountain_valley.blend \
+  --candidate /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_cinematic.blend \
+  --output /home/devin/src/2026/videdit/work/liftoff_305/cinematic_final_frames \
+  --save-scene /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_final.blend
+
+python3 blender/kaiju_liftoff/package_final.py \
+  --directory /home/devin/src/2026/videdit/work/liftoff_305 \
+  --reference /home/devin/src/2026/videdit/work/liftoff_refs/teaser2.mp4
+```
+
+The renderer writes a temporary PNG before atomically accepting each frame.
+Resume uses the same command and checks input hashes/settings against the
+manifest; use a fresh directory when either changes. Never reduce render quality
+just to resume an existing final sequence. The RTX 3060/OptiX is the final device.
+
+### Overnight job and completion contract
+
+`run_final.py` performs preflight, rendering, encoding, source-integrity checks
+and completion/failure notification to the PM. Run it from a copied
+`render_job_306/` bundle under the output directory, with `render_final.py`,
+`package_final.py`, `package_preview.py` and `asset_hashes.json` alongside it.
+This lets the render survive worktree cleanup. Its `--preflight-only` mode checks
+the candidate hash against camera QA, all four negative controls, the audited
+draft hashes/frame counts and original asset hashes without rendering.
+
+The overnight unit is `midi-liftoff-306.service` in the user systemd manager.
+Status is in `final_job_status.json`; complete logs are in `final_job.log`.
+`phase: COMPLETE` requires both encoding and source-quality audit to pass.
+Verify `final_media_verification.json` has `status: PASS`, 216 extension frames,
+652 joined frames, 1920×1080 and `24/1` on both videos, plus a 4096-sample cap,
+0.01 adaptive threshold and original volume settings. A `FAILED` status includes
+the exception and is reported to the PM. Check logs before restarting the unit;
+accepted PNGs resume while partial `pending_*.png` files are rendered again.
+
+On 2026-10-11 the PM explicitly authorized handing off a running overnight job:
+push all code, leave the job self-contained, and report render status plus these
+verification criteria in `axon done`. The PM will pick up the completed result.
+Such a handoff is not a claim that the final movie already exists.
+
+## T305 baseline and preview deliverables
 
 - `kaiju_liftoff_shot.blend` — packed scene, 1920×1080, 24 fps, frames 1–217.
   Frame 1 is the join reference; render frames **2–217** when appending.
@@ -17,7 +123,7 @@ Devin's originals in:
 - `verification.json` — pose, body geometry, camera, ascent, ring fade and
   resource checks; `media_verification.json` — encoded video audit.
 
-These are review artifacts. The final-quality sequence has not been rendered.
+These T305 artifacts were the approved draft; see T306 above for final outputs.
 The draft is silent during the extension; ignition, mechanical and flight sound
 design remain a separate creative pass. Low samples soften dust and metal detail.
 
@@ -76,7 +182,7 @@ Run from the repository root with Blender 5.1.2 and the original source assets:
 ```bash
 blender -b /home/devin/src/2026/videdit/work/kaiju_mountain_valley.blend \
   --python-exit-code 1 --python blender/kaiju_liftoff/build.py -- \
-  --output /home/devin/src/2026/videdit/work/liftoff_305
+  --output /home/devin/src/2026/videdit/work/liftoff_305/rebuild_306
 
 blender -b /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_shot.blend \
   --python-exit-code 1 --python blender/kaiju_liftoff/render_preview.py -- \
