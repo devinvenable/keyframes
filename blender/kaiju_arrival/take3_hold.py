@@ -83,7 +83,7 @@ def main():
         reject(higher, 'Unmodified B upward tilt')
     # Save a static endpoint camera. Earlier frames deliberately carry no new
     # authored move: Devin will work backwards from this composition.
-    camera.animation_data_clear()
+    camera.animation_data.action = original_action.copy()
     mark = Vector((-45, 75, original_position.z))
     camera.location = mark + (original_position - mark) * .88
     pitch = math.radians(31.5)
@@ -98,7 +98,12 @@ def main():
             lo = yaw
         else:
             hi = yaw
-    camera.keyframe_insert(data_path='rotation_quaternion', frame=86)
+    endpoint_rotation = camera.rotation_quaternion.copy()
+    for frame in range(1, 109):
+        scene.frame_set(frame)
+        camera.rotation_quaternion = endpoint_rotation
+        camera.keyframe_insert(data_path='rotation_quaternion', frame=frame)
+    scene.frame_set(86)
     camera.animation_data.action.name = 'T313 | revised hold only'
     composition(scene)
     clearance(scene)
