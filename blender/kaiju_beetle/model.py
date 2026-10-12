@@ -176,7 +176,16 @@ def build():
         plaque('mandible ' + side, [(sign*x,z) for x,z in [(2,0), (10,1), (12,4), (8,4.6), (5,2.3), (2,3)]], -13.2, 2, bronze, neck)
         for z in [-2.2, -.8]:
             cube('jaw grille ' + side, (sign*5, -10.5, z), (9, 1.2, .55), edge, neck, .06)
-        rivet('temple '+side, (sign*12, -8.7, 13), neck)
+        # Seat the bolt against the actual faceted helmet surface. A radius
+        # estimate would leave it floating outside the tapered upper course.
+        bpy.context.view_layer.update()
+        hits=[]
+        for part in coll.objects:
+            if part.name.startswith('BK | helmet wedge'):
+                hit,point,normal,index=part.ray_cast(Vector((sign*9,-30,13)),Vector((0,1,0)))
+                if hit:hits.append(point.y)
+        assert hits, 'Temple rivet ray missed the helmet'
+        rivet('temple '+side, (sign*9, min(hits)-.08, 13), neck)
     # A short crown spike plus the defining stacked, spiral-ridged drill horn.
     cone('crown spur', (0, 4.5, 22), 2.6, .05, 11, bronze, neck)
     drill = empty('drill spindle', neck, (0, -10, 11.5), axis='Z', limits='Z continuous; fixed 22 degree rake')

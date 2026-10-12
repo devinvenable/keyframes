@@ -4,6 +4,9 @@ Rigid bronze adversary based on the approved `kaiju_beetle_voxel.png`. The
 model uses closed faceted solids, segmented abdominal/elytron plates, hex
 rivets, angular amber eyes/chest, hinged limbs, and a seven-section drill horn
 with a solid helical cutting ridge. No organic mesh deformation is used.
+The collection contains **188 closed mesh solids and 25 empty controls**. Its
+neutral height is 99.54 scene units including the horn; the robot is 92.37 units
+in the face-off pose.
 
 ## Deliverables
 

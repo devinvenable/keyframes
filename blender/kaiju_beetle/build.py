@@ -78,7 +78,7 @@ camera(s,(126,-208,100),(0,0,51),43)
 area(s,'Studio warm key',(-70,-110,135),(0,0,44),(1,.78,.55),310000,85)
 area(s,'Studio cool fill',(75,-60,75),(0,0,45),(.55,.72,1),170000,70)
 area(s,'Studio rim',(35,80,130),(0,0,50),(1,.65,.27),370000,65)
-bpy.ops.mesh.primitive_plane_add(size=2000)
+bpy.ops.mesh.primitive_plane_add(size=20000)
 floor=bpy.context.object;floor.name='Studio floor'
 m=bpy.data.materials.new('Studio charcoal');m.diffuse_color=(.055,.064,.075,1);m.use_nodes=True
 m.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value=m.diffuse_color
