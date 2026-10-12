@@ -20,6 +20,8 @@ def floor():
 def check_airborne():assert floor()>30,'Airborne beat must clear the ground by 30 units'
 def check_landing():assert abs(floor())<.03,'Contact beat must plant soles on the ground'
 def check_zoom():assert cam.data.lens>=70,'Zoom must finish at a tight lens'
+def check_preimpact():assert bpy.data.objects['Arrival | powder 00'].scale.x<.03,'Powder must stay invisible before contact'
+def check_birth():assert bpy.data.objects['Arrival | powder 00'].scale.x>2,'Powder must be born on the exact contact frame'
 def check_dust():assert bpy.data.objects['Arrival | powder 00'].scale.x>2,'Dust must expand after impact'
 def projected(objects):
     points=[world_to_camera_view(s,cam,o.matrix_world@Vector(c)) for o in objects for c in o.bound_box]
@@ -30,12 +32,16 @@ for f in [1,29,40,51,52,54,58,63,86,108]:
     s.frame_set(f);bpy.context.view_layer.update()
     report['samples'][str(f)]={'floor':floor(),'lens':cam.data.lens,'beetle_bounds':projected(meshes)}
     if f==40:check_airborne()
+    if f==51:check_preimpact()
+    if f==52:check_birth()
     if f>=52:check_landing()
     if f>=63:check_zoom()
     if f==58:check_dust()
     if f in [40,86,108]:
         bounds=projected(meshes)
         assert bounds[0]>.015 and bounds[1]>.015 and bounds[2]<.985 and bounds[3]<.985, ('Beetle cropped',f,bounds)
+for f in range(52,109):
+    s.frame_set(f);check_landing()
 s.frame_set(1);rb=projected([bpy.data.objects['kaiju_robot_mesh']]);report['robot_establishing_bounds']=rb
 assert rb[3]-rb[1]<.55,'Robot should stand back in the wide establishing shot'
 assert all(0<v<1 for v in rb),'Establishing robot must be in frame'
@@ -56,5 +62,7 @@ if a.negative_checks:
     s.frame_set(52);loc=root.location.copy();loc.z+=4
     mutation(52,root,'location',loc,check_landing,'Raise landing four units')
     mutation(86,cam.data,'lens',32,check_zoom,'Remove zoom')
+    mutation(51,bpy.data.objects['Arrival | powder 00'],'scale',Vector((5,)*3),check_preimpact,'Start powder before foot contact')
+    mutation(52,bpy.data.objects['Arrival | powder 00'],'scale',Vector((.001,)*3),check_birth,'Delay powder birth beyond contact')
     mutation(58,bpy.data.objects['Arrival | powder 00'],'scale',Vector((.001,)*3),check_dust,'Remove impact powder')
 report['status']='PASS';a.output.write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))

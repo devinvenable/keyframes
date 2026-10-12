@@ -78,8 +78,8 @@ belonged to the 8-bit salvage path; neither is needed for these native renders.
 
 The scene verifier measures airborne clearance, contact, lens endpoints,
 framing, robot distance in the establishing image, and rigid construction.
-Four in-memory negative mutations remove leap height, raise contact above the
-ground, remove the zoom, and suppress the dust; each must fail its intended
+Six in-memory negative mutations remove leap height, raise contact above the
+ground, remove the zoom, suppress the dust, and shift powder onset early or late; each must fail its intended
 assertion, then pass after exact restoration. The unanimated T307 source also
 fails the new shot-duration assertion. Mutated scenes are never saved.
 
