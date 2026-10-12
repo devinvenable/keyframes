@@ -1,0 +1,31 @@
+T306 negative QA — all controls rejected on assertions, no import/collection errors.
+Implementation committed before controls; saved scene files never mutated.
+
+Camera controls (verify_camera.py --negative-controls, Blender 5.1.2):
+  Original unfixed T305 packed scene: Camera never cranes upward
+  +1 world-unit camera key at frame 60: Approved camera window changed: 1.0
+  +1 world-unit lift key at frame 180: Non-camera data/settings changed: ['actions']
+  +20 world-unit camera key at frame 180: Frozen or discontinuous camera
+Each camera/pose mutation starts from a fresh reopen of the candidate in memory.
+
+Packaging controls (isolated negative_checks/package_final_smoke fixture):
+  Missing final PNG: AssertionError: Missing final frames
+  Draft PNG substituted for final PNG: AssertionError: Wrong final dimensions [633, 356]
+Fixture links restored after each mutation. The real render sequence was untouched.
+
+Overnight/resume controls:
+  Zeroed candidate hash in isolated camera QA fixture: stale QA rejected
+  Old/mismatched render-settings manifest: Render inputs/settings changed: use a fresh output directory
+
+Encoder smoke test used repeated benchmark imagery, NOT a final movie:
+  Extension: 216 frames / 9.000000 s / 1920x1080 / 24 fps
+  Joined: 652 frames / 27.166667 s / 1920x1080 / 24 fps
+  Both decode cleanly. Actual final artifacts are audited again after overnight rendering.
+
+Source-quality RTX 3060 / OptiX benchmarks:
+  Frame 2: 83.43 seconds
+  Frame 168: 150.95 seconds
+  4096 max samples, adaptive threshold 0.01, original volume settings, 1080p24.
+  Weighted estimate: about 7 hours (5–9 hour range).
+
+Final render pre-approved by Devin, relayed by pm-midi-1 on 2026-10-11.

@@ -18,11 +18,13 @@ def probe(path):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--directory',type=Path,required=True)
-    p.add_argument('--reference',type=Path,required=True);a=p.parse_args()
+    p.add_argument('--reference',type=Path,required=True)
+    p.add_argument('--frames-directory',type=Path,help='Fresh rendered sequence after a scene revision')
+    a=p.parse_args()
     d=a.directory.resolve();seq=d/'encode_sequence';seq.mkdir(exist_ok=True)
     expected=list(range(2,218,2))
     for i,f in enumerate(expected,1):
-        source=d/'matched_preview_frames'/f'frame_{f:04}.png'
+        source=(a.frames_directory.resolve() if a.frames_directory else d/'matched_preview_frames')/f'frame_{f:04}.png'
         if not source.is_file():raise FileNotFoundError(source)
         target=seq/f'frame_{i:04}.png'
         if target.is_symlink():target.unlink()
