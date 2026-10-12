@@ -1,0 +1,131 @@
+{
+  "alignment": {
+    "matches": 243,
+    "inliers": 160,
+    "rms_pixels": 1.1753695011138916,
+    "resolution": [
+      960,
+      540
+    ],
+    "affine": [
+      [
+        0.9997196835796851,
+        0.000814525364431731,
+        -0.3083560365328179
+      ],
+      [
+        -0.000814525364431731,
+        0.9997196835796851,
+        0.03302646301375886
+      ]
+    ],
+    "span_pixels": [
+      617.0177612304688,
+      339.49432373046875
+    ],
+    "passed": true
+  },
+  "measurements": {
+    "teaser2_lastframe": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_refs/teaser2_lastframe.png",
+      "sha256": "1baad96ce95f9655022b306dfede58b6f770848341b96d2c95cc410036314a96",
+      "yavg": 78.066,
+      "yavg_explicit_bt709": 77.8209,
+      "rgb_mae": 0.0,
+      "rgb_rmse": 0.0
+    },
+    "matched_source_quality": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_305/probe_apr25/matched_source_quality.png",
+      "sha256": "e799ab5cecd1473ece54a6800aff6b5220588fabb8076f5b05f7f20e22e2c097",
+      "yavg": 91.0185,
+      "yavg_explicit_bt709": 90.7788,
+      "rgb_mae": 15.068829411008231,
+      "rgb_rmse": 16.238014731733173
+    },
+    "grade_from_png": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_305/probe_apr25/grade_from_png.png",
+      "sha256": "8e44ea30ee305437ea29364ab47707c75b853a17570130a2a21d2e11d48bc0e7",
+      "yavg": 81.2226,
+      "yavg_explicit_bt709": 81.0194,
+      "rgb_mae": 4.272390367798354,
+      "rgb_rmse": 6.864986745578997
+    },
+    "historical_profile": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_305/probe_apr25/historical_profile.png",
+      "sha256": "7e3c3c15c76817f421fbcb846b77a87de140d9b32428ae21c45b05dba34158a1",
+      "yavg": 81.1999,
+      "yavg_explicit_bt709": 81.0007,
+      "rgb_mae": 4.265044688786008,
+      "rgb_rmse": 6.812596933655526
+    },
+    "extension_grade": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_305/probe_apr25/extension_grade.png",
+      "sha256": "db7e8d3155fb39fe230b731e861aa52270146fe997af3c03d0a5b420b68405e1",
+      "yavg": 80.61,
+      "yavg_explicit_bt709": 80.3793,
+      "rgb_mae": 3.663264049639918,
+      "rgb_rmse": 6.208042900137575
+    },
+    "canon_I48": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_305/probe_apr25/canon_I48.png",
+      "sha256": "ae2434d7c1124f04f8da67686610862ca0778681b5bbc85646bbe83fd2c7684b",
+      "yavg": 108.104,
+      "yavg_explicit_bt709": 108.101,
+      "rgb_mae": 35.32898710776749,
+      "rgb_rmse": 44.80423169476838
+    },
+    "progress_tail": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_305/probe_apr25/progress_tail.png",
+      "sha256": "57d22d1f6176c0e5502093ab4250ca085895ae256dfac7ac40e7240003a6921c",
+      "yavg": 78.1288,
+      "yavg_explicit_bt709": 77.8904,
+      "rgb_mae": 3.3751681455761315,
+      "rgb_rmse": 6.459051931348118
+    },
+    "grade_bypass": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_305/probe_apr25/grade_bypass.png",
+      "sha256": "f6b328a4aab7a99651057887183f9e3b70f593fbf81e0b5ab9e7863213b92439",
+      "yavg": 91.3689,
+      "yavg_explicit_bt709": 91.1252,
+      "rgb_mae": 15.47424704218107,
+      "rgb_rmse": 16.61883438107798
+    },
+    "extension_grade_trim": {
+      "path": "/home/devin/src/2026/videdit/work/liftoff_305/probe_apr25/extension_grade_trim.png",
+      "sha256": "703dedec0f7283dda0afc8a67c2c54aae1e7f2bda0ca467d11a3d16bf5eda2cd",
+      "yavg": 78.0371,
+      "yavg_explicit_bt709": 77.813,
+      "rgb_mae": 2.7928698881172838,
+      "rgb_rmse": 5.630409621548866
+    }
+  },
+  "negative_controls": {
+    "shifted_camera": {
+      "matches": 235,
+      "inliers": 187,
+      "rms_pixels": 20.79058074951172,
+      "resolution": [
+        960,
+        540
+      ],
+      "affine": [
+        [
+          0.9939793961709065,
+          -0.002149764731753331,
+          -17.4791089578023
+        ],
+        [
+          0.002149764731753331,
+          0.9939793961709065,
+          0.7501114026863501
+        ]
+      ],
+      "span_pixels": [
+        723.1133422851562,
+        440.69091796875
+      ],
+      "passed": false
+    },
+    "grade_bypass_fails_improvement": true
+  }
+}

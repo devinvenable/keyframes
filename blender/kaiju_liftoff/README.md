@@ -1,5 +1,10 @@
 # Kaiju booster liftoff — tasks 305 and 306
 
+T308 investigates the final brightness seam. See [the matched-frame and recovered
+grade report](PROBE_APR25.md): April 25 raw scene YAVG 91.02 versus footage 78.07;
+the recovered historical compositor plus a separately labeled empirical trim
+matches the extension join to 78.04. Full-sequence processing awaits review.
+
 A nine-second Blender continuation of `teaser2.mp4`, using the original
 mountain-valley scene and skinned robot. All art outputs are separate from
 Devin's originals in:
