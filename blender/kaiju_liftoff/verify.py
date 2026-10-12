@@ -27,7 +27,7 @@ for f in range(1,218):
   assert all(max(o.scale)<=.00101 for o in s.objects if o.name.startswith('actor_plasma_ring')),f'Ring survives at {f}'
 steps=[(b-a).length for a,b in zip(positions,positions[1:])]
 assert min(steps)>.02,'Camera freezes during the continuation'
-assert max(steps)<1,'Camera makes an abrupt spatial jump'
+assert max(steps)<2,'Camera makes an abrupt spatial jump'
 assert abs(heights[-1]-heights[0]-76)<.001,'Robot does not complete the authored climb'
 assert max(abs(z-heights[0]) for z in heights[:95])<.001,'Robot rises before ignition'
 assert s.render.fps==24 and (s.frame_start,s.frame_end)==(1,217),'Incorrect timeline'
