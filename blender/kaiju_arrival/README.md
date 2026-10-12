@@ -310,7 +310,8 @@ endpoint fails the opening-tilt assertion in a negative mutation check.
 Only `move_01/stills/frame_0001.png` and `frame_0052.png` were rendered as graded
 1080p / 64-sample checks. The opening is empty; contact shows the full horn,
 both feet on the ground, and small low dust puffs. The approved frame 86 is
-reused from round 01. Full animation rendering remains pending review.
+reused from round 01. Devin subsequently approved the keyframes and final
+render, with the empty opening trimmed to a short breath before entry.
 
 `first_visible.py` rejects guaranteed-empty frames using mesh bounds against
 the camera frustum, then uses full-resolution Workbench silhouette/depth masks
@@ -325,3 +326,40 @@ under Blender 5.1.2, then use the standard render/grade commands with
 `--frames 1,52 --samples 64 --percent 100`. Run `first_visible.py --output
 <move_01/visibility>` with the saved move loaded in Blender 5.1.2. These scripts
 do not overwrite the approved source or retime the actor.
+
+### Approved final trim and reproduction
+
+Final output directory: `/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/`.
+The delivery uses source frames **27–108**, 82 frames / 3.416667 seconds at
+24 fps. Frames 27–30 provide four empty frames (1/6 second). First visibility
+is output frame 5, contact is output frame 26, and the camera settles at output
+frame 37. Animation keys retain their original source frame numbers.
+
+The approved move includes a partial airborne reveal during frames 31–50:
+the head is above the image until frame 51. This is explicitly recorded rather
+than silently changing the approved 13° opening / 44–63 tilt path to satisfy
+T311's older full-body-at-40 contract. `verify.py --entry-reveal-through 50`
+keeps all nine animation/dust negative checks, the strict endpoint margins,
+and verifies actual mesh containment on **every** frame 51–108. The exception
+cannot extend to contact. A displaced post-entry camera fails this new check.
+
+```bash
+python3 blender/kaiju_arrival/take314_final.py \
+  --move /home/devin/src/2026/videdit/work/kaiju_arrival_314_hold/move_01 \
+  --output /home/devin/src/2026/videdit/work/kaiju_arrival_314_final
+```
+
+The driver renders missing native EXRs at 1080p / 64 samples, reuses the exact
+approved frame-52 and frame-86 EXRs, grades with the pinned Blender 4.1.1 film
+compositor, and encodes CRF-16 H.264. The scene remains a complete 108-frame
+animation archive; `render_plan.json` records the trimmed delivery range.
+Two workers share the RTX 3060. For this delivery the spare GTX 1050 Ti also
+renders the disjoint entry range 27–51 using `render.py --device 1050`; wait for
+that worker to finish before resuming the driver, avoiding duplicate frames.
+
+`package.py --start-frame 27 --end-frame 108 --final` checks decoded frame
+count, resolution, rate, duration, full decode, original T307 artifact hashes
+and every graded-frame hash. An off-by-one start fails its frame-count check.
+The render driver rejects a changed scene hash before launching any render.
+`native_frame_hashes.json` records the retained linear sources; the final
+media report and rendered-pixel review accompany the movie.
