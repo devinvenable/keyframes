@@ -42,9 +42,15 @@ for f in [1,29,40,51,52,54,58,63,86,108]:
         assert bounds[0]>.015 and bounds[1]>.015 and bounds[2]<.985 and bounds[3]<.985, ('Beetle cropped',f,bounds)
 for f in range(52,109):
     s.frame_set(f);check_landing()
-s.frame_set(1);rb=projected([bpy.data.objects['kaiju_robot_mesh']]);report['robot_establishing_bounds']=rb
-assert rb[3]-rb[1]<.55,'Robot should stand back in the wide establishing shot'
-assert all(0<v<1 for v in rb),'Establishing robot must be in frame'
+rig=bpy.data.objects['actor_kaiju_robot'];robot=bpy.data.objects['kaiju_robot_mesh']
+assert not robot.hide_render,'Robot must remain present for reverse-shot continuity'
+assert (rig.location-Vector((-45,75,.15))).length>600,'Opponents must be far apart'
+report['robot_staging']={'location':list(rig.location),'distance':(rig.location-Vector((-45,75,.15))).length}
+def check_robot_outside():
+    points=[world_to_camera_view(s,cam,robot.matrix_world@Vector(c)) for c in robot.bound_box]
+    assert all(p.z<0 for p in points),'Robot must stay entirely behind the arrival camera'
+for f in range(1,109):
+    s.frame_set(f);bpy.context.view_layer.update();check_robot_outside()
 assert all(m.type not in {'ARMATURE','SUBSURF','LATTICE','CLOTH','SOFT_BODY'} for o in meshes for m in o.modifiers),'Beetle must retain rigid solids'
 if a.negative_checks:
     # In-memory property copies are restored exactly; no mutated scene is saved.
@@ -57,6 +63,7 @@ if a.negative_checks:
             else:raise AssertionError('Mutation was not detected: '+label)
         finally:setattr(obj,attr,old);bpy.context.view_layer.update()
         check()
+    mutation(1,rig,'location',Vector((80,180,.15)),check_robot_outside,'Restore superseded visible robot placement')
     s.frame_set(40);loc=root.location.copy();loc.z-=floor()
     mutation(40,root,'location',loc,check_airborne,'Remove leap height')
     s.frame_set(52);loc=root.location.copy();loc.z+=4

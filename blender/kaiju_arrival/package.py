@@ -17,7 +17,7 @@ probe=json.loads(run(['ffprobe','-v','error','-count_frames','-select_streams','
 assert probe['r_frame_rate']=='24/1' and int(probe['nb_read_frames'])==108,probe
 assert abs(float(probe['duration'])-4.5)<.001,probe
 run(['ffmpeg','-v','error','-i',video,'-f','null','-'])
-beats=[(1,'01  ROBOT ESTABLISHING / WIDE'),(40,'40  BEETLE AIRBORNE'),(52,'52  FIRST CONTACT'),(58,'58  DUST + FAST ZOOM'),(63,'63  ZOOM END'),(86,'86  FIGHTING POSE')]
+beats=[(1,'01  VALLEY ESTABLISHING / WIDE'),(40,'40  BEETLE AIRBORNE'),(52,'52  FIRST CONTACT'),(58,'58  DUST + FAST ZOOM'),(63,'63  ZOOM END'),(86,'86  FIGHTING POSE')]
 sheet=Image.new('RGB',(1280,3*392),(20,22,24));draw=ImageDraw.Draw(sheet)
 for i,(f,label) in enumerate(beats):
     path=stills/f'frame_{f:04}.png'

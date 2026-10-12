@@ -43,8 +43,11 @@ for i in range(140):
     s.collection.objects.link(o);o.name=f'Arrival | ground grit {i}'
     o.location=(scatter_rng.uniform(-250,250),scatter_rng.uniform(-180,240),0)
     o.scale*=scatter_rng.uniform(.7,2.4)
-rig=bpy.data.objects['actor_kaiju_robot'];rig.location=(80,180,.15)
-rig.rotation_euler=(0,0,math.radians(-40))
+# Opponents share a battle axis, 650 units apart (roughly seven suit heights).
+# The robot remains available for a separate reverse shot, behind this camera.
+rig=bpy.data.objects['actor_kaiju_robot']
+rig.location=(-45+650*math.sin(math.radians(50)),75-650*math.cos(math.radians(50)),.15)
+rig.rotation_euler=(0,0,math.radians(230))
 bpy.data.objects['BK shot | charged plasma blue'].location=(95,125,40)
 bpy.data.objects['BK shot | charged plasma blue'].data.energy=13000
 # Lower the ambient blanket so the foot contacts and thrown grit can be judged.
@@ -164,11 +167,11 @@ s.cycles.volume_step_rate=2;s.cycles.volume_max_steps=128;s.cycles.volume_bounce
 s.render.use_compositing=False;s.render.image_settings.file_format='OPEN_EXR'
 s.render.image_settings.color_depth='16';s.render.image_settings.color_mode='RGBA'
 s.view_settings.view_transform='AgX';s.view_settings.look='None';s.view_settings.exposure=-.8
-for name,f in [('Robot establishing',1),('Beetle airborne',40),('Slam contact',52),('Dust burst',58),('Zoom ends',63),('Fighting pose',86)]:s.timeline_markers.new(name,frame=f)
+for name,f in [('Empty valley establishing',1),('Beetle airborne',40),('Slam contact',52),('Dust burst',58),('Zoom ends',63),('Fighting pose',86)]:s.timeline_markers.new(name,frame=f)
 s['source_scene']=str(a.source.resolve());s['shot']='Beetle arrival T311'
 s['look']='Render linear EXR then kaiju_1960s compositor in Blender 4.1.1, exposure -0.8'
 s.frame_set(86)
 bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(a.output/'beetle_arrival.blend'))
-(a.output/'shot_manifest.json').write_text(json.dumps({'source':str(a.source.resolve()),'fps':24,'frames':108,'impact':52,'zoom':[46,63],'lens_mm':[32,72],'stills':{'robot_establishing':1,'beetle_airborne':40,'slam_contact':52,'dust_burst':58,'fighting_pose':86},'assets':'Existing T307 sandstone, robot, beetle, ground and HDRI; newly authored powder/grit. No downloaded assets.'},indent=2))
+(a.output/'shot_manifest.json').write_text(json.dumps({'source':str(a.source.resolve()),'fps':24,'frames':108,'impact':52,'zoom':[46,63],'lens_mm':[32,72],'stills':{'valley_establishing':1,'beetle_airborne':40,'slam_contact':52,'dust_burst':58,'fighting_pose':86},'robot_staging':{'distance_from_landing':650,'visibility':'retained behind arrival camera for reverse-shot continuity'},'assets':'Existing T307 sandstone, robot, beetle, ground and HDRI; newly authored powder/grit. No downloaded assets.'},indent=2))
 print('ARRIVAL_BUILD_COMPLETE',flush=True)

@@ -1,18 +1,19 @@
 # Beetle-knight arrival — T311
 
-A 108-frame / 24 fps / 4.5-second draft shot. The robot stands deeper in a new
-sandstone-valley arrangement; the beetle leaps in from screen left, plants both
+A 108-frame / 24 fps / 4.5-second draft shot. Both creatures remain in the sandstone scene, facing each other 650 units apart.
+The robot is entirely behind the arrival camera for a later reverse shot. The
+arrival opens on the empty valley; the beetle leaps in from screen left, plants both
 feet at frame 52, compresses into the landing, and settles into a guarded pose.
 A fixed-position camera pans toward the beetle and zooms from 32 to 72 mm over
 frames 46–63. A brief impact recoil accompanies the low powder burst and rigid
 ballistic dirt fragments. All beetle motion uses the approved rigid FK controls.
 
-Artifacts live in `/home/devin/src/2026/videdit/work/kaiju_arrival_311/`:
+Artifacts live in `/home/devin/src/2026/videdit/work/kaiju_arrival_311_beetle_only/`:
 
 - `beetle_arrival.blend`: baked animation, opens at frame 86; Blender 5.1.2.
 - `beetle_arrival_preview.mp4`: silent 960×540, 24 fps timing preview.
 - `key_beats.jpg`: labeled six-beat contact sheet.
-- `final_stills/frame_0001.png`: robot establishing.
+- `final_stills/frame_0001.png`: empty valley establishing.
 - `final_stills/frame_0040.png`: beetle airborne.
 - `final_stills/frame_0052.png`: initial sole contact and powder onset.
 - `final_stills/frame_0058.png`: spreading dirt and powder during the fast zoom.
@@ -33,7 +34,7 @@ use the T307 source directory as the output. The original T307 review manifest
 provides SHA-256 hashes, checked again during packaging.
 
 ```bash
-SHOT=/home/devin/src/2026/videdit/work/kaiju_arrival_311
+SHOT=/home/devin/src/2026/videdit/work/kaiju_arrival_311_beetle_only
 BLENDER=/home/devin/bin/blender-5.1.2-linux-x64/blender
 GRADE_BLENDER=/home/devin/bin/blender-4.1.1-linux-x64/blender
 
@@ -57,11 +58,12 @@ GRADE_BLENDER=/home/devin/bin/blender-4.1.1-linux-x64/blender
 "$BLENDER" -b "$SHOT/beetle_arrival.blend" --python-exit-code 1 \
   --python blender/kaiju_arrival/verify.py -- --output "$SHOT/verification.json" \
   --negative-checks
-python3 blender/kaiju_arrival/package.py --directory "$SHOT"
+/home/devin/src/2026/videdit/venv/bin/python blender/kaiju_arrival/package.py --directory "$SHOT"
 ```
 
 The renderer selects CUDA devices by name substring. Change `--device` for a
-different workstation. Python packaging requires Pillow, ffmpeg and ffprobe.
+different workstation. Python packaging requires Pillow, ffmpeg and ffprobe; the existing videdit venv
+provides Pillow on this workstation.
 No paid or newly downloaded landscape assets are used. Existing T307 sandstone,
 PBR ground, overcast HDRI, robot, and beetle are reused; additional sandstone
 pieces share existing mesh data. New ground grit, powder volumes, and airborne
@@ -77,9 +79,10 @@ Inverse AgX and the separately estimated −3-code-value reconstruction trim
 belonged to the 8-bit salvage path; neither is needed for these native renders.
 
 The scene verifier measures airborne clearance, contact, lens endpoints,
-framing, robot distance in the establishing image, and rigid construction.
-Six in-memory negative mutations remove leap height, raise contact above the
-ground, remove the zoom, suppress the dust, and shift powder onset early or late; each must fail its intended
+framing, opponent separation and robot exclusion throughout the shot, and rigid construction.
+Seven in-memory negative mutations remove leap height, raise contact above the
+ground, remove the zoom, suppress the dust, shift powder onset early or late, and restore the superseded
+visible robot placement; each must fail its intended
 assertion, then pass after exact restoration. The unanimated T307 source also
 fails the new shot-duration assertion. Mutated scenes are never saved.
 
@@ -88,3 +91,7 @@ fully decodes the MP4, and re-hashes every original T307 artifact. Visual review
 of the graded frames remains necessary: the first pass passed geometric checks
 but its inherited fog swallowed the foot contact and dust. The final shot uses
 thin ground haze, an immediately expanding powder skirt, and fading dust density.
+
+The earlier `/home/devin/src/2026/videdit/work/kaiju_arrival_311/` renders are
+superseded staging with a visible robot. The delivered beetle-only framing keeps
+the robot in the scene and out of frame throughout all 108 frames.
