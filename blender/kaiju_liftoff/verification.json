@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "join_pose_max_error": 1.1920928955078125e-07,
+  "body_vertices_unchanged": true,
+  "camera_min_step": 0.08916688211689165,
+  "camera_max_step": 0.33855048009208527,
+  "climb_world_units": 76.0,
+  "ring_reflections_end_frame": 19,
+  "missing_images": [],
+  "fps": 24,
+  "extension_frames": 216,
+  "extension_seconds": 9,
+  "checks": "All 217 evaluated frames checked for camera motion, lift timing and ring cutoff; source pose and body vertices checked at join."
+}
