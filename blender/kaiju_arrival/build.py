@@ -105,7 +105,7 @@ def dust_material():
     m=bpy.data.materials.new('Arrival | dry earth powder');m.use_nodes=True
     n,l=m.node_tree.nodes,m.node_tree.links;n.clear()
     out=n.new('ShaderNodeOutputMaterial');vol=n.new('ShaderNodeVolumeScatter')
-    vol.inputs['Color'].default_value=(.46,.35,.23,1);vol.inputs['Anisotropy'].default_value=.12
+    vol.inputs['Color'].default_value=(.58,.46,.30,1);vol.inputs['Anisotropy'].default_value=.12
     coord=n.new('ShaderNodeTexCoord');dist=n.new('ShaderNodeVectorMath');dist.operation='DISTANCE';dist.inputs[1].default_value=(.5,.5,.5)
     l.new(coord.outputs['Generated'],dist.inputs[0])
     edge=n.new('ShaderNodeMapRange');edge.clamp=True
@@ -114,14 +114,16 @@ def dust_material():
     noise=n.new('ShaderNodeTexNoise');noise.inputs['Scale'].default_value=7;noise.inputs['Detail'].default_value=2
     l.new(coord.outputs['Generated'],noise.inputs['Vector'])
     mul=n.new('ShaderNodeMath');mul.operation='MULTIPLY';l.new(edge.outputs[0],mul.inputs[0]);l.new(noise.outputs['Fac'],mul.inputs[1])
-    den=n.new('ShaderNodeMath');den.operation='MULTIPLY';den.inputs[1].default_value=.24
+    den=n.new('ShaderNodeMath');den.operation='MULTIPLY';den.inputs[1].default_value=.55
+    for f,value in [(1,.55),(52,.55),(58,.4),(70,.28),(86,.14),(108,.02)]:
+        den.inputs[1].default_value=value;den.inputs[1].keyframe_insert(data_path='default_value',frame=f)
     l.new(mul.outputs[0],den.inputs[0]);l.new(den.outputs[0],vol.inputs['Density']);l.new(vol.outputs[0],out.inputs['Volume'])
     return m
 mat=dust_material()
 # Uneven, low powder jets followed by slow spreading puffs.
 for i in range(22):
     angle=math.tau*i/22+rng.uniform(-.16,.16);direction=Vector((math.cos(angle),math.sin(angle),0))
-    radius=rng.uniform(12,19);speed=rng.uniform(15,35);size=rng.uniform(7,12)
+    radius=rng.uniform(12,19);speed=rng.uniform(15,35);size=rng.uniform(9,16)
     origin=Vector((-45,75,1))+direction*radius
     bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2,radius=1)
     o=bpy.context.object;o.name=f'Arrival | powder {i:02}';o.data.materials.append(mat)
@@ -129,7 +131,7 @@ for i in range(22):
         t=max(0,(f-52)/24)
         o.location=origin+direction*(speed*(1-math.exp(-t*1.8)))
         o.location.z=1+min(t*13,9)+i%3
-        grow=0.001 if f<52 else interp(f,[(52,.09),(55,.55),(62,1),(86,1.6),(108,1.9)])
+        grow=0.001 if f<52 else interp(f,[(52,.25),(55,.95),(62,1.4),(86,1.9),(108,2.3)])
         o.scale=(size*grow,size*grow*.9,size*grow*.65)
         key(o,['location','scale'],f)
 # Real rigid chunks on ballistic paths, with no luminous explosion.
@@ -137,13 +139,13 @@ dirt=bpy.data.materials.new('Arrival | rough flying grit');dirt.diffuse_color=(.
 dirt.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=dirt.diffuse_color
 dirt.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value=.95
 for i in range(70):
-    angle=rng.uniform(0,math.tau);speed=rng.uniform(13,53);vz=rng.uniform(15,42)
+    angle=rng.uniform(0,math.tau);speed=rng.uniform(20,75);vz=rng.uniform(25,65)
     origin=Vector((-45+rng.uniform(-15,15),75+rng.uniform(-13,13),.3))
-    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1,radius=rng.uniform(.25,1.1))
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1,radius=rng.uniform(.4,1.6))
     o=bpy.context.object;o.name=f'Arrival | thrown grit {i:02}';o.data.materials.append(dirt)
     for f in range(1,109):
-        t=max(0,(f-52)/24);landing=2*vz/70;u=min(t,landing)
-        o.location=origin+Vector((math.cos(angle)*speed*u,math.sin(angle)*speed*u,max(0,vz*u-35*u*u)))
+        t=max(0,(f-52)/24);landing=2*vz/100;u=min(t,landing)
+        o.location=origin+Vector((math.cos(angle)*speed*u,math.sin(angle)*speed*u,max(0,vz*u-50*u*u)))
         o.rotation_euler=(u*(i%5),u*3,u*4)
         o.scale=(.001,)*3 if f<52 else (1,.7,.65)
         key(o,['location','rotation_euler','scale'],f)
