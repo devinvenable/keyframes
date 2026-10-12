@@ -8,7 +8,6 @@ import subprocess
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw
 
 
 def alignment(candidate, reference):
@@ -48,12 +47,12 @@ def measure(path, reference):
 
 
 def plate(paths, labels, output):
-    canvas = Image.new('RGB', (960 * len(paths), 580), '#161a20')
-    draw = ImageDraw.Draw(canvas)
+    canvas = np.full((580, 960 * len(paths), 3), (32, 26, 22), dtype=np.uint8)
     for i, (path, label) in enumerate(zip(paths, labels)):
-        canvas.paste(Image.open(path).convert('RGB').resize((960, 540)), (i * 960, 40))
-        draw.text((i * 960 + 16, 12), label, fill='white')
-    canvas.save(output)
+        canvas[40:, i * 960:(i + 1) * 960] = cv2.resize(cv2.imread(str(path)), (960, 540))
+        cv2.putText(canvas, label, (i * 960 + 16, 27), cv2.FONT_HERSHEY_SIMPLEX,
+                    .65, (255, 255, 255), 1, cv2.LINE_AA)
+    assert cv2.imwrite(str(output), canvas)
 
 
 def main():
