@@ -206,3 +206,25 @@ output blend, never its input, and packs external image resources before saving.
 `inspect_scene.py` inventories an original scene without modifying it.
 `match_camera.py` contains the camera recovery stages. The checked-in numerical
 fit lets normal rebuilds avoid repeating that photogrammetry work.
+
+## Preparing a new shot from the valley scene
+
+T307 adds `restore_teaser_state.py` for new shots that expose the saved scene's
+reflective robot override, HDRI hillside or flat fog boundary. It restores the
+native robot's mesh, weights and ten material assignments, then uses named
+material copies to reconstruct the footage's charcoal palette. It retains the
+original ground textures and HDRI lighting, with a camera-only upper-sky sample
+and height-faded fog. The original robot asset and source scene stay untouched.
+
+This is an **opt-in continuity reconstruction**, not a modification of the
+accepted T305/T306 scenes, nor a pixel-exact recovery of the teaser setup. Its
+robot materials remain nonemissive; blue reflections/spill come from lighting.
+Camera matching remains a separate step. See the [beetle builder notes](../kaiju_beetle/README.md)
+for the reviewed look, source reference, use as a Python helper, and validation.
+For a separate prepared scene:
+
+```bash
+blender -b /home/devin/src/2026/videdit/work/kaiju_mountain_valley.blend \
+  --python-exit-code 1 --python blender/kaiju_liftoff/restore_teaser_state.py -- \
+  --output /home/devin/src/2026/videdit/work/new_shot/teaser_prepared.blend
+```

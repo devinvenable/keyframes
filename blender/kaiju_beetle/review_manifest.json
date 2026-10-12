@@ -1,0 +1,150 @@
+{
+  "task": 307,
+  "generated_utc": "2026-10-12T04:06:02.217074+00:00",
+  "directory": "/home/devin/src/2026/videdit/work/kaiju_beetle_307",
+  "blender": "5.1.2",
+  "render": {
+    "engine": "CYCLES",
+    "samples": 64,
+    "adaptive_threshold": 0.08,
+    "denoising": true,
+    "device": "NVIDIA GTX 1050 Ti / CUDA"
+  },
+  "review": "PM passed both confrontation stills, storm atmosphere, charcoal robot and bronze beetle. Final studio QA seated two temple fasteners without changing poses or film look.",
+  "audit": {
+    "kaiju_beetle": {
+      "closed_solids": 188,
+      "joint_controls": 25,
+      "bounds": {
+        "beetle": {
+          "height": 99.53639841079712,
+          "lowest_z": 1.430511474609375e-06,
+          "camera_bounds": [
+            0.37504705786705017,
+            0.6316441893577576,
+            0.022968385368585587,
+            0.9233531951904297
+          ]
+        }
+      },
+      "negative_checks_rejected": 3
+    },
+    "beetle_faceoff": {
+      "closed_solids": 188,
+      "joint_controls": 25,
+      "bounds": {
+        "beetle": {
+          "height": 99.30609049543739,
+          "lowest_z": 8.131563618007931e-07,
+          "camera_bounds": [
+            0.19722168147563934,
+            0.4743208885192871,
+            0.10241152346134186,
+            0.9308247566223145
+          ]
+        },
+        "robot": {
+          "height": 92.3682861328125,
+          "lowest_z": 0.0,
+          "camera_bounds": [
+            0.49565374851226807,
+            0.731421947479248,
+            0.1356387585401535,
+            0.7707368731498718
+          ]
+        }
+      },
+      "negative_checks_rejected": 4
+    },
+    "beetle_clash": {
+      "closed_solids": 188,
+      "joint_controls": 25,
+      "bounds": {
+        "beetle": {
+          "height": 89.1576070971787,
+          "lowest_z": 9.350478649139404e-07,
+          "camera_bounds": [
+            0.3250044584274292,
+            0.5935302376747131,
+            0.09346459805965424,
+            0.8405207991600037
+          ]
+        },
+        "robot": {
+          "height": 92.29434967041016,
+          "lowest_z": 0.0,
+          "camera_bounds": [
+            0.46028608083724976,
+            0.7368435263633728,
+            0.11951941251754761,
+            0.7975442409515381
+          ]
+        }
+      },
+      "negative_checks_rejected": 4
+    }
+  },
+  "negative_checks_rejected_total": 11,
+  "artifacts": {
+    "kaiju_beetle.blend": {
+      "bytes": 206016,
+      "sha256": "ac74ea0a8df8b66e7819700113f5974b12b67c44bb31508d2c56704075b330d3"
+    },
+    "beetle_faceoff.blend": {
+      "bytes": 526860028,
+      "sha256": "62593e40cf4f25286654cbdd9dcc000235bff0b7ae36758518424d395fef7867"
+    },
+    "beetle_clash.blend": {
+      "bytes": 526860026,
+      "sha256": "7b478bdf1f0d09355664dd0180f11b5dc5ebd1e0ab88718b535d5a524aafafcf"
+    },
+    "kaiju_beetle_model.png": {
+      "bytes": 1966015,
+      "sha256": "6df52276554ff752cd2e0eeece6d86bc9e49638533e1e4270198c3d2a270812e",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "kaiju_beetle_rear.png": {
+      "bytes": 1933074,
+      "sha256": "163b9c9aed613cef9ed13f429cd0da4b407d1e80185347223aed13f1c681cdba",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "beetle_faceoff.png": {
+      "bytes": 1976543,
+      "sha256": "aa96aec67c851ed49832e6eddb9061cc475bddf53334e2da12879115153ffc4b",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "beetle_clash.png": {
+      "bytes": 1911226,
+      "sha256": "7d118c371b008e735d197de850fe97b6d6607d6e1226c9cb0637f77d98e7b9e8",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "film_look_comparison.png": {
+      "bytes": 983183,
+      "sha256": "b8202cd8004bd171599063c6349c1de5a2b6ad3aa30e4ef1d683e7fcab363885",
+      "dimensions": [
+        1920,
+        540
+      ]
+    },
+    "verification.json": {
+      "bytes": 3379,
+      "sha256": "14047f75779b69edd83c9917ebd54fae4acbd2b4dcd02dfbbb1a560cd1d275fb"
+    },
+    "continuity_restoration.json": {
+      "bytes": 935,
+      "sha256": "7109fb3f1083abd75125c5fbb486abb11296f26dd910c8befdaf4287c72d7fe2"
+    }
+  }
+}
