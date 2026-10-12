@@ -230,10 +230,18 @@ immediately before the boundary clock tick so the sequencer returns on the one.
 Use `--keystep-start-quantize beat` for the next beat, or
 `--keystep-start-quantize off` for immediate Play. Stop always sends immediately
 and cancels any waiting Start; pressing Play again while waiting keeps the same
-next boundary. Pausing, stopping, or resetting the show also clears a waiting
-Start. These launch options apply in both GUI and headless mode. Bars are four
-beats, independent of MIDI file loop length. INFO logs report when Start is
-armed (including ticks until the boundary) and when it is emitted on the grid.
+next boundary. A song or set reset clears a waiting Start (the new song sends
+its own bar-quantized Stop/Start to re-anchor the rig), but a Play pressed
+while playback is paused or ended stays **latched** and fires on the first
+grid tick after playback resumes — it is never silently dropped. Resuming from
+pause also re-anchors the KeyStep on its grid: the mid-bar resume Start goes to
+every other destination, while the KeyStep port receives its Start on the next
+quantize boundary so chained gear returns on the one (`off` keeps the immediate
+resume Start everywhere). These launch options apply in both GUI and headless
+mode. Bars are four beats, independent of MIDI file loop length. INFO logs
+report when Start is armed (including ticks until the boundary, or that it is
+latched while playback is idle), when it is emitted on the grid, and when a
+resume holds the KeyStep Start for the next grid tick.
 
 If MIDI Control Center remaps the buttons, launch ShowSync with
 `--keystep-stop-cc 51 --keystep-start-cc 54` (substitute your distinct CC numbers,

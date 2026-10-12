@@ -213,7 +213,7 @@ def test_live_cc_play_uses_default_bar_grid(kind, window_factory, show_factory, 
     assert owner.audio is None  # CC Play never starts/restarts the backing set
 
 
-@pytest.mark.parametrize('change', ['pause', 'end', 'song', 'epoch', 'close'])
+@pytest.mark.parametrize('change', ['song', 'epoch', 'close'])
 def test_show_lifecycle_discards_pending_start(change):
     fake, relayed, _, _ = relay_clock()
     ticks(fake, 13)
@@ -221,8 +221,7 @@ def test_show_lifecycle_discards_pending_start(change):
     if change == 'close':
         fake.engine.close()
     else:
-        updates = {'pause': {'playing': False}, 'end': {'ended': True},
-                   'song': {'song_index': 1, 'song_time': 0},
+        updates = {'song': {'song_index': 1, 'song_time': 0},
                    'epoch': {'epoch': 1, 'song_time': 0}}[change]
         fake.p = replace(fake.p, **updates)
         fake.engine.step()
@@ -230,6 +229,24 @@ def test_show_lifecycle_discards_pending_start(change):
     fake.p = replace(fake.p, playing=True, ended=False)
     ticks(fake, 200)
     assert relayed == []
+
+
+@pytest.mark.parametrize('change', ['pause', 'end'])
+def test_idle_playback_latches_pending_start_until_resume(change):
+    # Task 304 (I79a): a Play press while playback is paused/ended used to be
+    # silently cleared by the not-playing branch. It now stays latched and
+    # fires on the first grid tick after playback resumes.
+    fake, relayed, _, _ = relay_clock()
+    ticks(fake, 13)
+    fake.engine.relay_keystep_transport(START)
+    updates = {'pause': {'playing': False}, 'end': {'ended': True}}[change]
+    fake.p = replace(fake.p, **updates)
+    for _ in range(3):
+        fake.engine.step()
+    assert fake.engine._keystep_pending is True
+    fake.p = replace(fake.p, playing=True, ended=False)
+    ticks(fake, 200)
+    assert [(tick, b) for tick, b, _, _ in relayed] == [(96, START)]
 
 
 def test_off_sends_immediately_between_ticks():

@@ -14,10 +14,16 @@ LOG = logging.getLogger(__name__)
 class ClockEngine:
     def __init__(self, maps, position, send, *, now=time.monotonic, sleep=time.sleep,
                  clock_offset_ms=0, send_transport=True, events=None, controls=None,
-                 keystep_send=None, event_output=None, keystep_start_quantize='bar'):
+                 keystep_send=None, send_except_keystep=None, event_output=None,
+                 keystep_start_quantize='bar'):
         if keystep_start_quantize not in ('off', 'beat', 'bar'):
             raise ValueError('keystep_start_quantize must be off, beat, or bar')
         self.maps, self.position, self.send = maps, position, send
+        # Resume-only egress (MidiEgress.send_transport_except_keystep): a
+        # mid-bar Start must reach everything but the KeyStep rig, which is
+        # re-anchored on its own grid tick instead. Without it, resume keeps
+        # the historical full-egress Start.
+        self.send_except_keystep = send_except_keystep
         self.now, self.sleep = now, sleep
         # Optional per-song visual-control messages (indexable like maps, one
         # tuple of byte tuples per song — see visuals.song_controls). Sent on
@@ -81,8 +87,14 @@ class ClockEngine:
                 return False
             if status == START and self._keystep_grid:
                 self._keystep_pending = True
-                LOG.info('Start armed (quantize=%s, fires in %d ticks)',
-                         self.keystep_start_quantize, (-self._tick) % self._keystep_grid)
+                if self._active:
+                    LOG.info('Start armed (quantize=%s, fires in %d ticks)',
+                             self.keystep_start_quantize, (-self._tick) % self._keystep_grid)
+                else:
+                    # Latched, not swallowed: a press while paused/idle keeps
+                    # its arm and fires on the first grid tick after playback.
+                    LOG.info('Start armed while playback idle (quantize=%s) — '
+                             'latched until playback resumes', self.keystep_start_quantize)
                 return True
             return self._send_keystep_transport(status)
 
@@ -103,8 +115,10 @@ class ClockEngine:
                 self._send_transport_byte(STOP)
             self._active = False
         if not p.playing or p.ended:
-            with self._keystep_lock:
-                self._keystep_pending = False
+            # A Play arm made while paused/idle stays latched (task 304): it
+            # fires on the first grid tick after playback, instead of the
+            # press silently vanishing. Stop relays and song resets still
+            # cancel it explicitly.
             return .001
         if reset:
             with self._keystep_lock:
@@ -145,8 +159,26 @@ class ClockEngine:
         # Snapshot once: positive compensation advances MIDI, never audio.
         clock_time = audio_time + self.clock_offset_ms / 1000.0
         if not self._active:
+            # A reset (new song/epoch/set) starts at tick 0, already on the
+            # one, so the full-egress Start re-anchors every slave correctly.
+            # A resume lands mid-bar: gear behind the KeyStep re-anchors its
+            # pattern on Start, so that Start would put the rig's one at the
+            # pause point for the rest of the song (task 304). Withhold it
+            # from the KeyStep (its Stop was sent at pause) and re-anchor the
+            # rig on the next grid tick via the quantize machinery.
+            resume_on_grid = (not reset and self._keystep_grid
+                              and self.keystep_send is not None
+                              and self.send_except_keystep is not None)
             if self.send_transport:
-                self._send_transport_byte(START)
+                if resume_on_grid:
+                    self._transport_stamp = self.now()
+                    self.send_except_keystep(START)
+                    with self._keystep_lock:
+                        self._keystep_pending = True
+                    LOG.info('Resume: KeyStep Start held for the next grid '
+                             'tick (quantize=%s)', self.keystep_start_quantize)
+                else:
+                    self._send_transport_byte(START)
             self._active = True
             # Resume retains the next unsent index; intentional restarts reset.
             self._startup_until = math.floor(tempo.B(max(0.0, clock_time)) * 24 + 1e-8)
