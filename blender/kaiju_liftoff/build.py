@@ -18,6 +18,17 @@ pose={b.name:b.matrix_basis.copy() for b in rig.pose.bones}
 rig.animation_data_clear()
 for name,matrix in pose.items():rig.pose.bones[name].matrix_basis=matrix
 rig.location=(0,80,-2)
+# The exported teaser is the authority for the join, even where the saved
+# arm pose differs. Fit is from three firing-arm and nine body landmarks.
+pose_match=json.loads(Path(__file__).with_name('pose_match.json').read_text())
+dx,dz=pose_match['body_offset_xz'];ratio=pose_match['body_scale_ratio']
+rig.location=(dx,80,-2+dz);rig.scale=(1.3*ratio,)*3
+bpy.context.view_layer.update()
+arm=rig.pose.bones['arm_L'];original_arm_q=arm.rotation_quaternion.copy()
+pivot=arm.head.copy();delta=Quaternion(pose_match['arm_quaternion_wxyz']).to_matrix().to_4x4()
+arm.matrix=Matrix.Translation(pivot) @ delta @ Matrix.Translation(-pivot) @ arm.matrix
+bpy.context.view_layer.update()
+matched_arm_q=arm.rotation_quaternion.copy()
 # Separate parent control makes the original mesh, skin weights and pose reusable.
 coll=bpy.data.collections.new('LIFTOFF | articulated dorsal engines');s.collection.children.link(coll)
 def link(o):
@@ -126,7 +137,7 @@ for b in rig.pose.bones:
  b.rotation_mode='QUATERNION';q=b.rotation_quaternion.copy()
  for f in [1,28]:key(b,'rotation_quaternion',f,q)
  if b.name=='arm_L':
-  target=Quaternion((1,0,0,0));key(b,'rotation_quaternion',89,q.slerp(target,.85));key(b,'rotation_quaternion',217,q.slerp(target,.85))
+  target=Quaternion((1,0,0,0));key(b,'rotation_quaternion',89,original_arm_q.slerp(target,.85));key(b,'rotation_quaternion',217,original_arm_q.slerp(target,.85))
  elif b.name=='arm_R':
   target=q@Quaternion((0,0,1),math.radians(-6));key(b,'rotation_quaternion',89,target);key(b,'rotation_quaternion',217,target)
 # Heavy anticipation, release, then a gradually accelerating 76-unit climb.
@@ -203,5 +214,5 @@ s.render.engine='CYCLES';s.cycles.samples=64;s.cycles.use_denoising=True;s.rende
 s['liftoff_source']=source;s['liftoff_note']='Draft choreography. First frame matches teaser2 endpoint. Preview uses frames 2–217, avoiding a duplicated join. No final render approved.'
 bpy.ops.file.pack_all();s.frame_set(1)
 bpy.ops.wm.save_as_mainfile(filepath=str(out/'kaiju_liftoff_shot.blend'),compress=True)
-(out/'build_manifest.json').write_text(json.dumps({'source':source,'blend':str(out/'kaiju_liftoff_shot.blend'),'fps':24,'range':[1,217],'extension_range':[2,217],'camera':cm,'original_dorsal_faces_replaced':len(faces),'objects_added':len(coll.objects),'source_ring_start':496},indent=2))
+(out/'build_manifest.json').write_text(json.dumps({'source':source,'blend':str(out/'kaiju_liftoff_shot.blend'),'fps':24,'range':[1,217],'extension_range':[2,217],'camera':cm,'original_dorsal_faces_replaced':len(faces),'objects_added':len(coll.objects),'source_ring_start':496,'pose_match':pose_match},indent=2))
 print('LIFTOFF_BUILT',out,flush=True)

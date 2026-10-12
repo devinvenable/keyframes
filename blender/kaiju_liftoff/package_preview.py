@@ -19,7 +19,7 @@ def main():
     d=a.directory.resolve();seq=d/'encode_sequence';seq.mkdir(exist_ok=True)
     expected=list(range(2,218,2))
     for i,f in enumerate(expected,1):
-        source=d/'preview_frames'/f'frame_{f:04}.png'
+        source=d/'matched_preview_frames'/f'frame_{f:04}.png'
         if not source.is_file():raise FileNotFoundError(source)
         target=seq/f'frame_{i:04}.png'
         if target.is_symlink():target.unlink()

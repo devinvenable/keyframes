@@ -13,6 +13,7 @@ Devin's originals in:
 - `kaiju_liftoff_preview.mp4` — nine-second draft, sampled at 12 fps.
 - `teaser2_with_liftoff_preview.mp4` — original teaser followed by the draft.
 - `staging_contact_sheet.jpg` and `review_frames/` — six Cycles staging frames.
+- `join_comparison.jpg` — exported teaser endpoint (left), draft join (right).
 - `verification.json` — pose, body geometry, camera, ascent, ring fade and
   resource checks; `media_verification.json` — encoded video audit.
 
@@ -47,8 +48,13 @@ The supplied mountain-valley blends were saved with a later village camera.
 endpoint: SIFT correspondences, Blender raycasts, RANSAC and a fit constrained to
 the historical camera rail. The matched landmarks have about 1.2 px RMS error at
 960×540. This measures camera alignment, not pixel-identical grading/lighting.
-The original firing pose is preserved at the join; the existing scene's pose
-and materials are used, rather than recreating the robot from the Runway mock.
+The exported teaser frame is also the authority for the robot pose. A measured
+three-landmark fit adjusts the firing arm; nine body landmarks set a 0.87% scale
+correction and small X/Z position offsets. Arm/body landmark errors are 1.52/1.37
+pixels RMS at 960×540. `pose_landmarks.json`, `match_pose.py` and `pose_match.json`
+record the measurements and reproducible fit. The original mesh geometry and
+skin weights remain intact. The corrected join is in `join_comparison.jpg`;
+softness/grade remains an accepted preview artifact for final rendering.
 
 The reference rings have already left the photographed view. During the brief
 carryover their camera visibility is disabled while their actual glossy and
@@ -74,7 +80,7 @@ blender -b /home/devin/src/2026/videdit/work/kaiju_mountain_valley.blend \
 
 blender -b /home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_shot.blend \
   --python-exit-code 1 --python blender/kaiju_liftoff/render_preview.py -- \
-  --output /home/devin/src/2026/videdit/work/liftoff_305/preview_frames \
+  --output /home/devin/src/2026/videdit/work/liftoff_305/matched_preview_frames \
   --animation --step 2 --percent 33 --samples 8
 
 python3 blender/kaiju_liftoff/package_preview.py \
@@ -87,7 +93,7 @@ blender -b --python-exit-code 1 --python blender/kaiju_liftoff/verify.py -- \
   --output /home/devin/src/2026/videdit/work/liftoff_305/verification.json
 ```
 
-The renderer targets the RTX 3060 via CUDA. It resumes existing PNGs; use a fresh
+The renderer targets the RTX 3060 via CUDA or OptiX. It resumes existing PNGs; use a fresh
 output directory after changing the scene. `build.py` overwrites only its named
 output blend, never its input, and packs external image resources before saving.
 

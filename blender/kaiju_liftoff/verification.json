@@ -1,14 +1,17 @@
 {
   "status": "PASS",
-  "join_pose_max_error": 1.1920928955078125e-07,
+  "join_pose_max_error": 1.9073486328125e-06,
+  "join_target": "exported teaser reference",
+  "arm_landmark_rms_pixels": 1.5232333777407192,
+  "body_landmark_rms_pixels": 1.3667874725382725,
   "body_vertices_unchanged": true,
   "camera_min_step": 0.08916688211689165,
   "camera_max_step": 0.33855048009208527,
-  "climb_world_units": 76.0,
+  "climb_world_units": 76.00000238418579,
   "ring_reflections_end_frame": 15,
   "missing_images": [],
   "fps": 24,
   "extension_frames": 216,
   "extension_seconds": 9,
-  "checks": "All 217 evaluated frames checked for camera motion, lift timing and ring cutoff; source pose and body vertices checked at join."
+  "checks": "All 217 evaluated frames checked for camera motion, lift timing and ring cutoff; teaser-matched pose/placement/scale and original body vertices checked at join."
 }
