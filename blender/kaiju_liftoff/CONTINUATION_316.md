@@ -63,3 +63,20 @@ less than .07 pixels of measured static-background displacement. Negative
 controls reject the original frozen endpoint and the superseded drifting
 camera on their intended assertions. The superseded full-exit test also
 rejects a frame with robot/plumes still present.
+
+## Final delivery — verified
+
+- `fixed_camera/kaiju_liftoff_final_graded_continued.mp4`: 264 frames,
+  11.000000 seconds, 1920×1080 at 24 fps.
+- `fixed_camera/teaser2_with_liftoff_final_graded_continued.mp4`: 700 frames,
+  29.166667 seconds, 1920×1080 at 24 fps.
+- Full decode passed on both files. All 216 approved graded frames were copied
+  byte-identically; all 48 new float32 EXRs passed HDR/shape/finite-value checks.
+- Encoded seam YAVG: 107.06 → 107.10 (difference .04). Encoded images also
+  pass the climb and fixed-camera contracts: 229.29 pixels of ascent and
+  less than .07 pixels of background displacement.
+- Final graded contact sheet and decoded final frame were visually inspected:
+  the robot remains visible and departing at the cut, the pillars stay fixed,
+  and the two warm plumes retain smooth highlights.
+- Summary and output SHA256 hashes: `continuation_316_final_results.json`.
+  Exhaustive per-frame hashes: output directory `final_verification.json`.
