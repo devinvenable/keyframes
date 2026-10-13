@@ -1,0 +1,318 @@
+{
+  "status": "PASS",
+  "background_registration": [
+    {
+      "shift_pixels": [
+        0.022107303177222093,
+        -0.026672924713324164
+      ],
+      "response": 1.0505704366664093
+    },
+    {
+      "shift_pixels": [
+        -0.04394345285754753,
+        0.03650831404743826
+      ],
+      "response": 0.9870027973751228
+    }
+  ],
+  "early_frames": {
+    "217": {
+      "bbox": [
+        828,
+        447,
+        275,
+        360
+      ],
+      "area": 54507,
+      "centroid": [
+        967.4542352358412,
+        632.0220889060121
+      ],
+      "flame_pixels": 4210,
+      "mean": 106.49341660236625
+    },
+    "265": {
+      "bbox": [
+        870,
+        294,
+        190,
+        206
+      ],
+      "area": 21499,
+      "centroid": [
+        965.1062840132099,
+        402.84185310944696
+      ],
+      "flame_pixels": 2035,
+      "mean": 106.97137860082304
+    }
+  },
+  "exit_frames": {},
+  "climb_pixels_at_two_seconds": 229.1802357965651,
+  "area_ratio_at_two_seconds": 0.39442640394811673,
+  "appended_frames": 48,
+  "exit_frame": null,
+  "empty_hold_frames": 0,
+  "render_settings": {
+    "source": "/home/devin/src/2026/videdit/work/liftoff_305/kaiju_liftoff_final.blend",
+    "candidate": "/home/devin/src/2026/videdit/work/liftoff_316/fixed_camera/kaiju_liftoff_continued.blend",
+    "source_sha256": "6e0061a0c4088c9c083076a8ed9958e73cf9fa6570cbd2de0cc46c5e0cb6dc69",
+    "candidate_sha256": "198b04d23f1d3fef0d02f0e5a8cb3701b6f757bcaea2f86cbaac747eada4502e",
+    "quality": {
+      "name": "",
+      "device": "GPU",
+      "shading_system": false,
+      "use_denoising": true,
+      "denoiser": "OPENIMAGEDENOISE",
+      "denoising_prefilter": "ACCURATE",
+      "denoising_quality": "HIGH",
+      "denoising_input_passes": "RGB_ALBEDO_NORMAL",
+      "denoising_use_gpu": false,
+      "use_preview_denoising": false,
+      "samples": 4096,
+      "use_sample_subset": false,
+      "sample_offset": 0,
+      "sample_subset_length": 2048,
+      "time_limit": 0.0,
+      "sampling_pattern": "TABULATED_SOBOL",
+      "scrambling_distance": 1.0,
+      "auto_scrambling_distance": false,
+      "use_layer_samples": "USE",
+      "light_sampling_threshold": 0.009999999776482582,
+      "use_adaptive_sampling": true,
+      "adaptive_threshold": 0.009999999776482582,
+      "adaptive_min_samples": 0,
+      "use_preview_adaptive_sampling": true,
+      "direct_light_sampling_type": "MULTIPLE_IMPORTANCE_SAMPLING",
+      "use_light_tree": true,
+      "min_light_bounces": 0,
+      "min_transparent_bounces": 0,
+      "caustics_reflective": true,
+      "caustics_refractive": true,
+      "blur_glossy": 1.0,
+      "use_guiding": false,
+      "use_deterministic_guiding": true,
+      "guiding_distribution_type": "PARALLAX_AWARE_VMM",
+      "guiding_directional_sampling_type": "RIS",
+      "use_surface_guiding": true,
+      "surface_guiding_probability": 0.5,
+      "use_volume_guiding": true,
+      "guiding_training_samples": 128,
+      "volume_guiding_probability": 0.5,
+      "use_guiding_direct_light": true,
+      "use_guiding_mis_weights": true,
+      "guiding_roughness_threshold": 0.05000000074505806,
+      "max_bounces": 12,
+      "diffuse_bounces": 4,
+      "glossy_bounces": 4,
+      "transmission_bounces": 12,
+      "volume_bounces": 0,
+      "transparent_max_bounces": 8,
+      "volume_step_rate": 1.0,
+      "volume_preview_step_rate": 1.0,
+      "volume_max_steps": 1024,
+      "volume_biased": false,
+      "dicing_rate": 1.0,
+      "max_subdivisions": 12,
+      "offscreen_dicing_scale": 4.0,
+      "film_exposure": 1.0,
+      "film_transparent_glass": false,
+      "film_transparent_roughness": 0.10000000149011612,
+      "pixel_filter_type": "BLACKMAN_HARRIS",
+      "filter_width": 1.5,
+      "seed": 0,
+      "use_animated_seed": false,
+      "sample_clamp_direct": 0.0,
+      "sample_clamp_indirect": 10.0,
+      "bake_type": "COMBINED",
+      "use_camera_cull": false,
+      "camera_cull_margin": 0.10000000149011612,
+      "use_distance_cull": false,
+      "distance_cull_margin": 50.0,
+      "rolling_shutter_type": "NONE",
+      "rolling_shutter_duration": 0.10000000149011612,
+      "texture_limit": "OFF",
+      "texture_limit_render": "OFF",
+      "use_fast_gi": false,
+      "fast_gi_method": "REPLACE",
+      "ao_bounces": 1,
+      "ao_bounces_render": 1,
+      "use_auto_tile": true,
+      "tile_size": 2048
+    },
+    "color": {
+      "view_transform": "AgX",
+      "look": "None",
+      "exposure": 0.0,
+      "gamma": 1.0
+    },
+    "resolution": [
+      1920,
+      1080
+    ],
+    "fps": 24,
+    "frames": [
+      218,
+      265
+    ],
+    "backend": "OPTIX",
+    "devices": [
+      "NVIDIA GeForce RTX 3060"
+    ],
+    "output_format": "scene-linear RGB float32 OpenEXR ZIP"
+  },
+  "grade": {
+    "input_kind": "native linear EXR",
+    "frames": [
+      218,
+      219,
+      220,
+      221,
+      222,
+      223,
+      224,
+      225,
+      226,
+      227,
+      228,
+      229,
+      230,
+      231,
+      232,
+      233,
+      234,
+      235,
+      236,
+      237,
+      238,
+      239,
+      240,
+      241,
+      242,
+      243,
+      244,
+      245,
+      246,
+      247,
+      248,
+      249,
+      250,
+      251,
+      252,
+      253,
+      254,
+      255,
+      256,
+      257,
+      258,
+      259,
+      260,
+      261,
+      262,
+      263,
+      264,
+      265
+    ],
+    "continuity_trim_code_values": 3,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "inverse": [],
+    "compositor": {
+      "frames": 48,
+      "seconds": 117.00627723801881,
+      "blender_version": "4.1.1"
+    }
+  },
+  "media": {
+    "kaiju_liftoff_final_graded_continued.mp4": {
+      "width": 1920,
+      "height": 1080,
+      "r_frame_rate": "24/1",
+      "duration": "11.000000",
+      "nb_read_frames": "264",
+      "sha256": "a62609a7f637a0305399e5478e36338e9a8059be9a23f362e56629d0faa857a3"
+    },
+    "teaser2_with_liftoff_final_graded_continued.mp4": {
+      "width": 1920,
+      "height": 1080,
+      "r_frame_rate": "24/1",
+      "duration": "29.166667",
+      "nb_read_frames": "700",
+      "sha256": "bcbb29994b6d60ce6eaac2b36a72d6be428052dc80310b3d1808e3a9efa29cad"
+    }
+  },
+  "continuation_seam_yavg": [
+    107.06,
+    107.1
+  ],
+  "full_audit_path": "/home/devin/src/2026/videdit/work/liftoff_316/fixed_camera/final_verification.json",
+  "full_audit_sha256": "ebd8483d9e9fc600d6f1f8bee775cd7f4092f11953174a5e9522f5150c5787a8",
+  "approved_frames_reused_identically_count": 216,
+  "native_exr_count": 48,
+  "native_exr_max_range": [
+    39.44010925292969,
+    52.61229705810547
+  ],
+  "encoded_pixels": {
+    "status": "PASS",
+    "background_registration": [
+      {
+        "shift_pixels": [
+          -0.015433627819049889,
+          -0.049918163503548385
+        ],
+        "response": 1.1265630561610063
+      },
+      {
+        "shift_pixels": [
+          -0.044650914854628354,
+          0.04668695963638925
+        ],
+        "response": 1.0023110512892406
+      }
+    ],
+    "early_frames": {
+      "217": {
+        "bbox": [
+          827,
+          448,
+          276,
+          359
+        ],
+        "area": 54553,
+        "centroid": [
+          967.4665737906256,
+          632.0412809561344
+        ],
+        "flame_pixels": 4174,
+        "mean": 105.56167791923869
+      },
+      "265": {
+        "bbox": [
+          870,
+          294,
+          190,
+          206
+        ],
+        "area": 21656,
+        "centroid": [
+          965.085195788696,
+          402.7484761728851
+        ],
+        "flame_pixels": 2027,
+        "mean": 105.97421666023662
+      }
+    },
+    "exit_frames": {},
+    "climb_pixels_at_two_seconds": 229.29280478324932,
+    "area_ratio_at_two_seconds": 0.39697175224094,
+    "appended_frames": 48,
+    "exit_frame": null,
+    "empty_hold_frames": 0
+  },
+  "native_hdr_negative": {
+    "status": "REJECTED_ON_ASSERTION",
+    "reason": "Native float32 HDR required; display-encoded PNG is not a native render"
+  },
+  "approval": "Devin selected CUT EARLY; PM pm-midi-1 relayed GO FINAL 2026-10-12: 48 appended frames, locked camera, natural cruise, no further gates."
+}

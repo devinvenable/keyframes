@@ -1,0 +1,97 @@
+{
+  "approved_motion": {
+    "approved_frames_checked": 217,
+    "object_matrix_max_error": 0.0,
+    "new_frames": [
+      218,
+      265
+    ],
+    "duration_seconds": 2,
+    "start_height": 76.0,
+    "end_height": 168.75531005859375,
+    "initial_step": 0.09441375732421875,
+    "cruise_step": 2.3,
+    "ramp_frames": 16.0,
+    "animated_plumes": 6,
+    "camera_behavior": "locked at frame 217"
+  },
+  "preview": {
+    "status": "PASS",
+    "background_registration": [
+      {
+        "shift_pixels": [
+          0.03360293090918276,
+          -0.025685329403870583
+        ],
+        "response": 1.037772280971209
+      },
+      {
+        "shift_pixels": [
+          -0.0449047586775464,
+          0.051987409989408206
+        ],
+        "response": 0.9599132010340691
+      }
+    ],
+    "early_frames": {
+      "217": {
+        "bbox": [
+          828,
+          447,
+          275,
+          360
+        ],
+        "area": 54507,
+        "centroid": [
+          967.4542352358412,
+          632.0220889060121
+        ],
+        "flame_pixels": 4210,
+        "mean": 106.49341660236625
+      },
+      "265": {
+        "bbox": [
+          870,
+          294,
+          190,
+          206
+        ],
+        "area": 21763,
+        "centroid": [
+          965.2165602168818,
+          402.2868630243992
+        ],
+        "flame_pixels": 1720,
+        "mean": 107.39555346579218
+      }
+    },
+    "exit_frames": {},
+    "climb_pixels_at_two_seconds": 229.73522588161285,
+    "area_ratio_at_two_seconds": 0.3992698185554149,
+    "appended_frames": 48,
+    "exit_frame": null,
+    "empty_hold_frames": 0
+  },
+  "native_seam": {
+    "old_yavg": 106.95,
+    "native_untrimmed_yavg": 109.623,
+    "matched_yavg": 107.056,
+    "mae": 0.926310122013092,
+    "background_mae": 0.7514563798904419,
+    "reason": "Native grade is ~3 RGB code values brighter than approved T309 footage. Apply explicit continuity-only -3 trim to match existing pixels, not to repair EXR data."
+  },
+  "negative_controls": {
+    "unfixed_frozen_tail": {
+      "status": "REJECTED_ON_ASSERTION",
+      "reason": "Robot must visibly climb: 0.0"
+    },
+    "superseded_drifting_camera": {
+      "status": "REJECTED_ON_ASSERTION",
+      "reason": "Camera must remain fixed: background shift (-1.415704334064344, -2.926945719949032)"
+    },
+    "robot_still_in_frame": {
+      "status": "REJECTED_ON_ASSERTION",
+      "reason": "Robot/plume remains at exit: dark=21763, flame=1720: /home/devin/src/2026/videdit/work/liftoff_316/fixed_camera/preview_graded/frame_0265.png"
+    }
+  }
+}
