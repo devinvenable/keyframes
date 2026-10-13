@@ -4,7 +4,15 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+
+def compare_pixels(decoded, source):
+    error=float(np.abs(decoded.astype(np.float32)-source.astype(np.float32)).mean())
+    assert error < 10, f'Encoded picture differs from graded frame: {error:.3f}'
+    return error
+
 
 def main(directory):
     labels = {1:'First contact / same pose as dive endpoint',22:'Mid-stagger / second foot starts back',
@@ -24,8 +32,19 @@ def main(directory):
         assert probe['r_frame_rate']=='24/1', 'Draft frame rate differs'
         assert (probe['width'],probe['height'])==(960,540), 'Draft resolution differs'
         subprocess.run(['ffmpeg','-v','error','-xerror','-i',str(video),'-f','null','-'],check=True)
+        pixels=subprocess.check_output(['ffmpeg','-v','error','-xerror','-i',str(video),
+              '-f','rawvideo','-pix_fmt','rgb24','-'])
+        decoded=np.frombuffer(pixels,dtype=np.uint8).reshape(84,540,960,3)
+        errors=[]
+        for i,picture in enumerate(decoded):
+            source=np.array(Image.open(directory/'draft_frames'/f'frame_{i+1:04}.png').convert('RGB'))
+            errors.append(compare_pixels(picture,source))
+        beats=directory/'decoded_beats'; beats.mkdir(exist_ok=True)
+        for f in (1,8,14,22,30,39,43,52,64,84):
+            Image.fromarray(decoded[f-1]).save(beats/f'frame_{f:04}.png')
         (directory/'media_qa.json').write_text(json.dumps({'status':'PASS','probe':probe,
             'video_sha256':hashlib.sha256(video.read_bytes()).hexdigest(),'full_decode':'PASS',
+            'all_frames_pixel_compared':True,'encoded_pixel_mae':errors,
             'grade':json.loads((directory/'draft_frames/grade.json').read_text())},indent=2)+'\n')
     motion='<video controls loop src="reaction_draft.mp4" style="width:100%"></video>' if video.exists() else ''
     (directory/'review.html').write_text('''<!doctype html><meta charset="utf-8"><title>Beetle reaction draft</title>

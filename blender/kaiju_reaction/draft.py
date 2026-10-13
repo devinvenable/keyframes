@@ -23,7 +23,7 @@ def main(directory):
     digest=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     plan={'scene':str(scene),'scene_sha256':digest(scene),'frames':84,'fps':24,
           'resolution':[960,540],'samples':8,'grade_blender':GRADE,'render_blender':BLENDER,
-          'devices':{'3060':[1,68],'1050':[69,84]},'draft_only':True}
+          'devices':{'3060':[1,52],'1050':[53,84]},'draft_only':True}
     path=directory/'draft_plan.json'
     if path.exists(): assert json.loads(path.read_text())==plan,'Draft plan changed'
     else: path.write_text(json.dumps(plan,indent=2)+'\n')
