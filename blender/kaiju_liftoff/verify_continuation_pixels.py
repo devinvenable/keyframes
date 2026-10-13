@@ -33,7 +33,8 @@ def measure(path):
 def registration(start, end):
     shifts = []
     start, end = [cv2.cvtColor(im, cv2.COLOR_BGR2GRAY) for im in (start, end)]
-    for x0, x1 in [(0, 650), (1250, 1920)]:
+    # DFT-friendly 640x480 avoids half-pixel bias from odd padded FFT sizes.
+    for x0, x1 in [(0, 640), (1280, 1920)]:
         a = start[600:1080, x0:x1].astype('float32')
         b = end[600:1080, x0:x1].astype('float32')
         window = cv2.createHanningWindow((a.shape[1], a.shape[0]), cv2.CV_32F)
