@@ -189,3 +189,79 @@ committed packaging implementation. The actual decoded count was 95 and the
 untouched. Both existing scene negative controls (detached camera and frozen
 beetle reaction) also failed on their intended assertions and then restored
 their exact in-memory state, without saving the source scenes.
+
+## T320 — approved swept-arm dive through first contact
+
+Devin selected swept arms and retained the deployed hatches, chase camera and
+dominant near plume. His subsequent endpoint direction supersedes the original
+96-frame stop-short approval: continue to the first contact instant, with the
+beetle still anticipating the hit, and leave recoil/aftermath for another shot.
+The graded 96/101/106 still gate and terrain sweep were approved through
+`pm-midi-1` on October 13, 2026 UTC. No further final-render gate remains.
+
+Artifacts are under `/home/devin/src/2026/videdit/work/kaiju_dive_320_final/`:
+
+- `dive_contact.blend` and `scene_manifest.json`: the approved 106-frame scene,
+  source/scene hashes, original-motion fingerprints and contact solver evidence.
+- `review.html`, `contact_gate.jpg`, `horizon_sweep.jpg`, `check_frames/`: the
+  approved graded still gate and sky-to-ground terrain review.
+- `final_render_plan.json`: explicit final approval and locked render settings.
+- `dive_swept_final.mp4`: 106 frames at 24 fps, 1920×1080, H.264 CRF 16.
+- `final_exr/`, `final_frames/`, `native_frame_hashes.json`: 64-sample native
+  linear frames and pinned Blender 4.1.1 `kaiju_1960s` output, with no salvage trim.
+- `final_verification.json`, `scene_qa.json`, `horizon_pixel_qa.json`: media,
+  choreography/contact and rendered-edge regression evidence.
+- `decoded_beats/`, `final_decoded_contact.jpg`: decoded-video pixels for review.
+
+`final_scene.py` replaces the 6000-unit square with one continuous terrain disk.
+Its center stays flat and its UVs preserve the original world-space texture
+scale, including the low-approach stage. Relief begins beyond 1500 units. The
+distant surface blends into a sample of the existing camera-visible HDRI over
+1800–8500 units of view distance. This material effect applies to camera rays;
+the world's lighting/background nodes and photographic grade stay unchanged.
+There is no separate disk/plane join or exposed square corner. Rendered sweep
+frames 1, 16, 20, 24, 28, 32, 40, 48, 64, 80, 96 and 106 cover the whole arc.
+
+The continuation keeps the current velocity direction, scaled to 99.67% speed
+to fit the first-contact instant on a whole frame. Robot mesh against beetle
+mesh surface intersection is bracketed to less than 0.000006 world units;
+the first contact is the beetle's chest triangle at frame 106. Waist, neck and
+both guard arms continue moving; feet remain planted. No response to the hit
+is authored. All original actor/camera transforms through frame 96 have equal
+before/after fingerprints, and the camera stays mounted at its approved offset.
+
+The saved-scene verifier checks the endpoint at ±0.01 world units along the
+approach and rejects both early penetration and a stop-short result. It also
+checks no earlier integer frame contacts, original motion, UV scale, terrain
+extent and continued anticipation. Negative controls move the endpoint back
+and restore the finite stage extent in memory. Running the terrain check on
+the actual unmodified source also fails on the intended assertion. The frame-24
+pixel regression rejects the actual unfixed graded draft (89 code values of
+edge contrast); the fixed gate measures 8.6. This targeted regression supplements
+the full-arc visual review; it does not claim to detect every possible horizon.
+
+Rebuild the gate with the original swept-arm scene loaded:
+
+```bash
+BLENDER=/home/devin/bin/blender-5.1.2-linux-x64/blender
+SOURCE=/home/devin/src/2026/videdit/work/kaiju_dive_317/round_03/swept/dive_swept.blend
+SHOT=/home/devin/src/2026/videdit/work/kaiju_dive_320_final
+"$BLENDER" -t 6 -b "$SOURCE" --python-exit-code 1 \
+  --python blender/kaiju_dive/final_scene.py -- --output "$SHOT"
+```
+
+Use a fresh output directory for a new candidate. For this approved candidate,
+the resumable final pipeline is:
+
+```bash
+/home/devin/src/2026/videdit/venv/bin/python blender/kaiju_dive/final_pipeline.py \
+  --directory /home/devin/src/2026/videdit/work/kaiju_dive_320_final \
+  --approval-note 'Devin approved frame 106 contact endpoint, 10 appended frames and terrain fix via pm-midi-1 on 2026-10-13 UTC; complete 106-frame final authorized, no further gates.'
+```
+
+Run in a persistent terminal session. Completed native frames can be resumed
+only under the identical saved plan; remove an incomplete frame after an
+interrupted write before resuming. The pipeline hashes every native/graded
+frame, fully decodes the H.264 into RGB, checks frame count/timing/format and
+compares every decoded frame with its corresponding graded PNG. Its contact
+sheet is taken from decoded video, not the pre-encode stills.
