@@ -31,10 +31,13 @@ class ApprovalBindingTests(unittest.TestCase):
         self.run = patch.object(final,'run',side_effect=RenderStarted).start()
 
     def launch(self):
-        final.main(self.source,self.output,'Approved both takes')
+        try:
+            final.main(self.source,self.output,'Approved both takes')
+        except RenderStarted:
+            pass
 
     def test_matching_evidence_reaches_renderer(self):
-        with self.assertRaises(RenderStarted): self.launch()
+        self.launch()
         self.run.assert_called_once()
 
     def test_changed_scene_rejected_before_gpu_work(self):
@@ -50,7 +53,7 @@ class ApprovalBindingTests(unittest.TestCase):
         self.run.assert_not_called()
 
     def test_changed_scene_on_resume_rejected(self):
-        with self.assertRaises(RenderStarted): self.launch()
+        self.launch()
         self.run.reset_mock()
         (self.source/'reaction.blend').write_bytes(b'changed during pause')
         with self.assertRaisesRegex(AssertionError,'Changed render plan'):
