@@ -47,12 +47,13 @@ def main(directory):
             'all_frames_pixel_compared':True,'encoded_pixel_mae':errors,
             'grade':json.loads((directory/'draft_frames/grade.json').read_text())},indent=2)+'\n')
     motion='<video controls loop src="reaction_draft.mp4" style="width:100%"></video>' if video.exists() else ''
+    camera=json.loads((directory/'manifest.json').read_text()).get('camera_mode','low')
+    camera_label='Ground-level 32 mm camera' if camera=='low' else 'Dive-continuation 26 mm camera'
     (directory/'review.html').write_text('''<!doctype html><meta charset="utf-8"><title>Beetle reaction draft</title>
 <style>body{background:#17191c;color:#eee;font:18px system-ui;max-width:1400px;margin:30px auto;padding:20px}img{width:100%}a{color:#9bdcff}</style>
 <h1>Beetle reaction — staging and timing review</h1>
 <p>Chest contact → glancing forward pass and powered climb → two backward steps → rock collision → upright settle.</p>
-<p>Ground-level camera, rigid hinged armor, falling powder and bouncing stone fragments. Draft only; final rendering awaits approval.</p>
-'''+motion+'<a href="staging_beats.jpg"><img src="staging_beats.jpg"></a>\n'+
+'''+f'<p>{camera_label}, rigid hinged armor, falling powder and bouncing stone fragments. Timing draft.</p>\n'+motion+'<a href="staging_beats.jpg"><img src="staging_beats.jpg"></a>\n'+
         '<p>'+' · '.join(f'<a href="stills/frame_{f:04}.png">{label}</a>' for f,label in labels.items())+'</p>')
 
 if __name__=='__main__':

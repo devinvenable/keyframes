@@ -7,11 +7,13 @@ Early frames 1/4/8/12/16/20 show contact through the glancing pass and powered
 pull-up. Standard beats 1/22/43/84 show contact, stagger, rock burst and settle.
 The sheets retain each still's full 960×540 resolution, with individual links.
 
-**Motion rendering is parked pending this revised staging/camera review.**
+**T323: Devin approved BOTH round-05 cameras for motion and final rendering.**
+The PM subsequently relayed approval to proceed through draft self-QA into both
+finals overnight, waiving the human timing gate. Approved scenes remain unchanged.
 Devin rejected the earlier invented rock stack and elastic upward rebound.
 The round-03 draft process was terminated on that feedback; its partial native
-frames are superseded and are not a review clip. Final rendering also remains
-gated. No assembly is performed. Rounds 01–04 are iteration/evidence inputs.
+frames are superseded and are not a review clip. No assembly is performed.
+Rounds 01–04 are iteration/evidence inputs.
 
 Both alternatives have the same 84-frame, 24 fps creature performance:
 
@@ -77,6 +79,24 @@ draft on both GPUs. Run it detached. Its saved plan checks the scene hash before
 resuming; remove an incomplete native frame after interruption. It grades,
 encodes, fully decodes and compares every decoded frame with its graded PNG.
 It does not render a final.
+
+For each approved camera, after its draft passes media and visual timing QA:
+
+```bash
+"$PYTHON" blender/kaiju_reaction/final.py --source "$ROOT/low" \
+  --directory /home/devin/src/2026/videdit/work/kaiju_reaction_322/final_low \
+  --approval-note 'T323: PM relayed Devin approval for both finals; human timing gate waived'
+```
+
+Repeat with `continuation` and `final_continuation`. Run detached, serializing
+cameras because each take uses both GPUs. The final runner renders native
+1920×1080 EXRs at 64 samples, applies the same pinned Blender 4.1.1 grade,
+encodes CRF16 H.264, and streams all 84 decoded frames through T320's pixel and
+hash checks. It also reruns saved-scene negative controls and rendered category
+masks. `final_render_plan.json` pins the approved source hash; existing plans
+must match exactly to resume. Remove an interrupted incomplete EXR before
+resuming. Outputs include `reaction_final.mp4`, `final_verification.json`,
+native/graded frames, decoded beats, and `final_decoded_contact.jpg`.
 
 ## Verification boundaries
 
