@@ -1,6 +1,5 @@
 """Build labeled evidence from native graded pixels and Blender ray-hit IDs."""
 import argparse
-import html
 import json
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
