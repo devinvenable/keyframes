@@ -1,0 +1,135 @@
+{
+  "task": 320,
+  "status": "PASS",
+  "output_directory": "/home/devin/src/2026/videdit/work/kaiju_dive_320_final",
+  "video": "/home/devin/src/2026/videdit/work/kaiju_dive_320_final/dive_swept_final.mp4",
+  "video_sha256": "32cf76f0c6143f5eea7697b13501a9d0de6012ba680d771c696f79cf0c5954f3",
+  "probe": {
+    "codec_name": "h264",
+    "width": 1920,
+    "height": 1080,
+    "pix_fmt": "yuv420p",
+    "r_frame_rate": "24/1",
+    "duration": "4.416667",
+    "nb_read_frames": "106"
+  },
+  "render_plan": {
+    "scene": "/home/devin/src/2026/videdit/work/kaiju_dive_320_final/dive_contact.blend",
+    "scene_sha256": "409d840e11b7c33d8994c102522b84dfaeabd3fe9e6f9e8284b0095cca53f691",
+    "frames": [
+      1,
+      106
+    ],
+    "fps": 24,
+    "resolution": [
+      1920,
+      1080
+    ],
+    "samples": 64,
+    "device": "3060",
+    "crf": 16,
+    "render_blender": "/home/devin/bin/blender-5.1.2-linux-x64/blender",
+    "grade_blender": "/home/devin/bin/blender-4.1.1-linux-x64/blender",
+    "approval": "Devin approved frame 106 contact endpoint, 10 appended frames and terrain fix via pm-midi-1 on 2026-10-13 UTC; complete 106-frame final authorized, no further gates."
+  },
+  "grade": {
+    "blender": "4.1.1",
+    "frames": 106,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "exposure": -0.8,
+    "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+  },
+  "scene_manifest": {
+    "source": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_03/swept/dive_swept.blend",
+    "source_sha256": "addf37883d0283cb6a59cf4f49a07be7232d1d531340016e23d56025aba0fe0d",
+    "original_motion_before": "7d63bc4ac43a72e5acddb3363f6ef5440972ade068c9c5e5c662fa8f1e59e956",
+    "continuation": {
+      "end_frame": 106,
+      "contact_time_after_96": 9.966707229614258,
+      "contact_objects": [
+        "BK | chest amber triangle"
+      ],
+      "velocity_before": [
+        -4.27764892578125,
+        3.589374542236328,
+        -2.0020675659179688
+      ],
+      "velocity_after": [
+        -4.263407230377197,
+        3.5774245262145996,
+        -1.9954020977020264
+      ],
+      "contact_bracket_world_units": 5.657319918566716e-06
+    },
+    "original_motion_after": "7d63bc4ac43a72e5acddb3363f6ef5440972ade068c9c5e5c662fa8f1e59e956",
+    "scene_sha256": "409d840e11b7c33d8994c102522b84dfaeabd3fe9e6f9e8284b0095cca53f691"
+  },
+  "scene_qa": {
+    "status": "PASS",
+    "first_contact_frame": 106,
+    "contact_objects": [
+      "BK | chest amber triangle"
+    ],
+    "original_96_frames_unchanged": true,
+    "terrain_uv_preserved": true,
+    "negative_controls": {
+      "short_endpoint": "Endpoint stops short of contact",
+      "finite_stage": "Finite square stage boundary remains"
+    }
+  },
+  "media_qa": {
+    "decoded_frames": 106,
+    "native_hash_count": 106,
+    "graded_and_decoded_hash_count": 106,
+    "full_decode": "PASS",
+    "all_frames_pixel_compared": true,
+    "max_encoded_pixel_mae": 1.783835530281067,
+    "complete_frame_report": "/home/devin/src/2026/videdit/work/kaiju_dive_320_final/final_verification.json"
+  },
+  "horizon_pixels": {
+    "fixed_edge_contrast": 8.033333539962769,
+    "original_edge_contrast": 89.0,
+    "negative_original_pixels": "Hard stage edge remains: 89.000 code values",
+    "status": "PASS"
+  },
+  "negative_controls": {
+    "old_96_frame_endpoint": "Decoded frame count differs from approved shot",
+    "black_frame": "Blank or invalid decoded picture",
+    "wrong_pixels": "Encoded pixels differ from graded source: 128.0"
+  },
+  "original_scene_negative_controls": {
+    "terrain": "Finite square stage boundary remains",
+    "endpoint": "Endpoint stops short of contact",
+    "logs": [
+      "/home/devin/src/2026/videdit/work/kaiju_dive_320_final/negative_original_terrain.log",
+      "/home/devin/src/2026/videdit/work/kaiju_dive_320_final/negative_original_endpoint.log"
+    ]
+  },
+  "visual_review": {
+    "decoded_frames": [
+      1,
+      16,
+      20,
+      24,
+      28,
+      32,
+      40,
+      48,
+      64,
+      80,
+      96,
+      101,
+      106
+    ],
+    "horizon": "PASS: continuous relief with atmospheric transition; no square edges/corners through high sky, mid descent or low approach. Near-stage UV texture remains continuous.",
+    "contact": "PASS: approach continues through f101 to first robot/chest contact at f106; beetle face and guard remain visible, no recoil or aftermath.",
+    "retained": "Swept arms, deployed hatches, dominant near plume, original chase-camera offset and pinned grade.",
+    "decoded_contact_sheet": "/home/devin/src/2026/videdit/work/kaiju_dive_320_final/final_decoded_contact.jpg"
+  },
+  "negative_test_implementation_commits": [
+    "359324f1c5c4a2b98138fa1c9ec5913ddcf4d3f2",
+    "421869b8477dc77afd71302caa5d2a4b50bd6b10",
+    "d24c11255fda2d53ce7352fb58131f15d866bfd3",
+    "c7a03dfe456b0ba33f102ecf4b9bf668dfe12fde"
+  ]
+}

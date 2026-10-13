@@ -265,3 +265,10 @@ interrupted write before resuming. The pipeline hashes every native/graded
 frame, fully decodes the H.264 into RGB, checks frame count/timing/format and
 compares every decoded frame with its corresponding graded PNG. Its contact
 sheet is taken from decoded video, not the pre-encode stills.
+
+The delivered clip is 4.416667 seconds and passes full decode, all 106 frame
+comparisons, and the decoded horizon/contact sweep. Maximum encoded-versus-PNG
+mean absolute error is 1.784 code values. The old edge's contrast in decoded
+final frame 24 is 8.03 versus 89 in the unfixed draft. Results and the decoded
+beat sheet are versioned as `final_320_results.json` and `final_320_contact.jpg`.
+MP4 SHA-256: `32cf76f0c6143f5eea7697b13501a9d0de6012ba680d771c696f79cf0c5954f3`.
