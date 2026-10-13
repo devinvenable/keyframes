@@ -10,8 +10,10 @@ from pathlib import Path
 import sys
 
 import bpy
+from mathutils import Vector
+from bpy_extras.object_utils import world_to_camera_view
 
-FIRST, LAST = 217, 265
+FIRST = 217
 
 
 def curves(obj):
@@ -61,7 +63,10 @@ def main():
     camera_location = camera.location.copy()
     camera_rotation = camera.rotation_quaternion.copy()
     ramp, cruise = 16., 2.3
-    for frame in range(FIRST + 1, LAST + 1):
+    hero = [o for o in lift.children_recursive if o.type == 'MESH']
+    assert len(hero) > 20
+    exit_frame = safe_exit_frame = None
+    for frame in range(FIRST + 1, FIRST + 2401):
         t = frame - FIRST
         u = min(t / ramp, 1.)
         # Integral of smoothstep velocity, matching the photographed last step.
@@ -78,6 +83,20 @@ def main():
             flutter = 1 + .10*math.sin(frame*2.14 + sign) + .055*math.sin(frame*.77)
             plume.scale = (1, 1, flutter)
             plume.keyframe_insert(data_path='scale', frame=frame)
+        scene.frame_set(frame)
+        deps = bpy.context.evaluated_depsgraph_get()
+        bottom = min(world_to_camera_view(scene, camera, obj.matrix_world @ Vector(corner)).y
+                     for source in hero for obj in [source.evaluated_get(deps)]
+                     for corner in obj.bound_box)
+        if bottom > 1.0 and exit_frame is None:
+            exit_frame = frame
+        # Feet are the trailing geometry; the bright plumes have already cleared.
+        if bottom > 1.0 and safe_exit_frame is None:
+            safe_exit_frame = frame
+        if safe_exit_frame is not None and frame >= safe_exit_frame + 12:
+            break
+    assert safe_exit_frame is not None, 'Robot did not exit within 100 seconds'
+    last = frame
     for obj in [lift, camera, *plumes]:
         for fc in curves(obj):
             for key in fc.keyframe_points:
@@ -87,14 +106,16 @@ def main():
     max_error = max(abs(x-y) for old, new in zip(before, after)
                     for name in old for x, y in zip(old[name], new[name]))
     assert max_error < 1e-5, f'Approved animation changed: {max_error}'
-    scene.frame_end = LAST
+    scene.frame_end = last
     scene.timeline_markers.new('CONTINUE | higher into sky', frame=218)
-    scene['liftoff_note'] = 'T316 preview candidate: appended ascent 218–265. Final render requires preview approval.'
+    scene['liftoff_note'] = 'T316 preview: fixed camera, natural ascent through full exit, then 12 empty frames. Final requires preview approval.'
     scene.frame_set(FIRST)
     a.output.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(a.output.resolve()), compress=True)
     report = dict(approved_frames_checked=FIRST, object_matrix_max_error=max_error,
-                  new_frames=[218, LAST], duration_seconds=2, start_height=start_z,
+                  new_frames=[218, last], appended_frames=last-FIRST,
+                  duration_seconds=(last-FIRST)/24, exit_frame=exit_frame,
+                  safe_exit_frame=safe_exit_frame, empty_hold_frames=12, start_height=start_z,
                   end_height=z, initial_step=velocity, cruise_step=cruise,
                   ramp_frames=ramp, animated_plumes=len(plumes), camera_behavior="locked at frame 217")
     a.output.with_suffix('.json').write_text(json.dumps(report, indent=2))

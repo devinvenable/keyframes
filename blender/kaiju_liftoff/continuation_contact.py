@@ -8,9 +8,11 @@ p = argparse.ArgumentParser()
 p.add_argument('--original', type=Path, required=True)
 p.add_argument('--candidate', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
+p.add_argument('--frames', default='217,233,249,265')
 a = p.parse_args()
-plate = np.full((1160, 1920, 3), 25, dtype=np.uint8)
-for i, frame in enumerate([217, 233, 249, 265]):
+frames = [int(f) for f in a.frames.split(',')]
+plate = np.full((((len(frames)+1)//2)*580, 1920, 3), 25, dtype=np.uint8)
+for i, frame in enumerate(frames):
     folder = a.original if frame == 217 else a.candidate
     im = cv2.imread(str(folder/f'frame_{frame:04}.png'))
     assert im is not None

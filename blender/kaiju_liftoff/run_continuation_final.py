@@ -29,6 +29,7 @@ def main():
     lock = (d/'final_job.lock').open('w')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     candidate = d/'kaiju_liftoff_continued.blend'
+    last = json.loads(candidate.with_suffix('.json').read_text())['new_frames'][1]
     state = dict(approval=a.approval_note, candidate_sha256=hashlib.sha256(candidate.read_bytes()).hexdigest())
 
     def update(phase, **extra):
@@ -44,7 +45,7 @@ def main():
         update('RENDERING')
         run([a.blender, '-b', '--python-exit-code', '1', '--python', scripts/'render_final.py', '--',
              '--source', a.source, '--candidate', candidate, '--output', d/'final_raw',
-             '--start', 218, '--end', 265])
+             '--start', 218, '--end', last])
         update('GRADING')
         if not (d/'final_graded'/'grade_report.json').exists():
             run([sys.executable, scripts/'grade_continuation.py', '--original', a.original,
