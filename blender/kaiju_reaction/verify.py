@@ -22,11 +22,13 @@ def verify(manifest):
                 for v,expected in zip((v for row in bpy.data.objects[name].matrix_world for v in row),values))
     assert error < .0001, 'Contact pose differs from approved dive'
     root = bpy.data.objects['BK | ROOT | placement']; start = root.location.copy()
+    hips = {side:bpy.data.objects['BK | hip '+side].location.copy() for side in ('L','R')}
     feet = {}; rotations = []; robot_visible = []
     for f in range(1,85):
         s.frame_set(f)
         floor = []
         for side in ('L','R'):
+            assert (bpy.data.objects['BK | hip '+side].location-hips[side]).length < .0001, f'Hip socket translates at {f}'
             sole = bpy.data.objects['BK | sole '+side]
             floor.append(min((sole.matrix_world @ Vector(c)).z for c in sole.bound_box))
         assert min(floor) < .15, f'Both feet airborne at {f}'
