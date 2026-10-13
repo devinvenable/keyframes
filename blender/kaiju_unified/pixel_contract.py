@@ -19,7 +19,7 @@ def check(rows):
     assert rows['123']['fragment']==0, 'Fragments visible before contact'
     assert rows['124']['fragment']>12, 'Fragments invisible at contact'
     assert rows['130']['fragment']>35, 'Debris burst invisible'
-    assert rows['124']['robot']<300, 'Robot hides rock smash'
+    assert rows['124']['robot_in_action']<300, 'Robot hides rock smash'
 
 
 def main(a):
@@ -48,7 +48,10 @@ def main(a):
     def render(f,suffix=''):
         s.frame_set(f); path=dest/f'frame_{f:04}{suffix}.png'; s.render.filepath=str(path); bpy.ops.render.render(write_still=True)
         im=bpy.data.images.load(str(path)); pixels=np.array(im.pixels[:]).reshape(-1,4); bpy.data.images.remove(im)
-        return {name:int(np.sum(np.max(np.abs(pixels[:,:3]-np.array(col[:3])),axis=1)<.08)) for name,col in COLORS.items()}
+        row={name:int(np.sum(np.max(np.abs(pixels[:,:3]-np.array(col[:3])),axis=1)<.08)) for name,col in COLORS.items()}
+        rgb=pixels.reshape(270,480,4)[:,144:336,:3]
+        row['robot_in_action']=int(np.sum(np.max(np.abs(rgb-np.array(COLORS['robot'][:3])),axis=2)<.08))
+        return row
     rows={str(f):render(f) for f in FRAMES}
     (a.directory/'pixel_counts.json').write_text(json.dumps(rows,indent=2)+'\n'); check(rows)
     result={'status':'PASS','rows':rows}

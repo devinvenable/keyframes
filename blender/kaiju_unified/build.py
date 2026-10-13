@@ -97,7 +97,7 @@ def build(output):
         lift=4.2*n-.14*n*n if f<=HIT else 30.24-42*min(1,((f-HIT)/30)**2)
         if f>HIT: back+=curve(f,[(HIT,0),(HIT+2,1.5),(HIT+7,-3),(END,-3)])
         key(root,'location',world((0,back,lift)),f)
-        whip=curve(f,[(CONTACT,0),(CONTACT+4,-24),(HIT-1,-32),(HIT+2,10),(HIT+7,-20),(HIT+32,-16),(END,-16)])
+        whip=curve(f,[(CONTACT,0),(CONTACT+4,-24),(HIT-1,-32),(HIT+2,10),(HIT+7,-20),(HIT+36,24),(END,24)])
         twist=curve(f,[(CONTACT,0),(CONTACT+7,8),(HIT,-7),(HIT+3,10),(HIT+30,4),(END,4)])
         def joint(name,delta):
             key(controls[name],'rotation_euler',tuple(a+math.radians(b) for a,b in zip(base_rot[name],delta)),f)
@@ -108,10 +108,16 @@ def build(output):
         for side,sign in [('L',-1),('R',1)]:
             joint('shoulder '+side,(40*flare,sign*66*flare,sign*22*flare))
             joint('elbow '+side,(35*flare,0,0))
+            # Relax out of the inherited raised guard after the collision.
+            # Absolute hinge poses leave a hanging arm instead of a reset stance.
+            for name,target in [('shoulder '+side,(8,sign*10,sign*5)),('elbow '+side,(-12,0,0))]:
+                o=controls[name]; q=tuple(a+(math.radians(b)-a)*slump for a,b in zip(o.rotation_euler,target))
+                key(o,'rotation_euler',q,f)
             kick=ramp(f,CONTACT,CONTACT+6)*(1-.55*slump)
             joint('hip '+side,(-24*kick-25*slump,sign*10*kick,0))
             joint('knee '+side,(48*kick+35*slump,0,0))
             joint('ankle '+side,(-22*kick-12*slump,0,0))
+        neck=controls['neck']; key(neck,'rotation_euler',tuple(a+(b-a)*slump for a,b in zip(neck.rotation_euler,(math.radians(28),0,0))),f)
         bpy.context.view_layer.update()
         floor=min((bpy.data.objects['BK | sole '+side].matrix_world @ Vector(c)).z for side in ('L','R') for c in bpy.data.objects['BK | sole '+side].bound_box)
         if floor<0:
