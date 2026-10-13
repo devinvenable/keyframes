@@ -46,17 +46,18 @@ def pixel_check(decoded, reference):
     return mae
 
 
-def package(root, count):
+def package(root, count, video_name='dive_swept_final.mp4', beats=None):
     frames = root/'final_frames'
     paths = [frames/f'frame_{f:04}.png' for f in range(1, count+1)]
     assert {p.name for p in frames.glob('frame_*.png')} == {p.name for p in paths}
-    video = root/'dive_swept_final.mp4'
+    video = root/video_name
     run(['ffmpeg', '-v', 'error', '-y', '-framerate', '24', '-start_number', '1',
          '-i', frames/'frame_%04d.png', '-frames:v', count, '-c:v', 'libx264',
          '-crf', '16', '-preset', 'slow', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', video], root/'encode.log')
     probe = probe_video(video, count)
     report = {'video': str(video), 'sha256': digest(video), 'probe': probe, 'frames': []}
-    beats = [1, 16, 20, 24, 28, 32, 40, 48, 64, 80, 96, 101, count]
+    if beats is None:
+        beats = [1, 16, 20, 24, 28, 32, 40, 48, 64, 80, 96, 101, count]
     decoded_dir = root/'decoded_beats'; decoded_dir.mkdir(exist_ok=True)
     sheet = Image.new('RGB', (1440, 300*((len(beats)+2)//3)), '#17191c')
     draw = ImageDraw.Draw(sheet)
