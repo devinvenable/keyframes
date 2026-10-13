@@ -14,8 +14,9 @@ and partly cropped at the opening contact, then rebounds upward out of frame.
 The beetle whips its torso, throws its arms outward and takes two backward steps.
 Two-link leg solutions keep the hip sockets fixed and the supporting foot on
 the ground; the pelvis drops between steps to keep the ankles within reach.
-All armor remains rigid. The right rear shell contacts a new nearby sandstone
-stack at frame 39. The stack wobbles, 170 stone fragments launch and bounce with
+All armor remains rigid. The right rear shell loads a new nearby sandstone
+stack over frames 36–41, with the peak impact and burst at frame 39. The stack
+wobbles, 170 stone fragments launch and bounce with
 damped gravity, and 26 irregular powder volumes fall and flatten. The beetle
 recoils forward slightly and stays upright. Dust is procedural, not a fluid sim.
 
@@ -53,6 +54,8 @@ Run the draft pipeline detached, as with T319/T320. Its saved render plan checks
 the scene hash before resuming. Both GPUs render disjoint ranges. Remove an
 incomplete native frame after interruption before resuming. The pipeline grades,
 encodes H.264, checks resolution/count/rate, and fully decodes the resulting clip.
+Every decoded frame is also compared with its graded PNG, and ten decoded beats
+are retained for visual review.
 
 ## Verification boundaries
 

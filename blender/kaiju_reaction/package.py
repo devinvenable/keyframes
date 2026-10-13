@@ -15,7 +15,7 @@ def compare_pixels(decoded, source):
 
 
 def main(directory):
-    labels = {1:'First contact / same pose as dive endpoint',22:'Mid-stagger / second foot starts back',
+    labels = {1:'First contact / same pose as dive endpoint',22:'Mid-stagger / second backward step',
               43:'Rock collision / fragments and falling powder',84:'Settle / upright, both feet planted'}
     font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',22)
     sheet=Image.new('RGB',(1920,1160),'#17191c'); draw=ImageDraw.Draw(sheet)
@@ -50,7 +50,7 @@ def main(directory):
     (directory/'review.html').write_text('''<!doctype html><meta charset="utf-8"><title>Beetle reaction draft</title>
 <style>body{background:#17191c;color:#eee;font:18px system-ui;max-width:1400px;margin:30px auto;padding:20px}img{width:100%}a{color:#9bdcff}</style>
 <h1>Beetle reaction — staging and timing review</h1>
-<p>Chest contact → robot ricochets upward → two backward steps → rock collision → upright settle.</p>
+<p>Chest contact → glancing forward pass and powered climb → two backward steps → rock collision → upright settle.</p>
 <p>Ground-level camera, rigid hinged armor, falling powder and bouncing stone fragments. Draft only; final rendering awaits approval.</p>
 '''+motion+'<a href="staging_beats.jpg"><img src="staging_beats.jpg"></a>\n'+
         '<p>'+' · '.join(f'<a href="stills/frame_{f:04}.png">{label}</a>' for f,label in labels.items())+'</p>')
