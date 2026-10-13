@@ -20,6 +20,7 @@ p.add_argument('--end', type=int, default=217)
 p.add_argument('--device', default='3060')
 p.add_argument('--backend', choices=['CUDA', 'OPTIX'], default='OPTIX')
 p.add_argument('--save-scene', type=Path)
+p.add_argument('--native-exr', action='store_true', help='Write scene-linear float EXRs for direct grading')
 a = p.parse_args(sys.argv[sys.argv.index('--')+1:])
 
 bpy.ops.wm.open_mainfile(filepath=str(a.source), load_ui=False, use_scripts=False)
@@ -42,6 +43,11 @@ s.render.resolution_percentage = 100
 s.render.fps = 24
 s.render.image_settings.file_format = 'PNG'
 s.render.image_settings.color_mode = 'RGB'
+if a.native_exr:
+    s.render.image_settings.file_format = 'OPEN_EXR'
+    s.render.image_settings.color_depth = '32'
+    s.render.image_settings.exr_codec = 'ZIP'
+suffix = 'exr' if a.native_exr else 'png'
 prefs = bpy.context.preferences.addons['cycles'].preferences
 prefs.compute_device_type = a.backend
 prefs.get_devices()
@@ -57,6 +63,8 @@ manifest = {'source': str(a.source), 'candidate': str(a.candidate),
             'quality': quality, 'color': color, 'resolution': [1920, 1080],
             'fps': 24, 'frames': [a.start, a.end], 'backend': a.backend,
             'devices': [d.name for d in prefs.devices if d.use]}
+if a.native_exr:
+    manifest['output_format'] = 'scene-linear RGB float32 OpenEXR ZIP'
 settings_path = a.output/'render_settings.json'
 if settings_path.exists():
     previous = json.loads(settings_path.read_text())
@@ -70,12 +78,12 @@ if a.save_scene:
     s['liftoff_note'] = 'Cinematic camera T306. Final render pre-approved by Devin, relayed by PM 2026-10-11. Source Cycles quality restored.'
     bpy.ops.wm.save_as_mainfile(filepath=str(a.save_scene.resolve()), compress=True)
 for frame in range(a.start, a.end+1):
-    path = a.output/f'frame_{frame:04}.png'
+    path = a.output/f'frame_{frame:04}.{suffix}'
     if path.exists():
         continue
     start = time.monotonic()
     s.frame_set(frame)
-    temporary = a.output/f'pending_{frame:04}.png'
+    temporary = a.output/f'pending_{frame:04}.{suffix}'
     s.render.filepath = str(temporary)
     bpy.ops.render.render(write_still=True)
     temporary.replace(path)

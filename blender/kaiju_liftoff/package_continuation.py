@@ -1,4 +1,4 @@
-"""Package T316 from untouched approved PNGs plus the approved full-exit continuation."""
+"""Package T316 from untouched approved PNGs plus the approved continuation."""
 import argparse
 import hashlib
 import json

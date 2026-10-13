@@ -44,12 +44,12 @@ def main():
         assert json.loads((d/'preview_verification.json').read_text())['status'] == 'PASS'
         update('RENDERING')
         run([a.blender, '-b', '--python-exit-code', '1', '--python', scripts/'render_final.py', '--',
-             '--source', a.source, '--candidate', candidate, '--output', d/'final_raw',
-             '--start', 218, '--end', last])
+             '--source', a.source, '--candidate', candidate, '--output', d/'final_exr',
+             '--start', 218, '--end', last, '--native-exr'])
         update('GRADING')
         if not (d/'final_graded'/'grade_report.json').exists():
             run([sys.executable, scripts/'grade_continuation.py', '--original', a.original,
-                 '--input', d/'final_raw', '--output', d/'final_graded'])
+                 '--input', d/'final_exr', '--output', d/'final_graded', '--native-exr', '--trim-code-values', '3'])
         update('PACKAGING')
         if not (d/'final_verification.json').exists():
             run([sys.executable, scripts/'package_continuation.py', '--original', a.original,

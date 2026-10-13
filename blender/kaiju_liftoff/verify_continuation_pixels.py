@@ -67,15 +67,16 @@ def check(original, candidate, manifest):
     assert .18 < ratio < .85, f'Robot must recede: {ratio}'
     shifts = registration(read(start_path), read(early_path))
     exits = {}
-    for frame in [manifest['exit_frame'], manifest['new_frames'][1]]:
+    exit_frames = [manifest['exit_frame'], manifest['new_frames'][1]] if manifest.get('exit_frame') else []
+    for frame in exit_frames:
         path = candidate/f'frame_{frame:04}.png'
         exits[str(frame)] = empty_sky(path)
         registration(read(start_path), read(path))
     return dict(status='PASS', background_registration=shifts,
                 early_frames={'217': start, '265': early}, exit_frames=exits,
                 climb_pixels_at_two_seconds=climb, area_ratio_at_two_seconds=ratio,
-                appended_frames=manifest['appended_frames'],
-                exit_frame=manifest['exit_frame'], empty_hold_frames=manifest['empty_hold_frames'])
+                appended_frames=manifest['new_frames'][1]-217,
+                exit_frame=manifest.get('exit_frame'), empty_hold_frames=manifest.get('empty_hold_frames', 0))
 
 
 def main():

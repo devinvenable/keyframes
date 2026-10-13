@@ -43,6 +43,7 @@ def snapshot(scene):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--full-exit', action='store_true', help='Reproduce superseded long-exit preview')
     a = p.parse_args(sys.argv[sys.argv.index('--') + 1:])
     assert a.output.resolve() != Path(bpy.data.filepath).resolve()
     assert not a.output.exists(), 'Use a new output path'
@@ -66,7 +67,7 @@ def main():
     hero = [o for o in lift.children_recursive if o.type == 'MESH']
     assert len(hero) > 20
     exit_frame = safe_exit_frame = None
-    for frame in range(FIRST + 1, FIRST + 2401):
+    for frame in range(FIRST + 1, FIRST + (2401 if a.full_exit else 49)):
         t = frame - FIRST
         u = min(t / ramp, 1.)
         # Integral of smoothstep velocity, matching the photographed last step.
@@ -95,7 +96,8 @@ def main():
             safe_exit_frame = frame
         if safe_exit_frame is not None and frame >= safe_exit_frame + 12:
             break
-    assert safe_exit_frame is not None, 'Robot did not exit within 100 seconds'
+    if a.full_exit:
+        assert safe_exit_frame is not None, 'Robot did not exit within 100 seconds'
     last = frame
     for obj in [lift, camera, *plumes]:
         for fc in curves(obj):
@@ -108,14 +110,14 @@ def main():
     assert max_error < 1e-5, f'Approved animation changed: {max_error}'
     scene.frame_end = last
     scene.timeline_markers.new('CONTINUE | higher into sky', frame=218)
-    scene['liftoff_note'] = 'T316 preview: fixed camera, natural ascent through full exit, then 12 empty frames. Final requires preview approval.'
+    scene['liftoff_note'] = 'T316: locked camera, natural ascent. Approved final cuts at f265; full-exit preview is superseded.'
     scene.frame_set(FIRST)
     a.output.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(a.output.resolve()), compress=True)
     report = dict(approved_frames_checked=FIRST, object_matrix_max_error=max_error,
                   new_frames=[218, last], appended_frames=last-FIRST,
                   duration_seconds=(last-FIRST)/24, exit_frame=exit_frame,
-                  safe_exit_frame=safe_exit_frame, empty_hold_frames=12, start_height=start_z,
+                  safe_exit_frame=safe_exit_frame, empty_hold_frames=12 if a.full_exit else 0, start_height=start_z,
                   end_height=z, initial_step=velocity, cruise_step=cruise,
                   ramp_frames=ramp, animated_plumes=len(plumes), camera_behavior="locked at frame 217")
     a.output.with_suffix('.json').write_text(json.dumps(report, indent=2))
