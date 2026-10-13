@@ -26,7 +26,7 @@ def main(root):
 <h1>Beetle reaction — revised staging and camera choice</h1>
 <p>The collision stack is an instance of the original sandstone asset, with its original geometry, textures and scale.
 The robot carries forward momentum into the stagger, glances past the shoulder, then climbs with visibly increased rocket thrust.</p>
-<p>A keeps the ground camera. B starts at the exact dive endpoint camera position, orientation and lens, then tracks the beetle's retreat.
+<p>A keeps the ground camera. B starts at the exact dive endpoint camera position, orientation and lens, then holds that station and pans with the beetle's retreat.
 Both use identical creature motion and rock placement.</p>
 <p>Early frames are shown at 960×540 per panel; click any sheet or individual frame to inspect it closely.
 Motion rendering is parked pending this staging/camera review. Final rendering also remains gated.</p>

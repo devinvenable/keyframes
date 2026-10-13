@@ -1,0 +1,209 @@
+{
+  "task": 322,
+  "status": "REVISED_STAGING_GATE_READY",
+  "review": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/review.html",
+  "motion_status": "PARKED pending revised staging/camera selection; rejected round-03 process terminated",
+  "final_approved": false,
+  "final_rendered": false,
+  "source_originals_untouched": true,
+  "staging_frames": [
+    1,
+    22,
+    43,
+    84
+  ],
+  "early_frames": [
+    1,
+    4,
+    8,
+    12,
+    16,
+    20
+  ],
+  "cameras": {
+    "low": {
+      "scene": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/low/reaction.blend",
+      "scene_sha256": "aac65cd4420b7c27d7249e759d245be57aed47c729145f3b9040f788f66fd452",
+      "source_sha256": "409d840e11b7c33d8994c102522b84dfaeabd3fe9e6f9e8284b0095cca53f691",
+      "grade": {
+        "blender": "4.1.1",
+        "frames": 9,
+        "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+        "exposure": -0.8,
+        "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+      },
+      "scene_qa": {
+        "status": "PASS",
+        "contact_max_error": 4.9808120727856675e-06,
+        "rock_contact_objects": [
+          "BK | elytron R course 2"
+        ],
+        "post_contact_objects": [],
+        "sandstone_asset": "model.011_Default OBJ.016_0.001",
+        "linked_geometry_materials": true,
+        "original_scale_preserved": true,
+        "negative_frozen_stagger": "No backward stagger",
+        "negative_controls": {
+          "rescaled_original": "Original sandstone scale changed",
+          "old_backward_rebound": "Robot reverses instead of transferring forward momentum",
+          "premature_upward_bounce": "Robot bounces upward before the powered pull-up",
+          "unpowered_climb": "Pull-up has no visible thrust increase"
+        }
+      },
+      "pixel_counts": {
+        "1": {
+          "beetle": 7535,
+          "face": 371,
+          "rock": 16493,
+          "fragment": 0,
+          "robot": 20995,
+          "set": 84206
+        },
+        "22": {
+          "beetle": 6950,
+          "face": 519,
+          "rock": 16493,
+          "fragment": 0,
+          "robot": 138,
+          "set": 105500
+        },
+        "43": {
+          "beetle": 7798,
+          "face": 495,
+          "rock": 16120,
+          "fragment": 598,
+          "robot": 0,
+          "set": 104589
+        },
+        "84": {
+          "beetle": 8142,
+          "face": 502,
+          "rock": 15924,
+          "fragment": 988,
+          "robot": 0,
+          "set": 104044
+        }
+      },
+      "stills_sha256": {
+        "frame_0001.png": "fc8c396434bf7a369add7b54f311ef9704baf2eb9621ee495b0c8b93c31144ad",
+        "frame_0004.png": "131a38a89f91d598262f7c7f7f5019c0a90c37ce64a68b7d62aeace48fa995e7",
+        "frame_0008.png": "89879909b184d3b9b7651e7a9376762c75555d095a8ffce1f841fb85268fc2a9",
+        "frame_0012.png": "5479b2e77b59fb1ac891788d77fb1b844b241ecd14a19a7e919dfd6fa74750c8",
+        "frame_0016.png": "db670f3b1d9379c2280274644cea4576f33a4ffd3fbcdc2d0eb94e4903a4cc21",
+        "frame_0020.png": "1d6a4749e938f7a10e01afaab3601cd3ecb59919454385bfaf530a50bb8210a9",
+        "frame_0022.png": "aaf881eff38edcdd6c836c20e4b6b802810cd31689a5eaebedc9e027a8d760b8",
+        "frame_0043.png": "a3592a3cf2838aa33ccbfe301418c73a545bc93d8ccb023fd0cb4c32dbdf8b0b",
+        "frame_0084.png": "dbdb07e86ab8b7af548bfcd45e060a0969c581ce119879892b1a330b19121ea7"
+      },
+      "native_sha256": {
+        "frame_0001.exr": "b30dd5bba30a5a9a1a0e00a4930c6b762daa238f08a055b20179cf2daf8016e6",
+        "frame_0004.exr": "cd4d5d66506fea8f58f5982c7aa16f78cd592b56b661ba7009288a19b0fa6aba",
+        "frame_0008.exr": "312b813eee714ff6f330b7e11acbf112416c7de87d48c72a979f7c5361ffae64",
+        "frame_0012.exr": "359234dfb0f8c40d69007c18f51c6d34e43b712fbc561c4ffe08ee2b3cd45541",
+        "frame_0016.exr": "dd1c8f1e49f45e6feb8a5f33c481357160a9115d3c46ffd24cf886e1bcaf28aa",
+        "frame_0020.exr": "e81749a9182deabc0778b8b484df82f1199fa01b579a8216506d90aaebacae6c",
+        "frame_0022.exr": "03ed6ec36f5099afd1651c1175988b4280f5c249192ffb889d9fa7f8a07a2758",
+        "frame_0043.exr": "8be107a6312af57841e7b3c29adc62f7a8e2cee628cd34e9fa1cd65b9cd49a6a",
+        "frame_0084.exr": "b78a1e4c1461d38edb4d9dac9f791c3667c6f11255beb10d6519ebd3a98b1168"
+      },
+      "early_sheet": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/low/early_frames.jpg",
+      "staging_sheet": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/low/staging_beats.jpg"
+    },
+    "continuation": {
+      "scene": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/continuation/reaction.blend",
+      "scene_sha256": "affc588e863e9ef05a54362a6d6ded42e550967917af371fb73c8e10aeb1a090",
+      "source_sha256": "409d840e11b7c33d8994c102522b84dfaeabd3fe9e6f9e8284b0095cca53f691",
+      "grade": {
+        "blender": "4.1.1",
+        "frames": 9,
+        "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+        "exposure": -0.8,
+        "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+      },
+      "scene_qa": {
+        "status": "PASS",
+        "contact_max_error": 4.9808120727856675e-06,
+        "rock_contact_objects": [
+          "BK | elytron R course 2"
+        ],
+        "post_contact_objects": [],
+        "sandstone_asset": "model.011_Default OBJ.016_0.001",
+        "linked_geometry_materials": true,
+        "original_scale_preserved": true,
+        "negative_frozen_stagger": "No backward stagger",
+        "negative_controls": {
+          "rescaled_original": "Original sandstone scale changed",
+          "old_backward_rebound": "Robot reverses instead of transferring forward momentum",
+          "premature_upward_bounce": "Robot bounces upward before the powered pull-up",
+          "unpowered_climb": "Pull-up has no visible thrust increase",
+          "wrong_camera_start": "Continuation camera does not start at dive endpoint"
+        }
+      },
+      "pixel_counts": {
+        "1": {
+          "beetle": 3578,
+          "face": 784,
+          "rock": 12422,
+          "fragment": 0,
+          "robot": 13355,
+          "set": 99461
+        },
+        "22": {
+          "beetle": 4713,
+          "face": 585,
+          "rock": 3482,
+          "fragment": 0,
+          "robot": 21806,
+          "set": 99014
+        },
+        "43": {
+          "beetle": 4774,
+          "face": 530,
+          "rock": 11095,
+          "fragment": 373,
+          "robot": 0,
+          "set": 112828
+        },
+        "84": {
+          "beetle": 5268,
+          "face": 546,
+          "rock": 11180,
+          "fragment": 455,
+          "robot": 0,
+          "set": 112151
+        }
+      },
+      "stills_sha256": {
+        "frame_0001.png": "cebe61dc3a4b63f76d09a9c3e0904c974287ee0bd4aa070e47bf2cc8c6278d91",
+        "frame_0004.png": "e7773ed8d7aab723257d9580177fcb962ac818d25eec6ff860b169cdd2f3143a",
+        "frame_0008.png": "80a2394a432dccc8670e5f1956c018dc1498362de80f17becbba543e19629f0b",
+        "frame_0012.png": "1a4b6503af1180b655e85bfeb31116bf27002a8ecf377d6e10f26b6d5c592be4",
+        "frame_0016.png": "969c1cdc436ad5db0de3554aa119551e17de921f3356cb84bf87195981c0131a",
+        "frame_0020.png": "a9d4dab6cf3d8e0f44bc2120b16925d6b0293b30ef5f79ffd0401c13920153a0",
+        "frame_0022.png": "9aaa4d82e1c1c374d2177ab2ca3a80f2c0cb87cf8bc9845621bf8ff624666add",
+        "frame_0043.png": "910c39fa17d78c22b12b31aa8d3fe4c64374bc3c808a288f3055032c0d74c2a5",
+        "frame_0084.png": "f7d016123d112ad781fa1471befb28e2e445e8ce98c34a7c8f0a93da485a9800"
+      },
+      "native_sha256": {
+        "frame_0001.exr": "d2f7103deb407e8692b8fbca95639ce335d7dfaec3e25d5285d3c783a77f8aed",
+        "frame_0004.exr": "90958374b4b7774a048a8c883697fd68e7eb8854922deb0f1aa23d0f68b0163a",
+        "frame_0008.exr": "3745d2bfff92c39eb9f08fed2e889978ef765ed2e4bce67be3a7ac7c10f6c7eb",
+        "frame_0012.exr": "ad0bd89f7b0aeabeb784a9a288840979fc507a6cc30ed973f16f4fa44aff3427",
+        "frame_0016.exr": "729b1d0e50e1784c330bd33671dd3e23d5db3b618f676266ffb9f7f68130aaa6",
+        "frame_0020.exr": "7064eb2f53ac1091e1ab166ca572318a73f72f9035523e5e746ecd7458776eb3",
+        "frame_0022.exr": "7901ad33abcd27b15b20595ef1503b2e18920d6c30f5ed9dcf238dad9c06f2db",
+        "frame_0043.exr": "563c72f888f5a6c4006f077745e82638f5c8356e97b3a732a904871bb0b722d7",
+        "frame_0084.exr": "7ccc543ed9b8cba0c4f5eb5ada2c8ab0eaeaf0c41543c556a09e3084a3e55af8"
+      },
+      "early_sheet": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/continuation/early_frames.jpg",
+      "staging_sheet": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/continuation/staging_beats.jpg"
+    }
+  },
+  "matching_performance": "All 84 robot positions, foot clearances and thrust scales identical between cameras",
+  "negative_original_fake_rocks": "Actual rejected round-03 scene fails: Collision stack is not the original sandstone asset",
+  "visual_review": {
+    "early": "Inspected all six early frames per camera: sustained forward contact, glancing side pass and visible powered climb; B retains longer foreground robot coverage than A.",
+    "staging": "Inspected all four graded beats per camera: original weathered sandstone matches set, shallow shell contact, fragments/powder at face, standing settle.",
+    "limitations": "Stills gate only; timing and camera choice await Devin. Volumes are visually reviewed separately from surface masks."
+  }
+}

@@ -18,12 +18,13 @@ def run(cmd,log):
         subprocess.run(list(map(str,cmd)),stdout=stream,stderr=subprocess.STDOUT,check=True)
 
 
-def main(directory):
+def main(directory,approval_note):
+    assert approval_note.strip(), 'Record approval of the revised staging and selected camera first'
     scene=directory/'reaction.blend'
     digest=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     plan={'scene':str(scene),'scene_sha256':digest(scene),'frames':84,'fps':24,
           'resolution':[960,540],'samples':8,'grade_blender':GRADE,'render_blender':BLENDER,
-          'devices':{'3060':[1,52],'1050':[53,84]},'draft_only':True}
+          'devices':{'3060':[1,52],'1050':[53,84]},'draft_only':True,'approval_note':approval_note}
     path=directory/'draft_plan.json'
     if path.exists(): assert json.loads(path.read_text())==plan,'Draft plan changed'
     else: path.write_text(json.dumps(plan,indent=2)+'\n')
@@ -50,4 +51,5 @@ def main(directory):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(); p.add_argument('--directory',type=Path,required=True)
-    main(p.parse_args().directory.resolve())
+    p.add_argument('--approval-note',required=True)
+    a=p.parse_args(); main(a.directory.resolve(),a.approval_note)

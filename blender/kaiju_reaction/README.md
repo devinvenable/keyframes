@@ -1,72 +1,96 @@
-# T322 — beetle reaction preview
+# T322 — revised beetle reaction staging gate
 
-Review artifacts: `/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_03/`.
-`review.html` contains four graded staging stills and, after the draft pipeline
-finishes, `reaction_draft.mp4`. This is an 84-frame, 24 fps draft. Final rendering
-requires Devin's approval of the staging and timing. No assembly is performed.
+Current review: `/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/review.html`.
+The `low/` and `continuation/` directories each contain nine graded stills,
+`early_frames.jpg`, `staging_beats.jpg`, `reaction.blend`, native EXRs and QA.
+Early frames 1/4/8/12/16/20 show contact through the glancing pass and powered
+pull-up. Standard beats 1/22/43/84 show contact, stagger, rock burst and settle.
+The sheets retain each still's full 960×540 resolution, with individual links.
+
+**Motion rendering is parked pending this revised staging/camera review.**
+Devin rejected the earlier invented rock stack and elastic upward rebound.
+The round-03 draft process was terminated on that feedback; its partial native
+frames are superseded and are not a review clip. Final rendering also remains
+gated. No assembly is performed. Rounds 01–04 are iteration/evidence inputs.
+
+Both alternatives have the same 84-frame, 24 fps creature performance:
+
+- A: ground-level 32 mm camera, 4.5 units above the miniature floor.
+- B: exact T320 frame-106 camera position/orientation and 26 mm lens at frame 1;
+  it then holds that station and pans after the retreating beetle. This is the
+  higher dive/impact viewpoint.
 
 The first frame preserves every creature/hatch/booster world transform from
-the approved T320 frame 106. The master scene, terrain-relief disk, native
-characters, deployed hardware, world illumination and pinned grade are reused.
-The new 32 mm camera is 4.5 units above the miniature floor. The robot is large
-and partly cropped at the opening contact, then rebounds upward out of frame.
+the approved T320 frame 106. The master terrain-relief disk, native characters,
+deployed hardware, world illumination and pinned grade are reused. The robot
+continues forward while decelerating into the beetle's initial displacement,
+glances laterally past its shoulder, then pitches into a climb. Exhaust length
+increases by 50% during the powered pull-up; there is no immediate upward bounce.
 
-The beetle whips its torso, throws its arms outward and takes two backward steps.
-Two-link leg solutions keep the hip sockets fixed and the supporting foot on
-the ground; the pelvis drops between steps to keep the ankles within reach.
-All armor remains rigid. The right rear shell loads a new nearby sandstone
-stack over frames 36–41, with the peak impact and burst at frame 39. The stack
-wobbles, 170 stone fragments launch and bounce with
-damped gravity, and 26 irregular powder volumes fall and flatten. The beetle
-recoils forward slightly and stays upright. Dust is procedural, not a fluid sim.
+The beetle whips its torso, flails its arms and takes two backward steps. Fixed
+hip sockets and two-link leg solutions keep at least one supporting foot on
+the floor. The pelvis drops between steps to keep the ankles within reach;
+all armor stays rigid. At frame 39, its rear shell contacts an instance of
+`model.011_Default OBJ.016_0.001` from the master. The collision asset shares
+the original mesh, UVs and packed PBR materials, and retains world scale 9.
+Only placement/heading change. Whole-shell surface intersection refines the
+placement to a shallow impact rather than burying the suit in an uneven ledge.
 
-The staging stills are frames 1, 22, 43 and 84 at 960×540 / 16 Cycles samples.
-The motion draft uses the same scene at 960×540 / 8 samples. Native EXRs render
-in Blender 5.1.2, then the existing `kaiju_arrival/grade.py` uses Blender 4.1.1
-and the hash-pinned `kaiju_1960s` compositor at exposure −0.8. Originals are
-never overwritten. Rounds 01–02 are internal iteration/negative-control inputs.
+170 fragments sample their birth positions on the actual original rock surface,
+reuse its material, and bounce with damped gravity. 26 irregular powder volumes
+fall and flatten along that surface. The beetle recoils slightly forward and
+stays upright. Dust is procedural, not a fluid simulation.
+
+Stills use 16 Cycles samples. Native EXRs render in Blender 5.1.2, then the
+existing `kaiju_arrival/grade.py` applies the hash-pinned `kaiju_1960s` compositor
+in Blender 4.1.1 at exposure −0.8. Original source files are never overwritten.
 
 ## Reproduction
 
-Use a fresh output directory for a new scene candidate. From the repository root:
+Use a fresh output directory for a new candidate. From the repository root:
 
 ```bash
-SHOT=/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_03
+ROOT=/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05
 BLENDER=/home/devin/bin/blender-5.1.2-linux-x64/blender
 GRADE=/home/devin/bin/blender-4.1.1-linux-x64/blender
 PYTHON=/home/devin/src/2026/videdit/venv/bin/python
-
-"$BLENDER" -t 6 -b --python-exit-code 1 --python blender/kaiju_reaction/build.py -- --output "$SHOT"
-"$BLENDER" -t 4 -b "$SHOT/reaction.blend" --python-exit-code 1 \
-  --python blender/kaiju_reaction/verify.py -- --directory "$SHOT" --negative-checks
-"$BLENDER" -t 6 -b "$SHOT/reaction.blend" --python-exit-code 1 \
-  --python blender/kaiju_arrival/render.py -- --output "$SHOT/still_exr" \
-  --frames 1,22,43,84 --samples 16 --percent 50 --device 3060
-"$GRADE" -t 6 -b --python-exit-code 1 --python blender/kaiju_arrival/grade.py -- \
-  --input "$SHOT/still_exr" --output "$SHOT/stills"
-"$BLENDER" -t 4 -b "$SHOT/reaction.blend" --python-exit-code 1 \
-  --python blender/kaiju_reaction/pixel_contract.py -- --directory "$SHOT"
-"$PYTHON" blender/kaiju_reaction/package.py --directory "$SHOT"
-"$PYTHON" blender/kaiju_reaction/draft.py --directory "$SHOT"
+for CAMERA in low continuation; do
+  SHOT="$ROOT/$CAMERA"
+  "$BLENDER" -t 4 -b --python-exit-code 1 --python blender/kaiju_reaction/build.py -- \
+    --output "$SHOT" --camera "$CAMERA"
+  "$BLENDER" -t 4 -b "$SHOT/reaction.blend" --python-exit-code 1 \
+    --python blender/kaiju_reaction/verify.py -- --directory "$SHOT" --negative-checks
+  "$BLENDER" -t 4 -b "$SHOT/reaction.blend" --python-exit-code 1 \
+    --python blender/kaiju_arrival/render.py -- --output "$SHOT/still_exr" \
+    --frames 1,4,8,12,16,20,22,43,84 --samples 16 --percent 50 --device 3060
+  "$GRADE" -t 4 -b --python-exit-code 1 --python blender/kaiju_arrival/grade.py -- \
+    --input "$SHOT/still_exr" --output "$SHOT/stills"
+  "$BLENDER" -t 4 -b "$SHOT/reaction.blend" --python-exit-code 1 \
+    --python blender/kaiju_reaction/pixel_contract.py -- --directory "$SHOT"
+done
+"$PYTHON" blender/kaiju_reaction/review_cameras.py --directory "$ROOT"
 ```
 
-Run the draft pipeline detached, as with T319/T320. Its saved render plan checks
-the scene hash before resuming. Both GPUs render disjoint ranges. Remove an
-incomplete native frame after interruption before resuming. The pipeline grades,
-encodes H.264, checks resolution/count/rate, and fully decodes the resulting clip.
-Every decoded frame is also compared with its graded PNG, and ten decoded beats
-are retained for visual review.
+After approval and camera selection, `draft.py --directory SELECTED_DIRECTORY
+--approval-note 'actual approval record'` can render an 8-sample 540p timing
+draft on both GPUs. Run it detached. Its saved plan checks the scene hash before
+resuming; remove an incomplete native frame after interruption. It grades,
+encodes, fully decodes and compares every decoded frame with its graded PNG.
+It does not render a final.
 
 ## Verification boundaries
 
-The saved-scene verifier checks contact continuity, foot clearance, two lifts,
-fixed hip sockets, torso articulation, backward travel, robot exit and a mesh
-surface intersection between shell and rock at the impact beat. Cycles category
-masks check visible pixels for beetle, face, stack, robot and stone fragments,
-including surface occlusion. Masks hide volumes: the actual graded beauty
-stills and decoded motion must also be reviewed for dust and aesthetic quality.
+The saved-scene verifier checks contact continuity, fixed hip sockets, foot
+clearance and lifts, torso motion, backward travel, robot exit, forward momentum,
+the delayed climb, increased thrust, the original sandstone instance/scale,
+the B camera's exact initial pose/lens, and shell/rock surface contact.
+Cycles category masks check visible pixels for beetle, eye/horn silhouette,
+stack, robot and fragments, including surface occlusion. Masks hide volumes;
+the graded beauty stills are also inspected for dust and aesthetic quality.
 
-Negative controls run after the implementation commits. Freezing the root action
-fails `No backward stagger`. The actual round-02 sliding-hip scene fails
-`Hip socket translates at 2`. The actual round-01 rendered masks fail
-`Debris visible before rock impact`. Neither original scene is modified by QA.
+Negative controls ran after their implementation commits: frozen stagger,
+rescaled rock, old backward rebound, premature upward lift, unpowered climb and
+wrong B camera pose each fail the intended assertion, then restore exact action
+and transform copies. The actual rejected round-03 scene fails the original-rock
+contract. Earlier controls rejected the real round-02 sliding hips and round-01
+premature visible debris. Source scenes are not saved by verification.
