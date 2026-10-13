@@ -47,6 +47,14 @@ def package(directory):
         x,y=(i%2)*960,(i//2)*580; sheet.paste(im,(x,y+40))
         draw.text((x+12,y+8),f'{f}  {label}',font=font,fill='white')
     sheet.save(directory/'impact_beats.jpg',quality=94)
+    sampled=list(range(START,STOP+1,3))
+    if sampled[-1]!=STOP: sampled.append(STOP)
+    motion=Image.new('RGB',(1600,210*((len(sampled)+4)//5)),'#17191c'); md=ImageDraw.Draw(motion)
+    for i,f in enumerate(sampled):
+        x,y=(i%5)*320,(i//5)*210
+        motion.paste(Image.fromarray(decoded[f-START]).resize((320,180)),(x,y+30))
+        md.text((x+6,y+3),str(f),font=font,fill='white')
+    motion.save(directory/'motion_sampling.jpg',quality=94)
     hashes={str(p.relative_to(directory)):digest(p) for sub,ext in [('draft_exr','exr'),('draft_frames','png')] for p in sorted((directory/sub).glob(f'frame_*.{ext}'))}
     (directory/'media_qa.json').write_text(json.dumps({'status':'PASS','probe':probe,'video_sha256':digest(video),'full_decode':'PASS','encoded_pixel_mae':errors,'frame_sha256':hashes,'grade':json.loads((directory/'draft_frames/grade.json').read_text())},indent=2)+'\n')
     (directory/'review.html').write_text('''<!doctype html><meta charset="utf-8"><title>Unified impact — draft gate</title>
@@ -57,7 +65,9 @@ def package(directory):
 <video controls loop src="impact_draft.mp4"></video>
 <p>540p timing draft. Full 1080p render is pending impact approval.</p>
 <a href="impact_beats.jpg"><img src="impact_beats.jpg"></a><p>'''+
-        ' · '.join(f'<a href="decoded_beats/frame_{f:04}.png">{f}: {label}</a>' for f,label in BEATS.items())+'</p>')
+        ' · '.join(f'<a href="decoded_beats/frame_{f:04}.png">{f}: {label}</a>' for f,label in BEATS.items())+
+        '</p><p><a href="motion_sampling.jpg">Motion sampling, every three frames</a></p>'+
+        ('<p><a href="continuity_frames/frame_0064.png">Frame 64: collision cliff already present during the dive</a></p>' if (directory/'continuity_frames/frame_0064.png').exists() else ''))
     scene_qa=json.loads((directory/'scene_qa.json').read_text())
     pixel_qa=json.loads((directory/'pixel_qa.json').read_text())
     # Confirm the media comparator rejects an actual wrong picture, after the
