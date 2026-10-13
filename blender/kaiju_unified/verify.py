@@ -10,6 +10,10 @@ from mathutils.bvhtree import BVHTree
 CONTACT,HIT,END=106,124,192
 
 
+def check_speed(speeds):
+    assert all(b>=a-.002 for a,b in zip(speeds[63:],speeds[64:])), 'Dive brakes before contact'
+
+
 def tree(o):
     deps=bpy.context.evaluated_depsgraph_get(); e=o.evaluated_get(deps); m=e.to_mesh()
     result=BVHTree.FromPolygons([e.matrix_world @ v.co for v in m.vertices],[tuple(p.vertices) for p in m.polygons])
@@ -36,7 +40,7 @@ def verify():
                 if f==HIT-1: assert max(o.scale)<.002, 'Debris visible before rock impact'
                 else: assert min(o.scale)>.01, 'Debris is late at rock impact'
     speeds=[(b-a).length for a,b in zip(positions[:CONTACT-1],positions[1:CONTACT])]
-    assert all(b>=a-.002 for a,b in zip(speeds[63:],speeds[64:])), 'Dive brakes before contact'
+    check_speed(speeds)
     assert min(min(row) for row in feet[112:124])>10, 'Beetle not launched off both feet'
     assert min(min(row) for row in feet[CONTACT:])>-.02, 'Feet penetrate ground'
     assert (roots[HIT-1]-roots[CONTACT-1]).length>110, 'Launch lacks backward travel'
@@ -79,7 +83,20 @@ def main(a):
         fragment=bpy.data.objects['Reaction | fragment 000']
         mutation('late_debris',fragment,'scale',HIT,lambda v:Vector((.001,)*3),'Debris is late at rock impact')
         mutation('drifting_camera',s.camera,'location',150,lambda v:v+Vector((1,0,0)),'Camera leaves impact station')
-        verify(); result['negative_controls']=negatives
+        verify()
+        # The actual unfixed approved dive must fail the same speed assertion.
+        saved=bpy.data.filepath
+        source=json.loads((a.directory/'manifest.json').read_text())['source']
+        bpy.ops.wm.open_mainfile(filepath=source)
+        positions=[]
+        for f in range(1,CONTACT+1):
+            bpy.context.scene.frame_set(f); positions.append(bpy.data.objects['actor_kaiju_robot'].location.copy())
+        old_speeds=[(b-a).length for a,b in zip(positions,positions[1:])]
+        try: check_speed(old_speeds)
+        except AssertionError as e: negatives['actual_unfixed_T320_approach']=str(e)
+        else: raise AssertionError('Actual unfixed dive passed approach check')
+        bpy.ops.wm.open_mainfile(filepath=saved); verify()
+        result['negative_controls']=negatives
     (a.directory/'scene_qa.json').write_text(json.dumps(result,indent=2)+'\n')
     print('UNIFIED_QA',json.dumps({k:v for k,v in result.items() if k not in ('feet_by_frame','approach_speeds')}),flush=True)
 
