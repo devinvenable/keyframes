@@ -45,11 +45,11 @@ SHOT=/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_04
   --python blender/kaiju_unified/verify.py -- --directory "$SHOT" --negative-checks
 "$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
   --python blender/kaiju_unified/pixel_contract.py -- --directory "$SHOT" --negative-checks
-/home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/draft.py \
-  --directory "$SHOT"
+setsid -f /home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/draft.py \
+  --directory "$SHOT" > "$SHOT/pipeline.log" 2>&1 < /dev/null
 ```
 
-Run rendering in a persistent managed terminal session. Native per-frame EXRs
+Run rendering detached from the command harness, as above. Native per-frame EXRs
 can resume under the identical render plan. Remove an incomplete frame before
 resuming an interrupted write. RTX 3060 renders frames 100–164; GTX 1050 Ti renders
 165–180. The draft uses eight Cycles samples, the pinned Blender 4.1.1
