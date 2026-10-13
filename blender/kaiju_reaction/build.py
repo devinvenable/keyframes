@@ -77,7 +77,7 @@ def dust_material():
     return m
 
 
-def effects(world, rng):
+def effects(world, rng, burst_z=0, synchronized=False, force=1):
     s = bpy.context.scene; s.frame_set(HIT)
     source = bpy.data.objects['model.011_Default OBJ.016_0.001']
     o = source.copy(); o.data = source.data; o.animation_data_clear()
@@ -139,12 +139,13 @@ def effects(world, rng):
     # airborne pebbles. Integrate gravity and damped floor bounces at 24 Hz.
     for i in range(170):
         radius = rng.uniform(.3, 1.1) if i < 145 else rng.uniform(1.2, 3.1)
-        origin = surface(rng.uniform(1,35),rng.uniform(25,75))
+        origin = surface(rng.uniform(1,35),rng.uniform(25,75)+burst_z)
         o = stone(f'Reaction | fragment {i:03}', origin, (radius, radius*.65, radius*.8), mat, rng, 1)
         fragment_scale = o.scale.copy()
         velocity = Vector((rng.uniform(-38, 44), rng.uniform(-45, -8), rng.uniform(5, 36)))
-        velocity = world(velocity)-world((0, 0, 0))
+        velocity = (world(velocity)-world((0, 0, 0)))*force
         pos = origin.copy(); birth = HIT+rng.choice([0, 0, 1, 2]); spin = Vector((rng.uniform(-5,5), 3, 4))
+        if synchronized: birth = HIT
         o['birth_frame'] = birth; o['radius'] = radius
         for f in range(1, END+1):
             if f >= birth:
@@ -154,21 +155,22 @@ def effects(world, rng):
                     velocity.x *= .64; velocity.y *= .64
             key(o, 'location', pos, f)
             key(o, 'rotation_euler', spin*max(0, (f-birth)/24), f)
-            key(o, 'scale', fragment_scale if f >= birth else (.001,)*3, f)
+            key(o, 'scale', fragment_scale if f >= birth else ((0 if synchronized else .001),)*3, f)
     powder = dust_material()
     for i in range(26):
-        origin = surface(rng.uniform(1,35),rng.uniform(25,64))
+        origin = surface(rng.uniform(1,35),rng.uniform(25,64)+burst_z)
         size = rng.uniform(5, 10)
         o = stone(f'Reaction | powder {i:02}', origin, (1,1,1), powder, rng)
         for v in o.data.vertices:
             v.co *= .7+.65*noise.noise_vector(v.co*3+Vector((i*.7,i*.4,i*.3))).x
         velocity = world((rng.uniform(-15, 35), rng.uniform(-28, -7), rng.uniform(-5, 10)))-world((0,0,0))
         birth = HIT+rng.choice([0, 1, 2]); o['birth_frame'] = birth
+        if synchronized: birth = HIT; o['birth_frame'] = birth
         for f in range(1, END+1):
             t = max(0, (f-birth)/24)
             pos = origin+velocity*(1-math.exp(-t*1.7))/1.7
             pos.z = max(1.8, origin.z+velocity.z*t-35*t*t)
-            grow = .001 if f < birth else .45+1.2*(1-math.exp(-t*5))
+            grow = (0 if synchronized else .001) if f < birth else .45+1.2*(1-math.exp(-t*5))
             key(o, 'location', pos, f)
             key(o, 'scale', (size*grow, size*grow*.7, size*grow*max(.24, .8-t*.45)), f)
 
