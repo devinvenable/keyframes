@@ -10,9 +10,10 @@ Review deliverables are in
 - Each pose has `preview_exr/`, graded `stills/`, source hashes in
   `manifest.json`, and `verification.json` with all 96 measured frames.
 
-**Still review stage only.** Devin's pose and endpoint directions precede the
-draft clip. Final rendering requires his approval. No movie or final-quality
-sequence has been rendered. Rounds 01–02 are superseded internal framing probes.
+Round 03 is the still review stage. T319 advances both candidates to draft
+motion in round 04 at Devin's request, without selecting a pose or changing
+either scene. Final rendering requires his approval. Rounds 01–02 are
+superseded internal framing probes.
 
 The camera is parented to the robot near its back, with a fixed local position
 and orientation. The opening sees upper sky; the robot pitches into a descending
@@ -137,3 +138,54 @@ Reproduce the comparison and labeled sheet from this repository root:
 For fresh stills, use the render/grade commands above with the round-03 saved
 blends as inputs, the T318 directory as output, and `--frames 64`. Do not rebuild
 or overwrite the source scenes merely to run this audit.
+
+## T319 round 04 — both poses in motion
+
+Output directory:
+`/home/devin/src/2026/videdit/work/kaiju_dive_317/round_04/`
+
+- `dive_forward_draft.mp4`: A, arms extended forward.
+- `dive_swept_draft.mp4`: B, arms swept at the sides.
+- `review.html`: both clips with playback controls and the pending choices.
+- `render_plan.json`: exact input paths/hashes, resolution, samples and device.
+- `media_verification.json`: clip hashes, full decode results, ffprobe frame
+  counts/timing, grading provenance and all graded-frame hashes.
+- Each pose directory retains native EXRs, graded PNGs, render/grade logs and
+  full 96-frame choreography verification.
+
+Both clips cover frames 1–96 at 24 fps (four seconds), 960×540, 16 Cycles samples,
+H.264 CRF 18, yuv420p. They use the unchanged round-03 blends and the same
+Blender 4.1.1 `kaiju_1960s` grade as the stills. Rendering selects only the GTX
+1050 Ti. The deployed hatches, chase framing, endpoint and dominant near plume
+are preserved. Review choices remain arm pose A/B, open/closed hatches in
+flight, endpoint framing and one/both plumes; these are drafts, not finals.
+
+Run the resumable orchestrator in a managed terminal session (or a persistent
+detached process), from this repository root:
+
+```bash
+/home/devin/src/2026/videdit/venv/bin/python blender/kaiju_dive/draft_motion.py \
+  --source /home/devin/src/2026/videdit/work/kaiju_dive_317/round_03 \
+  --output /home/devin/src/2026/videdit/work/kaiju_dive_317/round_04
+```
+
+The script verifies each saved scene, renders missing native frames, grades all
+frames, checks PNG sizes, encodes each clip and fully decodes it with FFmpeg's
+error-exit flag. It requires exactly 96 decoded frames at 24 fps, four seconds
+and 960×540. Input scene hashes must remain unchanged. Resuming requires the
+same render plan; if a render was interrupted while writing a frame, remove
+that incomplete output before resuming. Large media stays in the work directory,
+outside Git; the script and verification summary are versioned here.
+
+Motion review exposes an existing straight terrain boundary entering against
+the sky around frame 24. It was not visible in the earlier 1/64/96 still gate.
+The unchanged scenes retain it for this comparison; it is a review concern
+before final rendering. Decoded beat sheets include frames 1, 24, 48, 64, 80
+and 96 so this transition can be inspected alongside the approach and brace.
+
+QA also exercised a temporary 95-frame encode using an in-memory copy of the
+committed packaging implementation. The actual decoded count was 95 and the
+96-frame assertion rejected it; the source script and delivered clip were
+untouched. Both existing scene negative controls (detached camera and frozen
+beetle reaction) also failed on their intended assertions and then restored
+their exact in-memory state, without saving the source scenes.

@@ -1,0 +1,115 @@
+{
+  "task": 319,
+  "output_directory": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_04",
+  "review": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_04/review.html",
+  "render_plan": {
+    "sources": {
+      "forward": {
+        "path": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_03/forward/dive_forward.blend",
+        "sha256": "bea6946e8d4f05ed7b07ac46b503d5e222fc7f174f65e88f2b1e39bd4082011b"
+      },
+      "swept": {
+        "path": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_03/swept/dive_swept.blend",
+        "sha256": "addf37883d0283cb6a59cf4f49a07be7232d1d531340016e23d56025aba0fe0d"
+      }
+    },
+    "frames": [
+      1,
+      96
+    ],
+    "fps": 24,
+    "resolution": [
+      960,
+      540
+    ],
+    "samples": 16,
+    "device": "1050",
+    "render_blender": "/home/devin/bin/blender-5.1.2-linux-x64/blender",
+    "grade_blender": "/home/devin/bin/blender-4.1.1-linux-x64/blender",
+    "review_only": true,
+    "scene_edits": false
+  },
+  "clips": {
+    "forward": {
+      "video": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_04/dive_forward_draft.mp4",
+      "probe": {
+        "width": 960,
+        "height": 540,
+        "r_frame_rate": "24/1",
+        "duration": "4.000000",
+        "nb_read_frames": "96"
+      },
+      "sha256": "ad1bd0e4d76f089510e696032b4edd17e0dd813c0a6e1bfec7b72b9b96bb0620",
+      "source_scene_sha256": "bea6946e8d4f05ed7b07ac46b503d5e222fc7f174f65e88f2b1e39bd4082011b",
+      "grade": {
+        "blender": "4.1.1",
+        "frames": 96,
+        "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+        "exposure": -0.8,
+        "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+      },
+      "decode": "PASS",
+      "source_scene_unchanged": true,
+      "graded_frame_count": 96,
+      "choreography_status": "PASS",
+      "scene_negative_controls": {
+        "detached_camera": "Camera must ride the robot",
+        "statue_beetle": "Beetle waist reaction is static or too small: 0.0"
+      },
+      "decoded_contact_sheet": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_04/forward_decoded_beats.jpg"
+    },
+    "swept": {
+      "video": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_04/dive_swept_draft.mp4",
+      "probe": {
+        "width": 960,
+        "height": 540,
+        "r_frame_rate": "24/1",
+        "duration": "4.000000",
+        "nb_read_frames": "96"
+      },
+      "sha256": "40dd88bf612506845b6d78f9faef905f36e71100145243b0b7a3d114b6739452",
+      "source_scene_sha256": "addf37883d0283cb6a59cf4f49a07be7232d1d531340016e23d56025aba0fe0d",
+      "grade": {
+        "blender": "4.1.1",
+        "frames": 96,
+        "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+        "exposure": -0.8,
+        "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+      },
+      "decode": "PASS",
+      "source_scene_unchanged": true,
+      "graded_frame_count": 96,
+      "choreography_status": "PASS",
+      "scene_negative_controls": {
+        "detached_camera": "Camera must ride the robot",
+        "statue_beetle": "Beetle waist reaction is static or too small: 0.0"
+      },
+      "decoded_contact_sheet": "/home/devin/src/2026/videdit/work/kaiju_dive_317/round_04/swept_decoded_beats.jpg"
+    }
+  },
+  "negative_media_control": {
+    "mutation": "encode 95 instead of 96 frames, in-memory module copy only",
+    "expected": "96 decoded frames",
+    "observed": {
+      "width": 960,
+      "height": 540,
+      "r_frame_rate": "24/1",
+      "duration": "3.958333",
+      "nb_read_frames": "95"
+    },
+    "result": "rejected on frame-count assertion",
+    "implementation_committed_before_mutation": "6aa9541",
+    "source_script_unchanged": true
+  },
+  "visual_review": {
+    "decoded_frames": [
+      1,
+      24,
+      48,
+      64,
+      80,
+      96
+    ],
+    "known_concern": "Existing straight terrain boundary enters against sky around frame 24; unchanged scene preserved as requested."
+  }
+}
