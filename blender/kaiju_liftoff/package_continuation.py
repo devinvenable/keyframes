@@ -2,6 +2,10 @@
 import argparse
 import hashlib
 import json
+import os
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+import cv2
+import numpy as np
 from pathlib import Path
 import shutil
 
@@ -11,6 +15,12 @@ from verify_continuation_pixels import check
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def check_native_frame(image):
+    assert image is not None and image.shape == (1080, 1920, 3), 'Invalid native frame dimensions'
+    assert image.dtype == np.float32 and np.isfinite(image).all() and image.max() > 1, \
+        'Native float32 HDR required; display-encoded PNG is not a native render'
 
 
 def main():
@@ -26,6 +36,24 @@ def main():
     last = manifest['new_frames'][1]
     count, joined_count = last-1, last-1+436
     report = check(original, new, manifest)
+    settings = json.loads((d/'final_exr/render_settings.json').read_text())
+    quality = settings['quality']
+    assert quality['samples'] == 4096 and abs(quality['adaptive_threshold']-.01) < 1e-6
+    assert quality['volume_step_rate'] == 1 and quality['volume_max_steps'] == 1024
+    assert settings['output_format'] == 'scene-linear RGB float32 OpenEXR ZIP'
+    assert settings['candidate_sha256'] == sha(d/'kaiju_liftoff_continued.blend')
+    assert settings['source_sha256'] == sha(Path(settings['source']))
+    report['native_exr'] = {}
+    for frame in range(218, last+1):
+        path = d/'final_exr'/f'frame_{frame:04}.exr'
+        image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        check_native_frame(image)
+        report['native_exr'][path.name] = dict(sha256=sha(path), max_linear=float(image.max()))
+    report['render_settings'] = settings
+    report['grade'] = json.loads((new/'grade_report.json').read_text())
+    assert report['grade']['input_kind'] == 'native linear EXR'
+    assert report['grade']['continuity_trim_code_values'] == 3
+    assert report['grade']['frames'] == list(range(218, last+1))
     sequence = d/'combined_graded_frames'
     assert not sequence.exists(), 'Use fresh packaging paths'
     sequence.mkdir()
