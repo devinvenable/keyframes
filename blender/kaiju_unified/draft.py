@@ -58,6 +58,23 @@ def package(directory):
 <p>540p timing draft. Full 1080p render is pending impact approval.</p>
 <a href="impact_beats.jpg"><img src="impact_beats.jpg"></a><p>'''+
         ' · '.join(f'<a href="decoded_beats/frame_{f:04}.png">{f}: {label}</a>' for f,label in BEATS.items())+'</p>')
+    scene_qa=json.loads((directory/'scene_qa.json').read_text())
+    pixel_qa=json.loads((directory/'pixel_qa.json').read_text())
+    # Confirm the media comparator rejects an actual wrong picture, after the
+    # implementation was committed; both buffers are independent copies.
+    try: compare(decoded[124-START].copy(),np.array(Image.open(directory/'draft_frames/frame_0100.png').convert('RGB')))
+    except AssertionError as error: negative_media=str(error)
+    else: raise AssertionError('Wrong source picture passed media comparison')
+    (directory/'review_results.json').write_text(json.dumps({
+        'phase':'Impact choreography gate; full render pending Devin approval',
+        'directory':str(directory),'video_sha256':digest(video),'scene_sha256':digest(directory/'unified.blend'),
+        'probe':probe,'max_encoded_pixel_mae':max(errors),'full_decode':'PASS',
+        'all_frames_compared':len(errors),'hashed_native_and_graded_frames':len(hashes),
+        'grade':json.loads((directory/'draft_frames/grade.json').read_text()),
+        'launch_distance':scene_qa['launch_distance'],'slide_drop':scene_qa['slide_drop'],
+        'final_approach_speed_range':[min(scene_qa['approach_speeds'][63:]),max(scene_qa['approach_speeds'][63:])],
+        'scene_negative_controls':scene_qa.get('negative_controls',{}),'pixel_qa':pixel_qa,
+        'negative_wrong_media_picture':negative_media},indent=2)+'\n')
 
 
 def main(directory):
