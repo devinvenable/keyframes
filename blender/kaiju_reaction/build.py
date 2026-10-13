@@ -157,6 +157,9 @@ def build(output):
     base_rot = {name: o.rotation_euler.copy() for name, o in controls.items()}
     base_loc = {name: o.location.copy() for name, o in controls.items()}
     soles = {side: bpy.data.objects['BK | sole '+side].matrix_world.translation.copy() for side in ('L','R')}
+    ankles = {side: controls['ankle '+side].matrix_world.copy() for side in ('L','R')}
+    ankle_offsets = {side: ankles[side].translation-soles[side] for side in ('L','R')}
+    ankle_rotations = {side: controls['pelvis'].matrix_world.to_quaternion().inverted() @ ankles[side].to_quaternion() for side in ('L','R')}
     rig = bpy.data.objects['actor_kaiju_robot']; robot_start = rig.location.copy(); robot_q = rig.rotation_quaternion.copy()
     camera = bpy.data.objects.new('Reaction | ground camera', bpy.data.cameras.new('Reaction | 38mm'))
     s.collection.objects.link(camera); s.camera = camera; camera.data.lens = 32
@@ -164,8 +167,10 @@ def build(output):
     target = world((0, 28, 44)); camera.rotation_mode = 'QUATERNION'
     camera.rotation_quaternion = (target-camera.location).to_track_quat('-Z','Y')
     for f in range(1, END+1):
-        back = curve(f, [(1,0), (8,5), (22,25), (HIT,50), (46,47), (END,48)])
+        back = curve(f, [(1,0), (8,5), (22,20), (HIT,50), (46,47), (END,48)])
         root.location = world((0, back, 0)); key(root, 'location', root.location, f)
+        dip = curve(f, [(1,0),(12,-10),(22,-13),(29,-10),(HIT,-3),(48,-5),(END,-1)])
+        key(controls['pelvis'], 'location', base_loc['pelvis']+Vector((0,0,dip)), f)
         whip = curve(f, [(1,0),(8,-25),(23,-13),(HIT,-24),(46,9),(59,-5),(END,-2)])
         twist = curve(f, [(1,0),(10,13),(24,-12),(HIT,15),(49,-6),(END,3)])
         def joint(name, delta):
@@ -178,16 +183,23 @@ def build(output):
             step_a, step_b = (5,22) if side == 'L' else (21,38)
             step = ramp(f, step_a, step_b); distance = 42 if side == 'L' else 55
             lift = 8*math.sin(math.pi*step)
-            knee = 14*math.sin(math.pi*step)+5*ramp(f, 38, 43)-3*ramp(f, 52, 70)
-            joint('hip '+side, (-knee*.5,0,0)); joint('knee '+side, (knee,0,0)); joint('ankle '+side, (-knee*.5,0,0))
             hip = controls['hip '+side]; hip.location = base_loc['hip '+side]
             bpy.context.view_layer.update()
             if f > 1:
-                sole = bpy.data.objects['BK | sole '+side]
                 target_foot = soles[side]+rotation @ Vector((0,distance*step,lift))
-                delta = target_foot-sole.matrix_world.translation
-                hip.location += hip.parent.matrix_world.inverted().to_3x3() @ delta
-            key(hip, 'location', hip.location, f)
+                target_ankle = hip.parent.matrix_world.inverted() @ (target_foot+ankle_offsets[side])
+                direction = target_ankle-hip.location; length = direction.length
+                assert length < 29, f'Unreachable planted ankle: {side} frame {f}: {length}'
+                alpha = math.acos(max(-1,min(1,(13*13+length*length-16*16)/(26*length))))
+                beta = math.pi-math.acos(max(-1,min(1,(13*13+16*16-length*length)/(2*13*16))))
+                qhip = Vector((0,0,-1)).rotation_difference(direction.normalized()) @ Quaternion((1,0,0),-alpha)
+                qknee = Quaternion((1,0,0),beta)
+                qankle = (qhip @ qknee).inverted() @ ankle_rotations[side]
+                for name,q in [('hip '+side,qhip),('knee '+side,qknee),('ankle '+side,qankle)]:
+                    key(controls[name], 'rotation_euler', q.to_euler(), f)
+            else:
+                for name in ('hip '+side,'knee '+side,'ankle '+side):
+                    key(controls[name], 'rotation_euler', base_rot[name], f)
         t = (f-1)/24
         # Rebound away from the beetle and sharply up. Rotation follows a
         # tumbling rigid miniature, keeping the deployed hardware attached.
