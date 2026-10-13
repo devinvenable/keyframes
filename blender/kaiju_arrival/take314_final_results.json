@@ -1,0 +1,137 @@
+{
+  "status": "PASS",
+  "video": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/beetle_arrival_final.mp4",
+  "video_sha256": "0bd84d6263c58b45e2da888025999e3cb52acdf3deb7b91f3fd1dadd92588e61",
+  "scene": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/beetle_arrival_final.blend",
+  "scene_sha256": "62106d06e923d885c9cc07632275951ec30c4fb7d94901911524bd93754a9d76",
+  "source_frame_range": [
+    27,
+    108
+  ],
+  "frames": 82,
+  "fps": 24,
+  "duration_seconds": 3.416667,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "samples": 64,
+  "first_visible_source_frame": 31,
+  "first_visible_output_frame": 5,
+  "empty_lead_frames": 4,
+  "contact_source_frame": 52,
+  "contact_output_frame": 26,
+  "camera_settled_source_frame": 63,
+  "camera_settled_output_frame": 37,
+  "approved_endpoint_unchanged": true,
+  "source_hash_chain_unchanged": true,
+  "all_T307_artifact_hashes_unchanged": {
+    "kaiju_beetle.blend": true,
+    "beetle_faceoff.blend": true,
+    "beetle_clash.blend": true,
+    "kaiju_beetle_model.png": true,
+    "kaiju_beetle_rear.png": true,
+    "beetle_faceoff.png": true,
+    "beetle_clash.png": true,
+    "film_look_comparison.png": true,
+    "verification.json": true,
+    "continuity_restoration.json": true
+  },
+  "grade": {
+    "blender": "4.1.1",
+    "frames": 82,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "exposure": -0.8,
+    "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+  },
+  "decoded_pixel_comparison": {
+    "frames_compared": 82,
+    "minimum_ssim": 0.989585,
+    "mean_ssim": 0.9912313292682927,
+    "method": "Decoded H264 frames vs matching source27-108 graded PNGs, aligned timestamps and yuv420p",
+    "status": "PASS"
+  },
+  "approved_still_comparison": {
+    "52": {
+      "native_exr_identical": true,
+      "graded_mae_8bit": [
+        0.6716338734567902,
+        0.5423326581790123,
+        0.577977912808642
+      ],
+      "blurred_mae_8bit": [
+        0.3041473765432099,
+        0.2787427662037037,
+        0.27264081790123457
+      ]
+    },
+    "86": {
+      "native_exr_identical": true,
+      "graded_mae_8bit": [
+        0.7209268904320988,
+        0.5874353780864198,
+        0.646962287808642
+      ],
+      "blurred_mae_8bit": [
+        0.31253568672839505,
+        0.29284529320987657,
+        0.29472752700617283
+      ]
+    }
+  },
+  "grain_repeatability": {
+    "grain": {
+      "identical": false,
+      "mean_absolute_error_8bit": [
+        0.6702228009259259,
+        0.5416300154320988,
+        0.576625675154321
+      ]
+    },
+    "clean": {
+      "identical": true,
+      "mean_absolute_error_8bit": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "conclusion": "Pinned legacy NOISE grain changes between compositor runs; with grain disabled only for this diagnostic, identical EXRs grade to identical pixels. Final film grade remains unchanged."
+  },
+  "pixel_review": {
+    "stage": "COMPLETE",
+    "31": "First beetle plate visibly enters at upper-left edge in graded 1080p image, matching depth mask",
+    "52": "Approved graded contact: full horn, both feet grounded, small low dust puffs",
+    "63": "Graded final: low powder/debris at feet; horn and upper body clear",
+    "70": "Graded final: powder thinning near ground; horn and upper body clear",
+    "86": "Approved endpoint: horn and feet fully in frame; left-third silhouette; 31.5-degree tilt",
+    "entry_framing": "Frames31-50 intentionally retain partial airborne reveal of approved camera path; full mesh contained on every frame51-108",
+    "40": "Graded final airborne pose: horn is visible; raised arm/hand extends above top edge. Earlier inference that the horn was cropped from aggregate mesh bounds was incorrect.",
+    "all_frame_sheets_reviewed": [
+      "all_frames_1.jpg",
+      "all_frames_2.jpg"
+    ],
+    "sequence_review": "Four empty lead frames, visible entry at31, continuous leap/contact/push-in, steady endpoint and thinning ground dust; no unexpected blank or displaced frames",
+    "54": "Horn remains inside the tight top margin; grounded crouch, low dust",
+    "58": "Low powder burst partly obscures soles; horn and upper body remain clear",
+    "108": "Complete end hold; both feet and horn visible, dust settled"
+  },
+  "animation_negative_checks": 9,
+  "new_negative_checks": [
+    "Unchanged camera distance rejected",
+    "0.1-degree tilt change rejected",
+    "Frozen hold rejected as opening move",
+    "Post-entry camera displacement rejected at frame51",
+    "Changed scene hash rejected before render",
+    "One-frame trim offset rejected at81 decoded frames"
+  ],
+  "reports": {
+    "final_verification.json": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/final_verification.json",
+    "final_media_verification.json": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/final_media_verification.json",
+    "native_frame_hashes.json": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/native_frame_hashes.json",
+    "pixel_integrity.json": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/pixel_integrity.json",
+    "decoded_pixel_comparison.json": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/decoded_pixel_comparison.json",
+    "approved_still_comparison.json": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/approved_still_comparison.json",
+    "grain_repeatability.json": "/home/devin/src/2026/videdit/work/kaiju_arrival_314_final/grain_repeatability.json"
+  }
+}

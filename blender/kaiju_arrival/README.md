@@ -336,7 +336,10 @@ is output frame 5, contact is output frame 26, and the camera settles at output
 frame 37. Animation keys retain their original source frame numbers.
 
 The approved move includes a partial airborne reveal during frames 31–50:
-the head is above the image until frame 51. This is explicitly recorded rather
+parts extend outside the image until frame 51. The graded frame-40 inspection
+shows the raised arm/hand crossing the top edge, while the horn is visible;
+the full-mesh maximum alone does not identify which part is cropped.
+This is explicitly recorded rather
 than silently changing the approved 13° opening / 44–63 tilt path to satisfy
 T311's older full-body-at-40 contract. `verify.py --entry-reveal-through 50`
 keeps all nine animation/dust negative checks, the strict endpoint margins,
@@ -363,3 +366,18 @@ and every graded-frame hash. An off-by-one start fails its frame-count check.
 The render driver rejects a changed scene hash before launching any render.
 `native_frame_hashes.json` records the retained linear sources; the final
 media report and rendered-pixel review accompany the movie.
+
+The completed movie is `beetle_arrival_final.mp4`. All 82 native and graded
+frames are retained and hashed. Full decode confirms 1920×1080, 24 fps,
+82 frames and 3.416667 seconds. Decoded-frame SSIM against the matching graded
+sources is at least 0.989585 (mean 0.991231). Both all-frame sheets were inspected;
+the tight frame-54 horn margin remains intact, and the impact cloud stays low.
+`take314_final_results.json` records the delivery and explicit entry-crop scope.
+
+Approved frame-52/86 native EXRs are byte-identical to their final sources.
+Their graded PNGs are not byte-identical: the pinned profile uses a legacy
+NOISE texture for grain, which changes between compositor runs. A controlled
+repeat gives about 0.5–0.7 code values of mean RGB difference; disabling only
+grain in a temporary diagnostic gives identical repeat pixels. The delivered
+grade and pinned profile were unchanged. `grain_repeatability.json` records
+this control so future QA does not mistake fresh grain for camera/scene drift.
