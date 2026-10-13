@@ -1,0 +1,328 @@
+{
+  "task": 323,
+  "status": "PASS",
+  "approval": "PM relayed Devin approval for both finals and waived human timing gate; drafts retained and self-QA completed",
+  "review": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/review_final_323.html",
+  "takes": {
+    "low": {
+      "video": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/final_low/reaction_final.mp4",
+      "sha256": "1eeaaa20b8aae15a9903b30a3b5966f7d09be4d0aaad5c52c3f99e1ffa6e662a",
+      "probe": {
+        "codec_name": "h264",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "24/1",
+        "duration": "3.500000",
+        "nb_read_frames": "84"
+      },
+      "max_encoded_mae": 1.6322736740112305,
+      "plan": {
+        "scene": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/low/reaction.blend",
+        "scene_sha256": "aac65cd4420b7c27d7249e759d245be57aed47c729145f3b9040f788f66fd452",
+        "frames": [
+          1,
+          84
+        ],
+        "fps": 24,
+        "resolution": [
+          1920,
+          1080
+        ],
+        "samples": 64,
+        "crf": 16,
+        "devices": {
+          "3060": [
+            1,
+            64
+          ],
+          "1050": [
+            65,
+            84
+          ]
+        },
+        "render_blender": "/home/devin/bin/blender-5.1.2-linux-x64/blender",
+        "grade_blender": "/home/devin/bin/blender-4.1.1-linux-x64/blender",
+        "approval": "T323: PM relayed Devin approval for both finals; human timing gate waived"
+      },
+      "grade": {
+        "blender": "4.1.1",
+        "frames": 84,
+        "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+        "exposure": -0.8,
+        "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+      },
+      "scene_qa": "PASS",
+      "negative_scene_controls": {
+        "rescaled_original": "Original sandstone scale changed",
+        "old_backward_rebound": "Robot reverses instead of transferring forward momentum",
+        "premature_upward_bounce": "Robot bounces upward before the powered pull-up",
+        "unpowered_climb": "Pull-up has no visible thrust increase"
+      },
+      "negative_frozen_stagger": "No backward stagger",
+      "pixel_counts": {
+        "1": {
+          "beetle": 7535,
+          "face": 371,
+          "rock": 16493,
+          "fragment": 0,
+          "robot": 20995,
+          "set": 84206
+        },
+        "22": {
+          "beetle": 6950,
+          "face": 519,
+          "rock": 16493,
+          "fragment": 0,
+          "robot": 138,
+          "set": 105500
+        },
+        "43": {
+          "beetle": 7798,
+          "face": 495,
+          "rock": 16120,
+          "fragment": 598,
+          "robot": 0,
+          "set": 104589
+        },
+        "84": {
+          "beetle": 8142,
+          "face": 502,
+          "rock": 15924,
+          "fragment": 988,
+          "robot": 0,
+          "set": 104044
+        }
+      },
+      "full_decode": "PASS",
+      "all_84_decoded_frames_compared": true,
+      "all_native_and_graded_hashes_rechecked": true,
+      "report": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/final_low/final_verification.json",
+      "report_sha256": "69e87a70ab330f9420855f49d93f460cd081806ddd650365b8a6cf4dcefde83e",
+      "native_hash_manifest_sha256": "860ab952dec5f302c216855bc932c3aba9e0d7f36a43ae60f6fb68e5ef13648a",
+      "draft_video": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/low/reaction_draft.mp4",
+      "draft_qa": "PASS",
+      "timing_self_qa": {
+        "status": "PASS",
+        "video_sha256": "2148d877f4d424619fafc32acbf39364efc3a420c94417368e1a9cca0886a9ea",
+        "method": "Graded sequence contact sheets every third frame plus final frame, alongside full decoded pixel QA",
+        "reviewed_frames": [
+          1,
+          4,
+          7,
+          10,
+          13,
+          16,
+          19,
+          22,
+          25,
+          28,
+          31,
+          34,
+          37,
+          40,
+          43,
+          46,
+          49,
+          52,
+          55,
+          58,
+          61,
+          64,
+          67,
+          70,
+          73,
+          76,
+          79,
+          82,
+          84
+        ],
+        "observations": [
+          "Glancing forward pass followed by powered climb and frame exit",
+          "Two backward steps precede rock contact around frame 39 (1.583s)",
+          "Fragments appear after impact, fall and settle; beetle remains upright",
+          "No timing anomaly requiring an approved staging change identified"
+        ],
+        "limitation": "Sampled frame-sequence review; not a claim of real-time playback review"
+      },
+      "visual_final_review": "Decoded 12-beat contact sheet plus full-size impact frame inspected; staging retained"
+    },
+    "continuation": {
+      "video": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/final_continuation/reaction_final.mp4",
+      "sha256": "685d5b97ca196ee29ac3b93046f0585824db7dd83ffbbe82927fffdb97caec21",
+      "probe": {
+        "codec_name": "h264",
+        "width": 1920,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "24/1",
+        "duration": "3.500000",
+        "nb_read_frames": "84"
+      },
+      "max_encoded_mae": 1.6483761072158813,
+      "plan": {
+        "scene": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/continuation/reaction.blend",
+        "scene_sha256": "affc588e863e9ef05a54362a6d6ded42e550967917af371fb73c8e10aeb1a090",
+        "frames": [
+          1,
+          84
+        ],
+        "fps": 24,
+        "resolution": [
+          1920,
+          1080
+        ],
+        "samples": 64,
+        "crf": 16,
+        "devices": {
+          "3060": [
+            1,
+            64
+          ],
+          "1050": [
+            65,
+            84
+          ]
+        },
+        "render_blender": "/home/devin/bin/blender-5.1.2-linux-x64/blender",
+        "grade_blender": "/home/devin/bin/blender-4.1.1-linux-x64/blender",
+        "approval": "T323: PM relayed Devin approval for both finals; human timing gate waived"
+      },
+      "grade": {
+        "blender": "4.1.1",
+        "frames": 84,
+        "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+        "exposure": -0.8,
+        "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+      },
+      "scene_qa": "PASS",
+      "negative_scene_controls": {
+        "rescaled_original": "Original sandstone scale changed",
+        "old_backward_rebound": "Robot reverses instead of transferring forward momentum",
+        "premature_upward_bounce": "Robot bounces upward before the powered pull-up",
+        "unpowered_climb": "Pull-up has no visible thrust increase",
+        "wrong_camera_start": "Continuation camera does not start at dive endpoint"
+      },
+      "negative_frozen_stagger": "No backward stagger",
+      "pixel_counts": {
+        "1": {
+          "beetle": 3578,
+          "face": 784,
+          "rock": 12422,
+          "fragment": 0,
+          "robot": 13355,
+          "set": 99461
+        },
+        "22": {
+          "beetle": 4713,
+          "face": 585,
+          "rock": 3482,
+          "fragment": 0,
+          "robot": 21806,
+          "set": 99014
+        },
+        "43": {
+          "beetle": 4774,
+          "face": 530,
+          "rock": 11095,
+          "fragment": 373,
+          "robot": 0,
+          "set": 112828
+        },
+        "84": {
+          "beetle": 5268,
+          "face": 546,
+          "rock": 11180,
+          "fragment": 455,
+          "robot": 0,
+          "set": 112151
+        }
+      },
+      "full_decode": "PASS",
+      "all_84_decoded_frames_compared": true,
+      "all_native_and_graded_hashes_rechecked": true,
+      "report": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/final_continuation/final_verification.json",
+      "report_sha256": "7fed3bccb241e27f422d69defe10524f35816d35777be6a163f822762a3757c2",
+      "native_hash_manifest_sha256": "180d224a74baf2fc4b6fa60f28099b00be4dc8cbadaf50c0b675ad4fc43216d7",
+      "draft_video": "/home/devin/src/2026/videdit/work/kaiju_reaction_322/round_05/continuation/reaction_draft.mp4",
+      "draft_qa": "PASS",
+      "timing_self_qa": {
+        "status": "PASS",
+        "video_sha256": "36b56938d84fb1c0c46be172a1295e88dfaa42025b0e0484b7197ed6b2d01eee",
+        "method": "Graded sequence contact sheets every third frame plus final frame, alongside full decoded pixel QA",
+        "reviewed_frames": [
+          1,
+          4,
+          7,
+          10,
+          13,
+          16,
+          19,
+          22,
+          25,
+          28,
+          31,
+          34,
+          37,
+          40,
+          43,
+          46,
+          49,
+          52,
+          55,
+          58,
+          61,
+          64,
+          67,
+          70,
+          73,
+          76,
+          79,
+          82,
+          84
+        ],
+        "observations": [
+          "Continuation camera follows the stagger from the approved dive-end pose",
+          "Robot passes the shoulder and climbs out before the rock impact",
+          "Two backward steps, impact, falling debris and upright settle remain consistent with approved staging",
+          "Debris and powder are subtler at this higher angle than in the low camera; retained approved framing"
+        ],
+        "limitation": "Sampled frame-sequence review; not a claim of real-time playback review"
+      },
+      "visual_final_review": "Decoded 12-beat contact sheet plus full-size impact frame inspected; staging retained"
+    }
+  },
+  "negative_controls": {
+    "low": {
+      "hidden_collision_debris": "Collision fragments do not read",
+      "occluded_beetle": "Beetle occluded at 22",
+      "blank_picture": "Blank or invalid decoded picture",
+      "wrong_picture": "Encoded pixels differ from graded source: 31.627206802368164"
+    },
+    "continuation": {
+      "hidden_collision_debris": "Collision fragments do not read",
+      "occluded_beetle": "Beetle occluded at 22",
+      "blank_picture": "Blank or invalid decoded picture",
+      "wrong_picture": "Encoded pixels differ from graded source: 16.346744537353516"
+    },
+    "binding": {
+      "test_changed_scene_rejected_before_gpu_work": {
+        "status": "REJECTED_MUTATION",
+        "output": "test_changed_scene_rejected_before_gpu_work (test_final.ApprovalBindingTests.test_changed_scene_rejected_before_gpu_work) ... FAIL\n\n======================================================================\nFAIL: test_changed_scene_rejected_before_gpu_work (test_final.ApprovalBindingTests.test_changed_scene_rejected_before_gpu_work)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/home/devin/src/2026/midi/worktrees/reaction-shot-draft-motion-final-renders-for-both-323/blender/kaiju_reaction/test_final.py\", line 45, in test_changed_scene_rejected_before_gpu_work\n    with self.assertRaisesRegex(AssertionError,'Final differs from draft scene'):\n         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: AssertionError not raised\n\n----------------------------------------------------------------------\nRan 1 test in 0.002s\n\nFAILED (failures=1)\n"
+      },
+      "test_changed_draft_rejected_before_gpu_work": {
+        "status": "REJECTED_MUTATION",
+        "output": "test_changed_draft_rejected_before_gpu_work (test_final.ApprovalBindingTests.test_changed_draft_rejected_before_gpu_work) ... FAIL\n\n======================================================================\nFAIL: test_changed_draft_rejected_before_gpu_work (test_final.ApprovalBindingTests.test_changed_draft_rejected_before_gpu_work)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/home/devin/src/2026/midi/worktrees/reaction-shot-draft-motion-final-renders-for-both-323/blender/kaiju_reaction/test_final.py\", line 51, in test_changed_draft_rejected_before_gpu_work\n    with self.assertRaisesRegex(AssertionError,'Draft changed after QA'):\n         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: AssertionError not raised\n\n----------------------------------------------------------------------\nRan 1 test in 0.002s\n\nFAILED (failures=1)\n"
+      },
+      "test_changed_scene_on_resume_rejected": {
+        "status": "REJECTED_MUTATION",
+        "output": "test_changed_scene_on_resume_rejected (test_final.ApprovalBindingTests.test_changed_scene_on_resume_rejected) ... FAIL\n\n======================================================================\nFAIL: test_changed_scene_on_resume_rejected (test_final.ApprovalBindingTests.test_changed_scene_on_resume_rejected)\n----------------------------------------------------------------------\nAssertionError: Final differs from draft scene\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/devin/src/2026/midi/worktrees/reaction-shot-draft-motion-final-renders-for-both-323/blender/kaiju_reaction/test_final.py\", line 59, in test_changed_scene_on_resume_rejected\n    with self.assertRaisesRegex(AssertionError,'Changed render plan'):\n         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: \"Changed render plan\" does not match \"Final differs from draft scene\"\n\n----------------------------------------------------------------------\nRan 1 test in 0.002s\n\nFAILED (failures=1)\n"
+      },
+      "test_matching_evidence_reaches_renderer": {
+        "status": "REJECTED_MUTATION",
+        "output": "test_matching_evidence_reaches_renderer (test_final.ApprovalBindingTests.test_matching_evidence_reaches_renderer) ... FAIL\n\n======================================================================\nFAIL: test_matching_evidence_reaches_renderer (test_final.ApprovalBindingTests.test_matching_evidence_reaches_renderer)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/home/devin/src/2026/midi/worktrees/reaction-shot-draft-motion-final-renders-for-both-323/blender/kaiju_reaction/test_final.py\", line 41, in test_matching_evidence_reaches_renderer\n    self.run.assert_called_once()\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/usr/lib/python3.13/unittest/mock.py\", line 958, in assert_called_once\n    raise AssertionError(msg)\nAssertionError: Expected 'run' to have been called once. Called 0 times.\n\n----------------------------------------------------------------------\nRan 1 test in 0.003s\n\nFAILED (failures=1)\n"
+      }
+    },
+    "method": "Implementation committed before mutation; unique guard mutations failed on test assertions and exact backup restored. Pixel negatives modify copies of actual rendered masks and delivered 1080p decoded pictures; originals unchanged."
+  }
+}

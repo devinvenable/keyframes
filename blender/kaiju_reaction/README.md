@@ -10,6 +10,24 @@ The sheets retain each still's full 960×540 resolution, with individual links.
 **T323: Devin approved BOTH round-05 cameras for motion and final rendering.**
 The PM subsequently relayed approval to proceed through draft self-QA into both
 finals overnight, waiving the human timing gate. Approved scenes remain unchanged.
+
+Both T323 finals are complete and verified. Review both at
+`/home/devin/src/2026/videdit/work/kaiju_reaction_322/review_final_323.html`.
+Final MP4s are `final_low/reaction_final.mp4` and
+`final_continuation/reaction_final.mp4` under that same work directory. Both are
+84 frames / 3.5 seconds, 1920×1080 at 24 fps, 64 Cycles samples, native EXR
+through the pinned grade and CRF16 H.264. The 540p timing drafts remain in each
+round-05 camera directory. No assembly or audio was added.
+
+`final_323_results.json` records both MP4 hashes, render plans, grade provenance,
+scene and rendered-pixel checks, mutation-test evidence, and external artifact
+paths. All 168 final decoded frames passed pixel comparison (maximum MAE
+1.6323 low / 1.6484 continuation). Every native and graded frame hash was
+rechecked at delivery. `final_323_contact_{low,continuation}.jpg` are contact
+sheets taken from the delivered MP4s. Draft timing review used every third
+graded frame plus the endpoint; final visual review used decoded beat sheets
+and full-size impact frames. The higher camera makes the debris subtler;
+the approved framing and performance are preserved.
 Devin rejected the earlier invented rock stack and elastic upward rebound.
 The round-03 draft process was terminated on that feedback; its partial native
 frames are superseded and are not a review clip. No assembly is performed.
