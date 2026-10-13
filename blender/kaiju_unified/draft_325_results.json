@@ -1,0 +1,116 @@
+{
+  "phase": "Impact choreography gate; full render pending Devin approval",
+  "directory": "/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_04",
+  "video_sha256": "d659d7029bcee033663dd2177379a4116e3acd7c589ed4febbac529cea2b568d",
+  "scene_sha256": "860accddab047cfcb4f5e79fffad84f74446b164cbcd0a027c3fe6e9271d4cad",
+  "probe": {
+    "width": 960,
+    "height": 540,
+    "r_frame_rate": "24/1",
+    "duration": "3.375000",
+    "nb_read_frames": "81"
+  },
+  "max_encoded_pixel_mae": 2.084205150604248,
+  "full_decode": "PASS",
+  "all_frames_compared": 81,
+  "hashed_native_and_graded_frames": 162,
+  "grade": {
+    "blender": "4.1.1",
+    "frames": 81,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "exposure": -0.8,
+    "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+  },
+  "launch_distance": 126.08020978455106,
+  "slide_drop": 24.71536636352539,
+  "final_approach_speed_range": [
+    10.257943680586141,
+    12.870274093068604
+  ],
+  "scene_negative_controls": {
+    "braking_approach": "Dive brakes before contact",
+    "grounded_tap": "Beetle not launched off both feet",
+    "late_debris": "Debris is late at rock impact",
+    "drifting_camera": "Camera leaves impact station",
+    "actual_unfixed_T320_approach": "Dive brakes before contact"
+  },
+  "pixel_qa": {
+    "status": "PASS",
+    "rows": {
+      "64": {
+        "beetle": 749,
+        "face": 77,
+        "rock": 1780,
+        "fragment": 0,
+        "robot": 13335,
+        "set": 113659,
+        "robot_in_action": 13075
+      },
+      "106": {
+        "beetle": 3578,
+        "face": 784,
+        "rock": 10242,
+        "fragment": 0,
+        "robot": 13355,
+        "set": 101641,
+        "robot_in_action": 13095
+      },
+      "112": {
+        "beetle": 5264,
+        "face": 546,
+        "rock": 8834,
+        "fragment": 0,
+        "robot": 11659,
+        "set": 103297,
+        "robot_in_action": 5456
+      },
+      "123": {
+        "beetle": 3396,
+        "face": 302,
+        "rock": 8548,
+        "fragment": 0,
+        "robot": 1677,
+        "set": 115677,
+        "robot_in_action": 0
+      },
+      "124": {
+        "beetle": 3180,
+        "face": 306,
+        "rock": 8400,
+        "fragment": 236,
+        "robot": 1013,
+        "set": 116465,
+        "robot_in_action": 0
+      },
+      "130": {
+        "beetle": 3202,
+        "face": 331,
+        "rock": 8409,
+        "fragment": 369,
+        "robot": 0,
+        "set": 117289,
+        "robot_in_action": 0
+      },
+      "148": {
+        "beetle": 2567,
+        "face": 350,
+        "rock": 8751,
+        "fragment": 584,
+        "robot": 0,
+        "set": 117348,
+        "robot_in_action": 0
+      },
+      "180": {
+        "beetle": 2386,
+        "face": 227,
+        "rock": 8898,
+        "fragment": 170,
+        "robot": 0,
+        "set": 117919,
+        "robot_in_action": 0
+      }
+    },
+    "negative_rendered_late_debris": "Fragments invisible at contact"
+  },
+  "negative_wrong_media_picture": "Encoded picture differs from graded frame: 19.705"
+}

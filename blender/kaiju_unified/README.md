@@ -9,6 +9,15 @@ frame 1. `impact_draft.mp4` is a 960×540 excerpt, frames 100–180, rendered fr
 that scene. `review.html` presents the clip and eight decoded key stills;
 `impact_beats.jpg` is the full-resolution contact sheet.
 
+The delivered draft is 81 frames / 3.375 seconds. All 81 decoded pictures match
+their graded sources (maximum mean absolute error 2.084 code values); 162 native
+and graded frames are hashed. `draft_325_results.json` and `draft_325_beats.jpg`
+retain the delivery evidence in Git. MP4 SHA-256:
+`d659d7029bcee033663dd2177379a4116e3acd7c589ed4febbac529cea2b568d`.
+Visual timing review used the decoded key beats and every-third-frame motion
+strip. The review also links a fresh frame-64 beauty still demonstrating that
+the collision cliff is already present during the approach.
+
 **Impact approval is pending.** T325 explicitly requires Devin to review this
 choreography before the full 1080p/64-sample render. The prior T320/T323 approvals
 do not authorize the new final. There is no full-render mode in `draft.py`.
@@ -71,8 +80,12 @@ absent before impact and visible on impact, and the robot clears the center of
 the smash. A newly rendered missing-fragment control must fail the same onset
 assertion. These masks supplement beauty-frame review; they do not prove that
 the performance feels violent enough or that dust looks convincing.
+The actual obstructed round-01 scene also fails the current rendered robot
+occlusion assertion; its masks remain in that round's `pixel_masks/` directory.
 
 `media_qa.json` checks exact duration/frame count/resolution, fully decodes the
 MP4, compares every decoded picture against its graded source PNG, and hashes
 the movie and every native/graded frame. The source scene is also hash-locked.
+Comparing the encoded impact picture with the wrong approach picture fails the
+same pixel assertion (19.705 mean absolute error), as intended.
 Full final rendering and final media QA remain behind the impact approval gate.
