@@ -8,6 +8,18 @@ import subprocess
 from PIL import Image, ImageDraw, ImageFont
 
 
+def check_links(root, html):
+    class Links(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            for key, value in attrs:
+                if key in ('href', 'src'):
+                    assert value and (root/value).is_file(), 'Missing review artifact: ' + str(value)
+                    links.append(value)
+    links = []
+    Links().feed(html)
+    return links
+
+
 def main(root):
     report = json.loads((root/'final_verification.json').read_text())
     assert report['status'] == 'PASS'
@@ -41,15 +53,17 @@ def main(root):
         html += '<p><a href="final_motion.jpg">Motion sheet — every third frame and final settle</a></p>\n'
         page.write_text(html)
 
-    class Links(HTMLParser):
-        def handle_starttag(self, tag, attrs):
-            for key, value in attrs:
-                if key in ('href', 'src'):
-                    assert value and (root/value).is_file(), 'Missing review artifact: ' + str(value)
-                    links.append(value)
-    links = []
-    Links().feed(html)
+    links = check_links(root, html)
     result = {'status': 'PASS', 'decoded_motion_frames': frames, 'checked_local_links': links}
+    missing = '__missing_review_artifact__.png'
+    assert not (root/missing).exists()
+    try:
+        check_links(root, html + f'<a href="{missing}">Broken control</a>')
+    except AssertionError as error:
+        assert str(error) == 'Missing review artifact: ' + missing, str(error)
+        result['negative_missing_artifact'] = str(error)
+    else:
+        raise AssertionError('Broken review link passed verification')
     (root/'review_qa.json').write_text(json.dumps(result, indent=2)+'\n')
     print('REVIEW_READY', root/'review.html')
 
