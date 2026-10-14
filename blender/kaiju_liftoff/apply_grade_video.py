@@ -449,7 +449,9 @@ def main() -> None:
         shutil.copy2(source_frames / f"frame_{number:06}.png", before)
         shutil.copy2(final_frames / f"frame_{number:06}.png", after)
         comparison = visual_comparison(before, after)
-        assert comparison["rgb_mae"] > 1.0, comparison
+        # Inverse/forward AgX quantization plus the -3 trim alone stays near
+        # 3/255 MAE; require separation that proves the compositor ran too.
+        assert comparison["rgb_mae"] > 5.0, comparison
         stills.append(
             {
                 "frame": number,
