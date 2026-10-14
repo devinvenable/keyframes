@@ -91,6 +91,11 @@ def main(source, root, rebalance=False):
             future.result()
     assert {p.name for p in exrs.glob('frame_*.exr')} == expected
     hashes = {p.name: digest(p) for p in sorted(exrs.glob('frame_*.exr'))}
+    interruption_path = root/'render_interruption.json'
+    interruption = json.loads(interruption_path.read_text()) if interruption_path.exists() else None
+    if interruption:
+        for name, sha256 in interruption['preserved_native_sha256'].items():
+            assert hashes[name] == sha256, 'Completed frame changed during reassignment: ' + name
     (root/'native_frame_hashes.json').write_text(json.dumps(hashes, indent=2)+'\n')
     print('NATIVE_RENDER_COMPLETE', flush=True)
     run([GRADE, '-t', '6', '-b', '--python-exit-code', '1', '--python',
@@ -113,6 +118,7 @@ def main(source, root, rebalance=False):
     assert digest(scene) == digest(source/'unified.blend') == APPROVED
     report.update(plan=plan, grade=grade, native_frame_sha256=hashes,
                   render_allocations=allocations,
+                  render_interruption=interruption,
                   qa={name: json.loads((root/name).read_text()) for name in
                       ('parity_qa.json', 'scene_qa.json', 'revision_qa.json', 'pixel_qa.json',
                        'negative_round04/pixel_qa.json', 'negative_round05/pixel_qa.json')})

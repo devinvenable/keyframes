@@ -23,6 +23,14 @@ setsid -f /home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/fin
   > "$ROOT/final/pipeline.log" 2>&1 < /dev/null
 ```
 
+If one GPU finishes first, stop the old pipeline/workers before resuming with
+`--rebalance`. Preserve the render logs and quarantine any EXR without a completed
+`ARRIVAL_RENDER` log marker. Record completed-frame hashes in
+`render_interruption.json` (`preserved_native_sha256`, keyed by filename); the
+pipeline verifies these remain unchanged. The resume assigns two thirds of the
+missing frames to the 3060, records `render_allocations.json`, archives old logs,
+and reruns preflight under the identical scene/settings plan.
+
 ## Historical T331 — close camera through crash, slide and settle
 
 Current review candidate:
