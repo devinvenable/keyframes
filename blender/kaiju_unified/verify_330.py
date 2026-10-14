@@ -16,6 +16,10 @@ def framing():
     s=bpy.context.scene; root=bpy.data.objects['BK | ROOT | placement']; reference=None; rows=[]
     for f in range(106,125):
         s.frame_set(f)
+        offset=s.camera.location-root.location
+        if reference is None: reference=offset.copy()
+        drift=(offset-reference).length
+        assert drift<.002, f'Camera does not fly with beetle at f{f}'
         points=[world_to_camera_view(s,s.camera,v) for o in parts() for v in mesh(o)[0]]
         head=[world_to_camera_view(s,s.camera,v) for o in parts() if any(t in o.name for t in ('helmet','eye','drill','horn','crown','mandible')) for v in mesh(o)[0]]
         y0,y1=min(v.y for v in points),max(v.y for v in points); height=y1-y0
@@ -23,10 +27,6 @@ def framing():
         assert .54 <= crop <= .67, f'Bottom crop outside head/torso target at f{f}: {crop:.3f}'
         assert all(v.z>0 and .01<v.x<.99 and .01<v.y<.99 for v in head), f'Head outside frame at f{f}'
         assert max(0,y1-1)<.01 and min(v.x for v in points)>-.08 and max(v.x for v in points)<1.08, f'Crop is not bottom-dominant at f{f}'
-        offset=s.camera.location-root.location
-        if reference is None: reference=offset.copy()
-        drift=(offset-reference).length
-        assert drift<.002, f'Camera does not fly with beetle at f{f}'
         rows.append({'frame':f,'bottom_crop_fraction':crop,'height':height,'camera_drift':drift})
     return rows
 
