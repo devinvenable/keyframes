@@ -461,6 +461,14 @@ class MainWindow(QMainWindow):
         self.restart_button = self.live_button('Restart', self.restart, controls)
         self.stop_button = self.live_button('Stop', self.stop, controls)
         self.editor_button = self.live_button('Return to Editor', self.return_to_editor, controls)
+        self.click_checkbox = QCheckBox('Click track')
+        self.click_checkbox.setToolTip('Audible metronome from the running tempo map; '
+                                       'beat 1 of each bar is accented.')
+        # Live control: Space must stay Pause, never re-toggle the checkbox.
+        self.click_checkbox.setFocusPolicy(Qt.NoFocus)
+        self.click_checkbox.setChecked(self.settings.value('clickTrack', False, type=bool))
+        self.click_checkbox.toggled.connect(self.set_click_track)
+        controls.addWidget(self.click_checkbox)
         layout.addLayout(controls)
         offset_row = QHBoxLayout()
         offset_row.addWidget(QLabel('MIDI clock offset (ms)'))
@@ -1086,6 +1094,7 @@ class MainWindow(QMainWindow):
             return
         if self.devices is not None:
             self.update_routing_status()
+        self.audio.click.enabled = self.click_checkbox.isChecked()
         self.baseline = list(self.document.rows)
         self.show_row_problem()
         self.populate_queue()
@@ -1131,6 +1140,11 @@ class MainWindow(QMainWindow):
     def skip(self):
         if self.audio is not None and not self.audio.position().ended:
             self.audio.skip()
+
+    def set_click_track(self, enabled):
+        self.settings.setValue('clickTrack', enabled)
+        if self.audio is not None:
+            self.audio.click.enabled = enabled
 
     def set_receive_transport(self, enabled, *, remember=True):
         # Closing and disconnecting prevents duplicate handlers after a toggle.

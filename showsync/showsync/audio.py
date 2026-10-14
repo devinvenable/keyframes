@@ -16,6 +16,7 @@ import time
 
 import numpy as np
 
+from .click import ClickTrack
 from .setlist import SetlistError, VIDEO_SUFFIXES
 from .media import stream_duration
 from .priority import CALLBACK_PRIORITY, elevate_thread
@@ -349,6 +350,7 @@ class AudioEngine:
         self._skip_applied = 0
         self._skip_ready = 0  # producer publishes only after preparing this request
         self._epoch = 0
+        self.click = ClickTrack(RATE)
         self._halt = threading.Event()
         self._worker = None
         self.stream = None
@@ -651,6 +653,11 @@ class AudioEngine:
                 else:
                     missed = True
                     lost += count
+            if self.click.enabled:
+                # Gap padding clicks too, matching the F8s the clock keeps
+                # sending through it.
+                self.click.mix(output[offset:offset + count], self.frames_played,
+                               index, layout)
             self.frames_played += count
             offset += count
         if missed:
