@@ -123,8 +123,9 @@ def test_frame_discontinuity_drops_the_ringing_tail():
     click.mix(block, 0, 0, timeline)  # beat 0 starts ringing
     assert np.any(block)
     jump = np.zeros((64, 2), dtype=np.float32)
-    # A skip lands mid-beat far from any onset: the old tail must not replay.
-    click.mix(jump, RATE // 4, 0, timeline)
+    # A skip lands inside where beat 0's tail would still ring (click length
+    # is .03 s): continuing from the stale onset would replay it audibly.
+    click.mix(jump, round(0.015 * RATE), 0, timeline)
     assert not np.any(jump)
 
 
