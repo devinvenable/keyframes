@@ -84,10 +84,10 @@ def framing():
         offset = s.camera.location-root.location
         if reference is None: reference = offset.copy()
         drift = (offset-reference).length
+        assert drift < .002, f'Camera does not fly with beetle at f{f}: relative drift {drift:.3f}'
         assert .95 <= height <= 1.3, f'Beetle too small or oversized at f{f}: screen height {height:.3f}'
         assert .04 <= crop <= .20, f'Bottom crop outside close framing at f{f}: {crop:.3f}'
         assert .83 <= y1 <= 1.01 and x0 >= 0 and x1 <= 1, f'Head/side cropped at f{f}'
-        assert drift < .002, f'Camera does not fly with beetle at f{f}: relative drift {drift:.3f}'
         rows.append({'frame':f,'height':height,'bottom_crop_fraction':crop,'bounds':[x0,y0,x1,y1],'relative_camera_drift':drift})
     return rows
 
@@ -135,6 +135,26 @@ def main(a):
             else: raise AssertionError(f'Actual round_04 passed {name}')
         result['negative_controls']=failures
         result['negative_scene_sha256']=hashlib.sha256(a.baseline.read_bytes()).hexdigest()
+        bpy.ops.wm.open_mainfile(filepath=saved)
+        # Independently discriminate the tracking assertion, not only size.
+        s=bpy.context.scene; camera=s.camera; s.frame_set(106); station=camera.location.copy()
+        action=camera.animation_data.action.copy(); camera.animation_data.action=action
+        camera.animation_data.action_slot=action.slots[0]
+        s.frame_set(116); camera.location=station; camera.keyframe_insert(data_path='location',frame=116)
+        try: framing()
+        except AssertionError as error:
+            assert str(error).startswith('Camera does not fly'), f'Wrong tracking assertion: {error}'
+            failures['frozen_camera']=str(error)
+        else: raise AssertionError('Frozen camera passed tracking assertion')
+        bpy.ops.wm.open_mainfile(filepath=saved)
+        root=bpy.data.objects['BK | ROOT | placement']; action=root.animation_data.action.copy()
+        root.animation_data.action=action; root.animation_data.action_slot=action.slots[0]
+        bpy.context.scene.frame_set(112); root.location.x+=1; root.keyframe_insert(data_path='location',frame=112)
+        try: preserved(a.baseline)
+        except AssertionError as error:
+            assert str(error)=='Approved contact or launch pose changed', f'Wrong preservation assertion: {error}'
+            failures['changed_launch_pose']=str(error)
+        else: raise AssertionError('Changed launch passed preservation assertion')
         bpy.ops.wm.open_mainfile(filepath=saved)
     (a.directory/'revision_qa.json').write_text(json.dumps(result,indent=2)+'\n')
     print('REVISION_QA',json.dumps({k:v for k,v in result.items() if k not in ('solidity','framing')}),flush=True)

@@ -32,6 +32,8 @@ def compare(decoded,source):
 
 def package(directory):
     video=directory/'impact_draft.mp4'; count=STOP-START+1
+    revision_path=directory/'revision_qa.json'
+    revision=json.loads(revision_path.read_text()) if revision_path.exists() else None
     probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=width,height,nb_read_frames,r_frame_rate,duration','-of','json',str(video)]))['streams'][0]
     assert int(probe['nb_read_frames'])==count, 'Draft frame count differs'
     assert probe['r_frame_rate']=='24/1', 'Draft frame rate differs'
@@ -61,13 +63,18 @@ def package(directory):
 <style>body{background:#17191c;color:#eee;font:18px system-ui;max-width:1400px;margin:30px auto;padding:20px}img,video{width:100%}a{color:#9bdcff}</style>
 <h1>Unified flight / impact — choreography review</h1>
 <p>Accelerating contact → airborne wire-yank → sandstone smash → downward slide and slump.</p>
-<p>This 3.375-second excerpt is rendered from frames 100–180 of the complete eight-second scene. The collision cliff exists from frame 1. The chase camera holds its impact station and pans with the beetle.</p>
+<p>This 3.375-second excerpt is rendered from frames 100–180 of the complete eight-second scene. The collision cliff exists from frame 1.</p>
+'''+('''<p>Round 05: the camera flies closely with the beetle from contact through the rock strike, then opens out for the slide and slump. The beetle follows the solid outer rock contour.</p>
+<p>Close framing crops only the bottom: approximately 8–14% of the beetle’s projected height (feet/lower legs) falls below the frame. The head and both sides remain inside the frame throughout frames 106–124.</p>
+<p>The original contact and launch poses are preserved. The final airborne path reaches the rock edge at constant speed; rock impact and debris birth remain on frame 124.</p>
+''' if revision else '<p>The chase camera holds its impact station and pans with the beetle.</p>')+'''
 <video controls loop src="impact_draft.mp4"></video>
 <p>540p timing draft. Full 1080p render is pending impact approval.</p>
 <a href="impact_beats.jpg"><img src="impact_beats.jpg"></a><p>'''+
         ' · '.join(f'<a href="decoded_beats/frame_{f:04}.png">{f}: {label}</a>' for f,label in BEATS.items())+
         '</p><p><a href="motion_sampling.jpg">Motion sampling, every three frames</a></p>'+
-        ('<p><a href="continuity_frames/frame_0064.png">Frame 64: collision cliff already present during the dive</a></p>' if (directory/'continuity_frames/frame_0064.png').exists() else ''))
+        ('<p><a href="continuity_frames/frame_0064.png">Frame 64: collision cliff already present during the dive</a></p>' if (directory/'continuity_frames/frame_0064.png').exists() else '')+
+        ('<p><a href="revision_qa.json">Per-frame solidity and camera checks</a> · <a href="pixel_qa.json">Rendered visibility checks</a> · <a href="negative_round04/pixel_qa.json">Original round 04 fails slide visibility</a></p>' if revision else ''))
     scene_qa=json.loads((directory/'scene_qa.json').read_text())
     pixel_qa=json.loads((directory/'pixel_qa.json').read_text())
     # Confirm the media comparator rejects an actual wrong picture, after the
@@ -84,6 +91,7 @@ def package(directory):
         'launch_distance':scene_qa['launch_distance'],'slide_drop':scene_qa['slide_drop'],
         'final_approach_speed_range':[min(scene_qa['approach_speeds'][63:]),max(scene_qa['approach_speeds'][63:])],
         'scene_negative_controls':scene_qa.get('negative_controls',{}),'pixel_qa':pixel_qa,
+        'revision_qa':revision,
         'negative_wrong_media_picture':negative_media},indent=2)+'\n')
 
 
