@@ -65,12 +65,19 @@ def main(a):
         root.location+=root.rotation_euler.to_matrix()@Vector((0,8,0)); root.keyframe_insert(data_path='location',frame=124)
         rejects('penetrating_torso',lambda:solidity(range(124,125)),'Rock interpenetration')
         bpy.ops.wm.open_mainfile(filepath=saved)
+        root=bpy.data.objects['BK | ROOT | placement']; s=bpy.context.scene; s.frame_set(124)
+        root.location+=root.rotation_euler.to_matrix()@Vector((0,-8,0)); root.keyframe_insert(data_path='location',frame=124)
+        rejects('torso_misses_face',centered,'Torso misses rock face')
+        bpy.ops.wm.open_mainfile(filepath=saved)
         s=bpy.context.scene; camera=s.camera; s.frame_set(106); station=camera.location.copy()
         s.frame_set(107); camera.location=station; camera.keyframe_insert(data_path='location',frame=107)
         rejects('frozen_camera',framing,'Camera does not fly')
         bpy.ops.wm.open_mainfile(filepath=saved)
         s=bpy.context.scene; s.camera.data.shift_y+=.5
-        rejects('head_cropped',framing,'Bottom crop outside')
+        rejects('excessive_bottom_crop',framing,'Bottom crop outside')
+        bpy.ops.wm.open_mainfile(filepath=saved)
+        bpy.context.scene.camera.data.shift_x+=1
+        rejects('head_cropped',framing,'Head outside frame')
         bpy.ops.wm.open_mainfile(filepath=saved)
         result['negative_controls']=failures
         result['negative_round05_sha256']=hashlib.sha256(a.baseline.read_bytes()).hexdigest()
