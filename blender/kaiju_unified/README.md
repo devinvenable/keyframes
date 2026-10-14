@@ -1,4 +1,59 @@
-# T330 — centered torso smash and head/torso fly-with
+# T331 — close camera through crash, slide and settle
+
+Current review candidate:
+`/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_07/`.
+
+Round 07 patches the actual saved round 06. Only camera keys after frame 124
+change. The camera follows the head as the hinged body crumples and eases closer
+to maintain the impact's projected body height. Its orientation and 42 mm lens
+stay fixed. Frames 1–124 retain the approved camera exactly; all non-camera
+object transforms, visibility and mesh coordinates remain identical to round 06.
+
+The review excerpt now covers frames 100–192: 93 frames / 3.875 seconds at
+960×540, 24 fps, eight samples, pinned Blender 4.1.1 `kaiju_1960s` grade, CRF18.
+`review.html` includes the clip, ten decoded beat stills, the motion strip and a
+round-06/round-07 slide comparison. No full 1080p/64 render is authorized yet.
+
+`verify_331.py` checks every frame 124–192 for projected height 1.85–2.30 screen
+heights, 43–67% bottom crop, and the whole head inside the frame. It retains the
+approved fly-with checks and independent whole-mesh solidity at every frame
+113–192, centered torso contact, constant airborne speed and debris clearance.
+It also compares all non-camera transforms and visibility on all 192 frames,
+mesh coordinates, and the original camera through frame 124 against round 06.
+Negative controls use the actual round-06 scene plus in-memory mutations; no
+verification script saves a mutated scene. Rendered masks include the final
+frame 192, bilateral rock pixels at impact and unobstructed slide visibility.
+
+Measured post-impact projected height is 2.051 screen heights, with 53.5–58.6%
+bottom crop. Head bounds remain inside the frame on every frame 124–192.
+Actual round 06 fails the new size floor at frame 130 (height 1.750). Negative
+controls also reject excessive crop, an out-of-frame head, a wide final frame,
+a changed slide pose, changed approved camera keys and changed mesh coordinates.
+Camera preservation error through frame 124 is exactly zero. The rendered
+frame-124 torso band retains 1,572 left and 5,005 right rock pixels; mid-slide
+beetle visibility is 100% of the otherwise identical no-sandstone render.
+
+## Reproduce round 07
+
+```bash
+BLENDER=/home/devin/bin/blender-5.1.2-linux-x64/blender
+ROOT=/home/devin/src/2026/videdit/work/kaiju_flight_unified_325
+SHOT="$ROOT/round_07"
+"$BLENDER" -t 6 -b --python-exit-code 1 \
+  --python blender/kaiju_unified/revise_331.py -- \
+  --source "$ROOT/round_06/unified.blend" --output "$SHOT"
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/verify_331.py -- --directory "$SHOT" \
+  --baseline "$ROOT/round_06/unified.blend" --negative-checks
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/verify.py -- --directory "$SHOT" --negative-checks
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/pixel_contract.py -- --directory "$SHOT" --negative-checks
+setsid -f /home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/draft.py \
+  --directory "$SHOT" > "$SHOT/pipeline.log" 2>&1 < /dev/null
+```
+
+## Historical T330 — centered torso smash and head/torso fly-with
 
 Current review candidate:
 `/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_06/`.
