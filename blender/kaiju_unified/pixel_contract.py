@@ -9,11 +9,11 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 COLORS={'beetle':(1,0,0,1),'face':(1,0,1,1),'rock':(0,1,0,1),'fragment':(0,0,1,1),'robot':(1,1,0,1),'set':(0,0,0,1)}
-FRAMES=(64,106,112,123,124,130,148,180)
+FRAMES=(64,106,112,123,124,130,148,180,192)
 
 
 def check(rows):
-    for f in (106,112,123,124,130,148,180):
+    for f in (106,112,123,124,130,148,180,192):
         assert rows[str(f)]['beetle']>1300, f'Beetle obscured at {f}'
         assert rows[str(f)]['face']>12, f'Face obscured at {f}'
         assert rows[str(f)]['rock']>1000, f'Cliff absent at {f}'
@@ -100,7 +100,7 @@ def main(a):
         raise AssertionError('Actual obstructed slide passed rendered-pixel sanity')
     ratio=check_slide(rows['148'],unobstructed)
     if not a.slide_only: check(rows)
-    if s.get('shot','').startswith('T330'): check_flanks(rows['124'])
+    if s.get('shot','').startswith(('T330', 'T331')): check_flanks(rows['124'])
     result={'status':'PASS','rows':rows}
     result['slide_visible_fraction']=ratio
     result['slide_without_sandstone']=unobstructed

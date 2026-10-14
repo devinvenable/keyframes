@@ -30,11 +30,24 @@ def compare(decoded,source):
     return error
 
 
+def configure(directory):
+    global START, STOP, BEATS
+    START, STOP = json.loads((directory/'manifest.json').read_text()).get('draft_range', [100, 180])
+    BEATS = {100:'Approach',106:'First chest contact',112:'Launched off both feet',
+             123:'Airborne into cliff',124:'Rock smash / debris birth',130:'After impact',
+             148:'Sliding down',180:'Slumped settle'}
+    if STOP == 192:
+        BEATS = dict(sorted({**BEATS, 160:'Close slump', 192:'Final settle'}.items()))
+
+
 def package(directory):
+    configure(directory)
     video=directory/'impact_draft.mp4'; count=STOP-START+1
     revision_path=directory/'revision_qa.json'
     revision=json.loads(revision_path.read_text()) if revision_path.exists() else None
-    centered=json.loads((directory/'manifest.json').read_text()).get('revision')==330
+    revision_id=json.loads((directory/'manifest.json').read_text()).get('revision')
+    centered=revision_id in (330,331)
+    locked=revision_id==331
     probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=width,height,nb_read_frames,r_frame_rate,duration','-of','json',str(video)]))['streams'][0]
     assert int(probe['nb_read_frames'])==count, 'Draft frame count differs'
     assert probe['r_frame_rate']=='24/1', 'Draft frame rate differs'
@@ -44,7 +57,7 @@ def package(directory):
     errors=[compare(picture,np.array(Image.open(directory/'draft_frames'/f'frame_{f:04}.png').convert('RGB'))) for f,picture in enumerate(decoded,START)]
     beats=directory/'decoded_beats'; beats.mkdir(exist_ok=True)
     font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',22)
-    sheet=Image.new('RGB',(1920,580*4),'#17191c'); draw=ImageDraw.Draw(sheet)
+    sheet=Image.new('RGB',(1920,580*((len(BEATS)+1)//2)),'#17191c'); draw=ImageDraw.Draw(sheet)
     for i,(f,label) in enumerate(BEATS.items()):
         im=Image.fromarray(decoded[f-START]); im.save(beats/f'frame_{f:04}.png')
         x,y=(i%2)*960,(i//2)*580; sheet.paste(im,(x,y+40))
@@ -64,8 +77,10 @@ def package(directory):
 <style>body{background:#17191c;color:#eee;font:18px system-ui;max-width:1400px;margin:30px auto;padding:20px}img,video{width:100%}a{color:#9bdcff}</style>
 <h1>Unified flight / impact — choreography review</h1>
 <p>Accelerating contact → airborne wire-yank → sandstone smash → downward slide and slump.</p>
-<p>This 3.375-second excerpt is rendered from frames 100–180 of the complete eight-second scene. The collision cliff exists from frame 1.</p>
-'''+('''<p>Round 06: centered torso impact against a broad sandstone face, with rock visible on both sides. The camera flies beside the beetle, framing its head and torso with roughly 60% bottom crop, then opens out for the outside slide and slump.</p>
+<p>This '''+f'{count/24:.3f}'+'''-second excerpt is rendered from frames '''+f'{START}–{STOP}'+''' of the complete eight-second scene. The collision cliff exists from frame 1.</p>
+'''+('''<p>Round 07: the camera stays close through the crash, downward slide and final slump. It follows the head as the beetle crumples, easing closer as needed to hold the same tight framing without pulling back.</p>
+<p>The approved fly-with framing through frame 124 is unchanged. Actor motion, centered full-body impact, solid rock contact and same-frame debris are preserved.</p>
+''' if locked else '''<p>Round 06: centered torso impact against a broad sandstone face, with rock visible on both sides. The camera flies beside the beetle, framing its head and torso with roughly 60% bottom crop, then opens out for the outside slide and slump.</p>
 <p>Original contact and launch poses are preserved. The centered flight reaches the rock at constant speed; impact and debris birth remain on frame 124.</p>
 ''' if centered else '''<p>Round 05: the camera flies closely with the beetle from contact through the rock strike, then opens out for the slide and slump. The beetle follows the solid outer rock contour.</p>
 <p>Close framing crops only the bottom: approximately 9–14% of the beetle’s projected height (feet/lower legs) falls below the frame. The head and both sides remain inside the frame throughout frames 106–124.</p>
@@ -77,7 +92,8 @@ def package(directory):
         ' · '.join(f'<a href="decoded_beats/frame_{f:04}.png">{f}: {label}</a>' for f,label in BEATS.items())+
         '</p><p><a href="motion_sampling.jpg">Motion sampling, every three frames</a></p>'+
         ('<p><a href="continuity_frames/frame_0064.png">Frame 64: collision cliff already present during the dive</a></p>' if (directory/'continuity_frames/frame_0064.png').exists() else '')+
-        ('<h2>Impact comparison — frame 124</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px"><div>Round 05<img src="../round_05/decoded_beats/frame_0124.png"></div><div>Round 06<img src="decoded_beats/frame_0124.png"></div></div>' if centered else '')+
+        ('<h2>Impact comparison — frame 124</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px"><div>Round 05<img src="../round_05/decoded_beats/frame_0124.png"></div><div>Round 06<img src="decoded_beats/frame_0124.png"></div></div>' if centered and not locked else '')+
+        ('<h2>Slide comparison — frame 148</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px"><div>Round 06<img src="../round_06/decoded_beats/frame_0148.png"></div><div>Round 07<img src="decoded_beats/frame_0148.png"></div></div>' if locked else '')+
         ('<p><a href="revision_qa.json">Per-frame solidity and camera checks</a> · <a href="pixel_qa.json">Rendered visibility checks</a></p>' if revision else ''))
     scene_qa=json.loads((directory/'scene_qa.json').read_text())
     pixel_qa=json.loads((directory/'pixel_qa.json').read_text())
@@ -102,8 +118,9 @@ def package(directory):
 
 
 def main(directory):
+    configure(directory)
     scene=directory/'unified.blend'
-    split=153 if json.loads((directory/'manifest.json').read_text()).get('revision')==330 else 164
+    split=START+int((STOP-START+1)*.67)-1 if json.loads((directory/'manifest.json').read_text()).get('revision') in (330,331) else 164
     plan={'scene':str(scene),'scene_sha256':digest(scene),'range':[START,STOP],'fps':24,'resolution':[960,540],'samples':8,'render_blender':BLENDER,'grade_blender':GRADE,'draft_only':True,'devices':{'3060':[START,split],'1050':[split+1,STOP]}}
     path=directory/'draft_plan.json'
     if path.exists(): assert json.loads(path.read_text())==plan,'Draft plan changed'
