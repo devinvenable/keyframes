@@ -15,12 +15,32 @@ Output: `/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/final/`.
 The pipeline emits `unified_flight_impact_final.mp4`, `SHA256SUMS`, `review.html`,
 decoded beat stills, and `final_verification.json` only after media QA passes.
 
+Delivered final: 192 frames / 8.000 seconds, 1080p, 24 fps, 64 samples, CRF16.
+Full decode and all 192 encoded/source comparisons pass (maximum MAE 1.861);
+384 native/graded frame hashes are retained. Scene byte SHA-256 matches approved
+round 07 exactly, with matching all-frame performance/geometry/camera hashes.
+All scene, rendered-mask, actual earlier-scene and in-memory negative controls
+passed, including deliberate final-camera and geometry changes, wrong media
+source, and a missing review link. The decoded 13-beat sheet and 65-sample motion
+sheet were inspected through the final settle. Durable evidence lives in
+`final_333_results.json` and `final_333_beats.jpg`.
+
+The initial dual-GPU assignment completed frames 1–184. The last eight were
+reassigned as 185–189 on the 3060 and 190–192 on the 1050 Ti. All 184 preserved
+EXR hashes remained unchanged. No creative scene changes were made.
+
+MP4 SHA-256:
+`74ed88917ced60856c00ac0254eb7493e3e9d4c3973a468a667cf6f610479de7`.
+
 ```bash
 ROOT=/home/devin/src/2026/videdit/work/kaiju_flight_unified_325
 mkdir -p "$ROOT/final"
 setsid -f /home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/final.py \
   --source "$ROOT/round_07" --directory "$ROOT/final" \
   > "$ROOT/final/pipeline.log" 2>&1 < /dev/null
+# After FINAL_VERIFIED, generate decoded motion sampling and check review links:
+/home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/review_final.py \
+  --directory "$ROOT/final"
 ```
 
 If one GPU finishes first, stop the old pipeline/workers before resuming with
