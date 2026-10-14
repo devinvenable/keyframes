@@ -19,10 +19,15 @@ Checks, each leaving evidence files:
   trim     -- a song whose file is silent for 10s then a steady tone, with
               trim: 10, is audible immediately and reports ~10s less remaining
               than an untrimmed control run of the same file.
+  click    -- the Click track checkbox (T329), toggled mid-playback of a silent
+              120 BPM song, audibly starts a metronome at 0.5 s intervals on
+              the loopback and silences it again when unchecked.
 
 --negative midi runs the MIDI loopback assertion against the control setlist
-(no midi key) and must fail on 'MIDI capture is silent'; used once per release
-to prove the discriminator discriminates.
+(no midi key) and must fail on 'MIDI capture is silent'; --negative click runs
+the click-audible assertion with the checkbox left OFF and must fail on 'Click
+capture is silent'. Each is used once per release to prove the discriminator
+discriminates.
 """
 import argparse
 import hashlib
@@ -68,11 +73,11 @@ def write_midi_fixture(directory):
     return path
 
 
-def write_silence_fixture(directory):
+def write_silence_fixture(directory, seconds=14, name='silence.wav'):
     import numpy as np
     import soundfile as sf
-    path = directory / 'silence.wav'
-    sf.write(path, np.zeros((48000 * 14, 2), dtype='float32'), 48000)
+    path = directory / name
+    sf.write(path, np.zeros((48000 * seconds, 2), dtype='float32'), 48000)
     return path
 
 
@@ -265,6 +270,68 @@ def check_midi(harness, fixtures, negative=False):
           'Control without a midi key was not silent; audio evidence is ambiguous')
 
 
+def click_onset_times(samples):
+    """Second offsets where the 10 ms loopback envelope rises above threshold."""
+    import numpy as np
+    envelope = np.max(np.abs(samples[:len(samples) // 480 * 480]).reshape(-1, 480, 2),
+                      axis=(1, 2))
+    active = envelope > envelope.max() * 0.3
+    return (np.flatnonzero(active & ~np.r_[False, active[:-1]]) * .01).tolist()
+
+
+def check_click(harness, fixtures, negative=False):
+    """T329 Click track checkbox: audibly toggles ON and OFF mid-playback.
+
+    The song file is pure silence, so any loopback audio while checked can
+    only be the synthesized metronome; 0.5 s onset spacing pins it to the
+    song's 120 BPM rather than unrelated system sound.
+    """
+    silence = write_silence_fixture(fixtures, seconds=30, name='silence-30s.wav')
+    setlist = fixtures / 'click-track.yaml'
+    setlist.write_text('title: Click track smoke\naudio_root: .\nsongs:\n'
+                       f'  - name: Silent at 120\n    file: {silence.name}\n'
+                       '    bpm: 120\n', encoding='utf-8')
+    proc, app, window = harness.open_editor(setlist, 'click')
+    try:
+        harness.play(window, 'click')
+        box = window.child_window(title='Click track', control_type='CheckBox')
+        box.wait('visible', timeout=15)
+        check(box.get_toggle_state() == 0, 'Click track checkbox must default OFF')
+        time.sleep(.5)
+        harness.capture('click-off', 3)
+        if not negative:
+            box.toggle()
+            time.sleep(.5)
+        on = harness.capture('click-on', 4)
+        window.capture_as_image().save(harness.evidence / 'click-playing.png')
+        try:
+            check(harness.report['click-on']['peak'] > 0.02, 'Click capture is silent')
+        except AssertionError as exc:
+            if negative:
+                # The checkbox stayed OFF: the audible assertion must fail,
+                # proving the capture discriminates the click from nothing.
+                harness.report['negative_expected_failure'] = str(exc)
+                return
+            raise
+        check(not negative, 'Negative control unexpectedly produced audio')
+        check(harness.report['click-off']['peak'] < harness.report['click-on']['peak'] * .05,
+              'Loopback was not silent before the checkbox was enabled')
+        onsets = click_onset_times(on)
+        intervals = [round(b - a, 3) for a, b in zip(onsets, onsets[1:])]
+        harness.report['click_track_intervals_seconds'] = intervals
+        check(len(intervals) >= 5 and all(abs(i - .5) < .06 for i in intervals),
+              f'Captured clicks do not match 120 BPM; intervals {intervals}')
+        box.toggle()
+        time.sleep(.5)
+        harness.capture('click-off-again', 3)
+        check(harness.report['click-off-again']['peak'] < harness.report['click-on']['peak'] * .05,
+              'Unchecking did not silence the click mid-playback')
+        harness.stop(window, 'click')
+        harness.close(proc, window)
+    finally:
+        harness.close(proc, window, graceful=False)
+
+
 def check_bpm(harness, setlist, source):
     unknown = setlist.parent / 'bpm-check.yaml'
     unknown.write_text('title: Partial BPM check\naudio_root: .\nsongs:\n'
@@ -313,9 +380,14 @@ def verify(archive, bundle, evidence, report, negative):
             check_midi(harness, fixtures, negative=True)
             report['passed'] = True
             return
+        if negative == 'click':
+            check_click(harness, fixtures, negative=True)
+            report['passed'] = True
+            return
         setlist = check_import(harness, bundle, base / 'imported show')
         check_video(harness, setlist)
         check_midi(harness, fixtures)
+        check_click(harness, fixtures)
         check_trim(harness, fixtures)
         check((setlist.parent / 'clock_divider_missing_on_the_one.mp4').is_file(),
               'Imported bundle is missing the video song')
@@ -328,7 +400,7 @@ def main():
     parser.add_argument('archive', type=Path)
     parser.add_argument('bundle', type=Path)
     parser.add_argument('evidence', type=Path)
-    parser.add_argument('--negative', choices=['midi'])
+    parser.add_argument('--negative', choices=['midi', 'click'])
     args = parser.parse_args()
     args.evidence.mkdir(parents=True, exist_ok=True)
     report = {'passed': False}
