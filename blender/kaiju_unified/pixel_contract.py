@@ -50,7 +50,7 @@ def main(a):
     for dev in prefs.devices: dev.use=dev.type=='CUDA' and '3060' in dev.name
     s.cycles.device='GPU'; s.render.resolution_percentage=25; s.render.use_compositing=False; s.render.image_settings.file_format='PNG'
     s.view_settings.view_transform='Standard'; s.view_settings.look='None'; s.view_settings.exposure=0
-    dest=a.directory/'pixel_masks'; dest.mkdir(exist_ok=True)
+    dest=a.directory/'pixel_masks'; dest.mkdir(parents=True,exist_ok=True)
     def render(f,suffix=''):
         s.frame_set(f); path=dest/f'frame_{f:04}{suffix}.png'; s.render.filepath=str(path); bpy.ops.render.render(write_still=True)
         im=bpy.data.images.load(str(path)); pixels=np.array(im.pixels[:]).reshape(-1,4); bpy.data.images.remove(im)
@@ -64,6 +64,15 @@ def main(a):
     unobstructed=render(148,'_without_sandstone')
     for o in rocks: o.hide_render=False
     (a.directory/'pixel_counts.json').write_text(json.dumps(rows,indent=2)+'\n')
+    if a.expect_slide_failure:
+        assert a.slide_only, 'Negative baseline requires slide-only mode'
+        try: check_slide(rows['148'],unobstructed)
+        except AssertionError as error:
+            result={'status':'EXPECTED_FAILURE','assertion':str(error),'rows':rows,'unobstructed':unobstructed}
+            (a.directory/'pixel_qa.json').write_text(json.dumps(result,indent=2)+'\n')
+            print('NEGATIVE_SLIDE_PIXELS',json.dumps(result),flush=True)
+            return
+        raise AssertionError('Actual obstructed slide passed rendered-pixel sanity')
     ratio=check_slide(rows['148'],unobstructed)
     if not a.slide_only: check(rows)
     result={'status':'PASS','rows':rows}
@@ -86,4 +95,5 @@ def main(a):
 if __name__=='__main__':
     p=argparse.ArgumentParser(); p.add_argument('--directory',type=Path,required=True); p.add_argument('--negative-checks',action='store_true')
     p.add_argument('--slide-only',action='store_true')
+    p.add_argument('--expect-slide-failure',action='store_true')
     main(p.parse_args(sys.argv[sys.argv.index('--')+1:]))

@@ -49,11 +49,13 @@ def verify():
     shells=[o for o in s.objects if o.type=='MESH' and o.name.startswith('BK |')]
     contacts={}
     for f in (CONTACT,HIT-1,HIT):
-        s.frame_set(f); r=tree(rock)
+        s.frame_set(f)
+        surfaces=[tree(o) for o in s.objects if o.type=='MESH' and
+                  (o.name.startswith('Reaction | stack') or o.name.startswith('model.'))]
         contacts[f]=[]
         for o in shells:
             evaluated=o.evaluated_get(bpy.context.evaluated_depsgraph_get()); m=evaluated.to_mesh()
-            distance=min(r.find_nearest(evaluated.matrix_world @ v.co)[3] for v in m.vertices)
+            distance=min(r.find_nearest(evaluated.matrix_world @ v.co)[3] for r in surfaces for v in m.vertices)
             evaluated.to_mesh_clear()
             if distance<.5: contacts[f].append(o.name)
     assert not contacts[CONTACT] and not contacts[HIT-1], 'Beetle touches rock before impact cue'

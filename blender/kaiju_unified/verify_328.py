@@ -44,7 +44,7 @@ def inside(tree, point):
     return votes >= 2
 
 
-def solidity():
+def solidity(frames=range(124,193)):
     s = bpy.context.scene; collision = []
     for rock in rocks():
         vertices, tree = mesh(rock)
@@ -54,7 +54,7 @@ def solidity():
     rows = []
     # Whole meshes, including legs/feet, against ALL three sandstone objects.
     # Include the strike and every following frame, beyond the review excerpt.
-    for f in range(124, 193):
+    for f in frames:
         s.frame_set(f); tested = 0; closest = float('inf')
         for obj in parts():
             vertices, body = mesh(obj); tested += len(vertices)
@@ -66,7 +66,8 @@ def solidity():
                         assert not inside(rock, v), f'Rock volume contains beetle at f{f}: {obj.name} / {name}'
                     closest = min(closest, rock.find_nearest(v)[3])
         rows.append({'frame': f, 'evaluated_vertices': tested, 'intersections': 0, 'contained_vertices': 0, 'nearest_surface': closest})
-    assert rows[0]['nearest_surface'] < .5, 'Beetle misses rock at f124'
+    if rows[0]['frame']==124:
+        assert rows[0]['nearest_surface'] < .5, 'Beetle misses rock at f124'
     return rows
 
 
@@ -124,8 +125,9 @@ def main(a):
     if a.negative_checks:
         saved=bpy.data.filepath; bpy.ops.wm.open_mainfile(filepath=str(a.baseline))
         failures={}
-        for name, check, expected in [('actual_round_04_solidity',solidity,'Rock interpenetration'),
-                                      ('actual_round_04_framing',framing,'Beetle too small')]:
+        for name, check, expected in [('actual_round_04_solidity',lambda:solidity(range(130,181)),'Rock interpenetration'),
+                                      ('actual_round_04_framing',framing,'Beetle too small'),
+                                      ('actual_round_04_airborne_speed',flight,'Airborne collision path eases')]:
             try: check()
             except AssertionError as error:
                 assert str(error).startswith(expected), f'Wrong negative assertion: {error}'
