@@ -133,7 +133,8 @@ def valid_png(path: Path, width: int, height: int) -> bool:
 def extract_frames(source: Path, frames_dir: Path, count: int, width: int, height: int) -> None:
     frames_dir.mkdir(parents=True, exist_ok=True)
     existing = list(frames_dir.glob("frame_*.png"))
-    if len(existing) == count and all(valid_png(path, width, height) for path in existing):
+    required = [frames_dir / f"frame_{number:06}.png" for number in range(1, count + 1)]
+    if all(valid_png(path, width, height) for path in required):
         print(f"EXTRACT resume: {count} valid frames already present", flush=True)
         return
     for path in existing:
@@ -153,6 +154,8 @@ def extract_frames(source: Path, frames_dir: Path, count: int, width: int, heigh
             "passthrough",
             "-start_number",
             "1",
+            "-frames:v",
+            count,
             frames_dir / "frame_%06d.png",
         ]
     )
@@ -361,6 +364,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--frames", type=int, help="grade only this many frames from the start")
     parser.add_argument("--cleanup", action="store_true")
     args = parser.parse_args()
 
@@ -378,7 +382,8 @@ def main() -> None:
     info = probe_video(source)
     width, height = int(info["width"]), int(info["height"])
     frame_rate = info["avg_frame_rate"]
-    count = int(info["nb_read_frames"])
+    source_count = int(info["nb_read_frames"])
+    count = min(args.frames or source_count, source_count)
     assert width > 0 and height > 0 and count > 0
     assert Fraction(frame_rate) > 0
 
@@ -397,6 +402,7 @@ def main() -> None:
         "input": str(source),
         "input_sha256": input_hash,
         "source_video": info,
+        "processed_frames": count,
         "profile_sha256": PROFILE_SHA256,
     }
     report_path.write_text(json.dumps(report, indent=2) + "\n")
@@ -435,10 +441,8 @@ def main() -> None:
     assert (int(output_info["width"]), int(output_info["height"])) == (width, height)
     assert Fraction(output_info["avg_frame_rate"]) == Fraction(frame_rate), output_info
     frame_duration = float(Fraction(1, 1) / Fraction(frame_rate))
-    assert (
-        abs(float(output_info["format_duration"]) - float(info["format_duration"]))
-        <= frame_duration
-    )
+    expected_duration = count * frame_duration
+    assert abs(float(output_info["format_duration"]) - expected_duration) <= frame_duration
     run(["ffmpeg", "-v", "error", "-i", output, "-f", "null", "-"])
     assert sha256(source) == input_hash, "Input changed during processing"
 
