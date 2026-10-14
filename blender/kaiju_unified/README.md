@@ -3,6 +3,21 @@
 Current review candidate:
 `/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_06/`.
 
+Delivered: `review.html`, `impact_draft.mp4`, decoded beat stills, and
+`motion_sampling.jpg`. The clip is 81 frames / 3.375 seconds at 960×540, 24 fps,
+eight samples, pinned Blender 4.1.1 `kaiju_1960s` grade, and CRF18. Full decode and
+all 81 source comparisons pass (maximum MAE 2.257); 162 native/graded frame hashes
+are retained. Durable Git evidence: `draft_330_results.json` and
+`draft_330_beats.jpg`. MP4 SHA-256:
+`ff0231e715bec2aa8b8761a6a5ee3f7a7a70d595ef1666e5e86caf1d912004f2`.
+
+Measured bottom crop is 57.6–59.2%. The closest left/right rear-shell distances
+at impact are 0.424 / 0.524 units; feet remain roughly 13 units clear of the face.
+Airborne speed is constant at 6.852 units/frame, with essentially zero lateral
+travel. The frame-124 torso band contains 1,572 rock pixels on the left and
+5,005 on the right. Mid-slide rendered beetle visibility is 100% relative to the
+same frame without sandstone. Contact/launch transform error is zero.
+
 Round 06 removes the 26-unit lateral detour. It restores the original centered
 strike station, broadens the sandstone formation, and recesses the lower ledges
 so the rear torso reaches the face with both feet clear. The original sandstone
