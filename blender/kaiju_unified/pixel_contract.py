@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 import bpy
 import numpy as np
+from bpy_extras.object_utils import world_to_camera_view
+from mathutils import Vector
 
 COLORS={'beetle':(1,0,0,1),'face':(1,0,1,1),'rock':(0,1,0,1),'fragment':(0,0,1,1),'robot':(1,1,0,1),'set':(0,0,0,1)}
 FRAMES=(64,106,112,123,124,130,148,180)
@@ -26,6 +28,10 @@ def check_slide(visible, unobstructed):
     ratio=(visible['beetle']+visible['face'])/(unobstructed['beetle']+unobstructed['face'])
     assert ratio>.95, f'Rock hides beetle during slide: only {ratio:.3%} of unobstructed pixels visible'
     return ratio
+
+
+def check_flanks(row):
+    assert min(row['rock_left_of_torso'],row['rock_right_of_torso'])>500, 'Rock does not flank both sides of torso'
 
 
 def main(a):
@@ -57,8 +63,27 @@ def main(a):
         row={name:int(np.sum(np.max(np.abs(pixels[:,:3]-np.array(col[:3])),axis=1)<.08)) for name,col in COLORS.items()}
         rgb=pixels.reshape(270,480,4)[:,144:336,:3]
         row['robot_in_action']=int(np.sum(np.max(np.abs(rgb-np.array(COLORS['robot'][:3])),axis=2)<.08))
+        if f==124:
+            torso=[world_to_camera_view(s,s.camera,o.matrix_world@Vector(c)) for o in s.objects
+                   if o.name.startswith(('BK | abdomen','BK | elytron')) for c in o.bound_box]
+            left=max(0,int(min(v.x for v in torso)*480)); right=min(480,int(max(v.x for v in torso)*480))
+            bottom=max(0,int(min(v.y for v in torso)*270)); top=min(270,int(max(v.y for v in torso)*270))
+            rock_mask=np.max(np.abs(pixels.reshape(270,480,4)[:,:,:3]-np.array(COLORS['rock'][:3])),axis=2)<.08
+            row['rock_left_of_torso']=int(rock_mask[bottom:top,:left].sum())
+            row['rock_right_of_torso']=int(rock_mask[bottom:top,right:].sum())
+            row['torso_pixel_bounds']=[left,bottom,right,top]
         return row
-    rows={str(f):render(f) for f in ((148,) if a.slide_only else FRAMES)}
+    rows={str(f):render(f) for f in ((124,) if a.flanks_only else (148,) if a.slide_only else FRAMES)}
+    if a.flanks_only:
+        if a.expect_flanks_failure:
+            try: check_flanks(rows['124'])
+            except AssertionError as e: result={'status':'EXPECTED_FAILURE','assertion':str(e),'rows':rows}
+            else: raise AssertionError('Actual edge impact passed bilateral rock pixels')
+        else:
+            check_flanks(rows['124']); result={'status':'PASS','rows':rows}
+        (a.directory/'pixel_qa.json').write_text(json.dumps(result,indent=2)+'\n')
+        print('FLANK_PIXELS',json.dumps(result),flush=True)
+        return
     rocks=[o for o in s.objects if o.type=='MESH' and (o.name.startswith('Reaction | stack') or o.name.startswith('model.'))]
     for o in rocks: o.hide_render=True
     unobstructed=render(148,'_without_sandstone')
@@ -75,6 +100,7 @@ def main(a):
         raise AssertionError('Actual obstructed slide passed rendered-pixel sanity')
     ratio=check_slide(rows['148'],unobstructed)
     if not a.slide_only: check(rows)
+    if s.get('shot','').startswith('T330'): check_flanks(rows['124'])
     result={'status':'PASS','rows':rows}
     result['slide_visible_fraction']=ratio
     result['slide_without_sandstone']=unobstructed
@@ -96,4 +122,5 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(); p.add_argument('--directory',type=Path,required=True); p.add_argument('--negative-checks',action='store_true')
     p.add_argument('--slide-only',action='store_true')
     p.add_argument('--expect-slide-failure',action='store_true')
+    p.add_argument('--flanks-only',action='store_true'); p.add_argument('--expect-flanks-failure',action='store_true')
     main(p.parse_args(sys.argv[sys.argv.index('--')+1:]))

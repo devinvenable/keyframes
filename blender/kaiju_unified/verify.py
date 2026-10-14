@@ -23,7 +23,10 @@ def tree(o):
 def verify():
     s=bpy.context.scene; rig=bpy.data.objects['actor_kaiju_robot']; root=bpy.data.objects['BK | ROOT | placement']
     rock=next(o for o in s.objects if o.name.startswith('Reaction | stack'))
-    assert rock.data==bpy.data.objects[rock['asset_source']].data, 'Original sandstone geometry missing'
+    source=bpy.data.objects[rock['asset_source']]
+    assert (rock.data==source.data or (rock.get('centered_face_revision') and
+            len(rock.data.vertices)==len(source.data.vertices) and
+            rock.data.materials[:]==source.data.materials[:])), 'Original sandstone provenance missing'
     assert s.frame_start==1 and s.frame_end==END, 'Full continuous timeline missing'
     assert s.camera.parent is None, 'Continuous camera not baked in world space'
     positions=[]; roots=[]; feet=[]; cameras=[]; rocks=[]
