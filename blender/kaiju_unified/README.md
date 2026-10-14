@@ -1,4 +1,29 @@
-# T331 — close camera through crash, slide and settle
+# T333 — approved round 07 full-quality render
+
+Devin approved round 07 on 2026-10-14 (`midi:D23`). The final pipeline renders
+all 192 frames at 1920×1080, 24 fps and 64 samples, using both GPUs. The scene
+is a byte-identical copy of the approved `round_07/unified.blend`; it is never
+rebuilt or saved by the render or QA scripts. `verify_final.py` also hashes
+non-camera transforms/visibility, geometry, and camera matrices/lens/shifts over
+all 192 frames, with deliberate mutations that must fail each parity check.
+Existing round-07 scene/pixel checks and actual earlier-scene negative controls
+run before rendering. Native EXRs pass through the pinned Blender 4.1.1
+`kaiju_1960s` grade and CRF16 encode. Full decode compares every encoded frame
+with its graded source and retains native/graded hashes.
+
+Output: `/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/final/`.
+The pipeline emits `unified_flight_impact_final.mp4`, `SHA256SUMS`, `review.html`,
+decoded beat stills, and `final_verification.json` only after media QA passes.
+
+```bash
+ROOT=/home/devin/src/2026/videdit/work/kaiju_flight_unified_325
+mkdir -p "$ROOT/final"
+setsid -f /home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/final.py \
+  --source "$ROOT/round_07" --directory "$ROOT/final" \
+  > "$ROOT/final/pipeline.log" 2>&1 < /dev/null
+```
+
+## Historical T331 — close camera through crash, slide and settle
 
 Current review candidate:
 `/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_07/`.
