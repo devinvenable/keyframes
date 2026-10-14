@@ -1,4 +1,77 @@
-# T325 — unified flight and impact, choreography gate
+# T328 — solid-rock slide and close fly-with camera
+
+Current review candidate:
+`/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_05/`.
+
+`review.html` presents the 540p / eight-sample contact-through-settle draft,
+`impact_draft.mp4`, decoded beat stills and a three-frame motion strip. Full
+1080p/64 rendering remains pending Devin's approval; this task only delivers
+the revised impact excerpt.
+
+Round 05 patches the actual saved round 04. The frame-106 contact and frame-112
+launch transforms are identical. All original hinged poses, rocks, terrain,
+robot motion, and frame-124 debris timing remain. The camera travels at a fixed
+world-space offset from the beetle during frames 106–124. Its deliberate crop is
+entirely at the bottom: approximately 9–14% of projected beetle height, leaving
+the head and both sides inside frame. It opens out after the strike to show the
+outside slide, feet and ground.
+
+The old take already put the feet through two sandstone meshes at frame 124.
+Clearing only frame 125 would cause a 45-unit pop. With the PM's agreement,
+`revise_328.py` instead routes the last twelve airborne frames 26 units toward
+the cliff's outer edge, reaching contact at constant 7.013 units/frame. Launch
+travel is 126.645 units; slide drop remains 24.715 units. Whole evaluated meshes
+follow the solid contour, including both legs and feet. The minimum contact is
+now the right foot against the original sandstone, with the torso beside the
+stack's edge, rather than a penetrating shell against the stack.
+
+`verify_328.py` independently checks triangle intersections and volume
+containment against all three sandstone meshes on every frame 124–192 (7,286
+evaluated beetle vertices/frame). It checks screen-space size, bottom-only crop
+and camera-relative drift on every frame 106–124, constant airborne speed, and
+preserved contact/launch transforms. Actual round 04 fails solidity at frame
+130 and framing at frame 106. Additional in-memory controls freeze the camera
+and change the launch pose. All controls run after committing the checks.
+
+The rendered mid-slide sanity check compares frame 148 with an otherwise
+identical render hiding only sandstone: round 05 retains 100% of beetle pixels;
+actual round 04 retains 87.703% and fails the 95% visibility threshold. Existing
+approach-speed, static environment, airborne feet, ground, debris timing,
+occlusion and media checks remain active. Beauty stills and the decoded motion
+strip remain the aesthetic review; collision tests do not establish performance
+quality.
+
+## Reproduce round 05
+
+```bash
+BLENDER=/home/devin/bin/blender-5.1.2-linux-x64/blender
+ROOT=/home/devin/src/2026/videdit/work/kaiju_flight_unified_325
+SHOT="$ROOT/round_05"
+"$BLENDER" -t 6 -b --python-exit-code 1 \
+  --python blender/kaiju_unified/revise_328.py -- \
+  --source "$ROOT/round_04/unified.blend" --output "$SHOT"
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/verify_328.py -- --directory "$SHOT" \
+  --baseline "$ROOT/round_04/unified.blend" --negative-checks
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/verify.py -- --directory "$SHOT" --negative-checks
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/pixel_contract.py -- --directory "$SHOT" --negative-checks
+"$BLENDER" -t 6 -b "$ROOT/round_04/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/pixel_contract.py -- \
+  --directory "$SHOT/negative_round04" --slide-only --expect-slide-failure
+setsid -f /home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/draft.py \
+  --directory "$SHOT" > "$SHOT/pipeline.log" 2>&1 < /dev/null
+```
+
+Use a fresh output directory for any scene change. Draft rendering is resumable
+only under its hash-locked plan. The pipeline grades native EXRs using pinned
+Blender 4.1.1 `kaiju_1960s`, encodes CRF18, fully decodes and compares every frame.
+
+## Historical round 04 (T325)
+
+The notes and historical reproduction commands below describe commit
+`858e65c`. Use the round-05 commands above with the current scripts.
 
 Review candidate:
 `/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_04/`.
