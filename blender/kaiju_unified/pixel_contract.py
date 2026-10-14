@@ -22,6 +22,12 @@ def check(rows):
     assert rows['124']['robot_in_action']<300, 'Robot hides rock smash'
 
 
+def check_slide(visible, unobstructed):
+    ratio=(visible['beetle']+visible['face'])/(unobstructed['beetle']+unobstructed['face'])
+    assert ratio>.95, f'Rock hides beetle during slide: only {ratio:.3%} of unobstructed pixels visible'
+    return ratio
+
+
 def main(a):
     s=bpy.context.scene; materials={}; fragments=[]
     for name,color in COLORS.items():
@@ -52,9 +58,17 @@ def main(a):
         rgb=pixels.reshape(270,480,4)[:,144:336,:3]
         row['robot_in_action']=int(np.sum(np.max(np.abs(rgb-np.array(COLORS['robot'][:3])),axis=2)<.08))
         return row
-    rows={str(f):render(f) for f in FRAMES}
-    (a.directory/'pixel_counts.json').write_text(json.dumps(rows,indent=2)+'\n'); check(rows)
+    rows={str(f):render(f) for f in ((148,) if a.slide_only else FRAMES)}
+    rocks=[o for o in s.objects if o.type=='MESH' and (o.name.startswith('Reaction | stack') or o.name.startswith('model.'))]
+    for o in rocks: o.hide_render=True
+    unobstructed=render(148,'_without_sandstone')
+    for o in rocks: o.hide_render=False
+    (a.directory/'pixel_counts.json').write_text(json.dumps(rows,indent=2)+'\n')
+    ratio=check_slide(rows['148'],unobstructed)
+    if not a.slide_only: check(rows)
     result={'status':'PASS','rows':rows}
+    result['slide_visible_fraction']=ratio
+    result['slide_without_sandstone']=unobstructed
     if a.negative_checks:
         for o in fragments: o.hide_render=True
         bad=dict(rows); bad['124']=render(124,'_negative_late_fragments')
@@ -71,4 +85,5 @@ def main(a):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(); p.add_argument('--directory',type=Path,required=True); p.add_argument('--negative-checks',action='store_true')
+    p.add_argument('--slide-only',action='store_true')
     main(p.parse_args(sys.argv[sys.argv.index('--')+1:]))
