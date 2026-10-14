@@ -505,3 +505,30 @@ def test_transport_keys_win_over_focused_offset_spinbox(qtbot, window_factory, t
     assert not w.offset_spin.hasFocus()
     # Clicked live buttons never keep focus, so the keyboard stays global.
     assert w.skip_button.focusPolicy() == Qt.NoFocus
+
+
+def test_click_track_checkbox_defaults_off_toggles_live_and_persists(qtbot, window_factory, tmp_path):
+    w = window_factory(document(tmp_path))
+    assert not w.click_checkbox.isChecked()
+    w.play()
+    assert w.audio.click.enabled is False
+    w.click_checkbox.setChecked(True)
+    assert w.audio.click.enabled is True
+    assert w.settings.value('clickTrack', False, type=bool) is True
+    w.click_checkbox.setChecked(False)
+    assert w.audio.click.enabled is False
+    assert w.settings.value('clickTrack', True, type=bool) is False
+
+
+def test_click_track_preference_applies_at_play_start(qtbot, window_factory, tmp_path):
+    from PySide6.QtCore import QSettings
+    settings = QSettings(str(tmp_path / 'settings.ini'), QSettings.IniFormat)
+    settings.setValue('clickTrack', True)
+    w = window_factory(document(tmp_path), settings=settings)
+    assert w.click_checkbox.isChecked()
+    w.play()
+    assert w.audio.click.enabled is True
+    w.stop()
+    # A fresh engine on the next run must pick the remembered state up again.
+    w.play()
+    assert w.audio.click.enabled is True

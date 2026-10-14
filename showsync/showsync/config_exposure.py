@@ -161,6 +161,7 @@ APP_STATE = {
 }
 QT_SETTINGS = {
     'receiveMidiTransport': gui('MainWindow.transport_action'),
+    'clickTrack': gui('MainWindow.click_checkbox'),
     'recentSets': gui('MainWindow.recent_menu'),
     'video/geometry': cli_only('Automatically remembered video window geometry.'),
     'video/screen': cli_only('Automatically remembered video window screen.'),
