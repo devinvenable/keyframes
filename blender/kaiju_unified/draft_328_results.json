@@ -1,0 +1,892 @@
+{
+  "phase": "Impact choreography gate; full render pending Devin approval",
+  "directory": "/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_05",
+  "video_sha256": "1b52d8a0caafd58710b47325ad11bcc50a52ccb61a0461f2acc607c4fb5c0b57",
+  "scene_sha256": "1a2aadb2659dfaa5d371affadc1c1e8b8f86af03b811e42e9f8720e74c996fb0",
+  "probe": {
+    "width": 960,
+    "height": 540,
+    "r_frame_rate": "24/1",
+    "duration": "3.375000",
+    "nb_read_frames": "81"
+  },
+  "max_encoded_pixel_mae": 2.2468879222869873,
+  "full_decode": "PASS",
+  "all_frames_compared": 81,
+  "hashed_native_and_graded_frames": 162,
+  "grade": {
+    "blender": "4.1.1",
+    "frames": 81,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "exposure": -0.8,
+    "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+  },
+  "launch_distance": 126.6453251846008,
+  "slide_drop": 24.71536636352539,
+  "final_approach_speed_range": [
+    10.257943680586141,
+    12.870274093068604
+  ],
+  "scene_negative_controls": {
+    "braking_approach": "Dive brakes before contact",
+    "grounded_tap": "Beetle not launched off both feet",
+    "late_debris": "Debris is late at rock impact",
+    "missed_rock": "Beetle misses rock at impact cue",
+    "actual_unfixed_T320_approach": "Dive brakes before contact"
+  },
+  "pixel_qa": {
+    "status": "PASS",
+    "rows": {
+      "64": {
+        "beetle": 749,
+        "face": 77,
+        "rock": 1780,
+        "fragment": 0,
+        "robot": 13335,
+        "set": 113659,
+        "robot_in_action": 13075
+      },
+      "106": {
+        "beetle": 6765,
+        "face": 1568,
+        "rock": 22938,
+        "fragment": 0,
+        "robot": 35013,
+        "set": 63316,
+        "robot_in_action": 18199
+      },
+      "112": {
+        "beetle": 18021,
+        "face": 1464,
+        "rock": 19857,
+        "fragment": 0,
+        "robot": 7338,
+        "set": 82920,
+        "robot_in_action": 3866
+      },
+      "123": {
+        "beetle": 18079,
+        "face": 1226,
+        "rock": 21755,
+        "fragment": 0,
+        "robot": 0,
+        "set": 88540,
+        "robot_in_action": 0
+      },
+      "124": {
+        "beetle": 18236,
+        "face": 1518,
+        "rock": 19813,
+        "fragment": 1434,
+        "robot": 0,
+        "set": 88599,
+        "robot_in_action": 0
+      },
+      "130": {
+        "beetle": 17878,
+        "face": 1458,
+        "rock": 21216,
+        "fragment": 1922,
+        "robot": 0,
+        "set": 87126,
+        "robot_in_action": 0
+      },
+      "148": {
+        "beetle": 11476,
+        "face": 1269,
+        "rock": 31015,
+        "fragment": 1257,
+        "robot": 0,
+        "set": 84583,
+        "robot_in_action": 0
+      },
+      "180": {
+        "beetle": 10940,
+        "face": 986,
+        "rock": 30770,
+        "fragment": 180,
+        "robot": 0,
+        "set": 86724,
+        "robot_in_action": 0
+      }
+    },
+    "slide_visible_fraction": 1.0,
+    "slide_without_sandstone": {
+      "beetle": 11476,
+      "face": 1269,
+      "rock": 0,
+      "fragment": 1262,
+      "robot": 0,
+      "set": 115593,
+      "robot_in_action": 0
+    },
+    "negative_rendered_late_debris": "Fragments invisible at contact"
+  },
+  "revision_qa": {
+    "status": "PASS",
+    "solidity": [
+      {
+        "frame": 124,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.13385063409805298
+      },
+      {
+        "frame": 125,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.12337416410446167
+      },
+      {
+        "frame": 126,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.10032875835895538
+      },
+      {
+        "frame": 127,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.1408558040857315
+      },
+      {
+        "frame": 128,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.23702985048294067
+      },
+      {
+        "frame": 129,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2570796012878418
+      },
+      {
+        "frame": 130,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.25703129172325134
+      },
+      {
+        "frame": 131,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.28889188170433044
+      },
+      {
+        "frame": 132,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.215224951505661
+      },
+      {
+        "frame": 133,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2169155478477478
+      },
+      {
+        "frame": 134,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.15746407210826874
+      },
+      {
+        "frame": 135,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2046903371810913
+      },
+      {
+        "frame": 136,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.16837958991527557
+      },
+      {
+        "frame": 137,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21960176527500153
+      },
+      {
+        "frame": 138,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.08700671046972275
+      },
+      {
+        "frame": 139,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.40903863310813904
+      },
+      {
+        "frame": 140,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.6602533459663391
+      },
+      {
+        "frame": 141,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.8112088441848755
+      },
+      {
+        "frame": 142,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2615787982940674
+      },
+      {
+        "frame": 143,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.14796632528305054
+      },
+      {
+        "frame": 144,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.12543728947639465
+      },
+      {
+        "frame": 145,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.4744230806827545
+      },
+      {
+        "frame": 146,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21105006337165833
+      },
+      {
+        "frame": 147,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.20887525379657745
+      },
+      {
+        "frame": 148,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.221028134226799
+      },
+      {
+        "frame": 149,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21433959901332855
+      },
+      {
+        "frame": 150,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21442385017871857
+      },
+      {
+        "frame": 151,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21445734798908234
+      },
+      {
+        "frame": 152,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21440817415714264
+      },
+      {
+        "frame": 153,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21189415454864502
+      },
+      {
+        "frame": 154,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2069781869649887
+      },
+      {
+        "frame": 155,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.20239776372909546
+      },
+      {
+        "frame": 156,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.20111042261123657
+      },
+      {
+        "frame": 157,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2017531543970108
+      },
+      {
+        "frame": 158,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2066861391067505
+      },
+      {
+        "frame": 159,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2106686681509018
+      },
+      {
+        "frame": 160,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21363477408885956
+      },
+      {
+        "frame": 161,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21498729288578033
+      },
+      {
+        "frame": 162,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 163,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 164,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 165,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 166,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 167,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 168,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 169,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 170,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 171,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 172,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 173,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 174,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 175,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 176,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 177,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 178,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 179,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 180,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 181,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 182,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 183,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 184,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 185,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 186,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 187,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 188,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 189,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 190,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 191,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      },
+      {
+        "frame": 192,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.21499012410640717
+      }
+    ],
+    "framing": [
+      {
+        "frame": 106,
+        "height": 1.120000183582306,
+        "bottom_crop_fraction": 0.14285714285714285,
+        "bounds": [
+          0.23779289424419403,
+          -0.1600000262260437,
+          0.6560282707214355,
+          0.9600001573562622
+        ],
+        "relative_camera_drift": 0.0
+      },
+      {
+        "frame": 107,
+        "height": 1.1121710240840912,
+        "bottom_crop_fraction": 0.14064771550082966,
+        "bounds": [
+          0.23217329382896423,
+          -0.15642431378364563,
+          0.6622200608253479,
+          0.9557467103004456
+        ],
+        "relative_camera_drift": 0.0
+      },
+      {
+        "frame": 108,
+        "height": 1.0877586901187897,
+        "bottom_crop_fraction": 0.13447607305654588,
+        "bounds": [
+          0.23125317692756653,
+          -0.146277517080307,
+          0.6714249849319458,
+          0.9414811730384827
+        ],
+        "relative_camera_drift": 1.7059844799040144e-05
+      },
+      {
+        "frame": 109,
+        "height": 1.0517388582229614,
+        "bottom_crop_fraction": 0.1242571230217764,
+        "bounds": [
+          0.25644510984420776,
+          -0.13068604469299316,
+          0.6725725531578064,
+          0.9210528135299683
+        ],
+        "relative_camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 110,
+        "height": 1.0223269537091255,
+        "bottom_crop_fraction": 0.11020989699178878,
+        "bounds": [
+          0.29601213335990906,
+          -0.11267054826021194,
+          0.66581130027771,
+          0.9096564054489136
+        ],
+        "relative_camera_drift": 0.0
+      },
+      {
+        "frame": 111,
+        "height": 1.006112590432167,
+        "bottom_crop_fraction": 0.09678368955095103,
+        "bounds": [
+          0.315555602312088,
+          -0.09737528860569,
+          0.6622076034545898,
+          0.908737301826477
+        ],
+        "relative_camera_drift": 0.0
+      },
+      {
+        "frame": 112,
+        "height": 0.9981391653418541,
+        "bottom_crop_fraction": 0.09111750300375901,
+        "bounds": [
+          0.3173949122428894,
+          -0.0909479483962059,
+          0.6612407565116882,
+          0.9071912169456482
+        ],
+        "relative_camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 113,
+        "height": 0.9961932078003883,
+        "bottom_crop_fraction": 0.09129544648626631,
+        "bounds": [
+          0.3186857998371124,
+          -0.09094790369272232,
+          0.6609428524971008,
+          0.905245304107666
+        ],
+        "relative_camera_drift": 0.0
+      },
+      {
+        "frame": 114,
+        "height": 0.9940173625946045,
+        "bottom_crop_fraction": 0.09149536926771036,
+        "bounds": [
+          0.3192726671695709,
+          -0.09094798564910889,
+          0.6614726781845093,
+          0.9030693769454956
+        ],
+        "relative_camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 115,
+        "height": 0.9916786327958107,
+        "bottom_crop_fraction": 0.09171106514246005,
+        "bounds": [
+          0.31944942474365234,
+          -0.09094790369272232,
+          0.6626598834991455,
+          0.9007307291030884
+        ],
+        "relative_camera_drift": 0.0
+      },
+      {
+        "frame": 116,
+        "height": 0.9892572462558746,
+        "bottom_crop_fraction": 0.09193553707729703,
+        "bounds": [
+          0.3194875121116638,
+          -0.09094789624214172,
+          0.6643612384796143,
+          0.8983093500137329
+        ],
+        "relative_camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 117,
+        "height": 0.9868339523673058,
+        "bottom_crop_fraction": 0.09216134910846127,
+        "bounds": [
+          0.3196225166320801,
+          -0.0909479483962059,
+          0.6664032936096191,
+          0.8958860039710999
+        ],
+        "relative_camera_drift": 0.0
+      },
+      {
+        "frame": 118,
+        "height": 0.9844932705163956,
+        "bottom_crop_fraction": 0.09238045974445355,
+        "bounds": [
+          0.32000645995140076,
+          -0.0909479409456253,
+          0.6685711145401001,
+          0.8935453295707703
+        ],
+        "relative_camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 119,
+        "height": 0.9823297783732414,
+        "bottom_crop_fraction": 0.09258383588844298,
+        "bounds": [
+          0.32068243622779846,
+          -0.09094785898923874,
+          0.6706843972206116,
+          0.8913819193840027
+        ],
+        "relative_camera_drift": 3.814697265625e-06
+      },
+      {
+        "frame": 120,
+        "height": 0.9804514050483704,
+        "bottom_crop_fraction": 0.09276121791608065,
+        "bounds": [
+          0.32158219814300537,
+          -0.09094786643981934,
+          0.6725868582725525,
+          0.889503538608551
+        ],
+        "relative_camera_drift": 3.814697265625e-06
+      },
+      {
+        "frame": 121,
+        "height": 0.9789818748831749,
+        "bottom_crop_fraction": 0.09290054364597815,
+        "bounds": [
+          0.3225400447845459,
+          -0.0909479483962059,
+          0.6741529703140259,
+          0.888033926486969
+        ],
+        "relative_camera_drift": 3.814697265625e-06
+      },
+      {
+        "frame": 122,
+        "height": 0.9780595302581787,
+        "bottom_crop_fraction": 0.09298806833957417,
+        "bounds": [
+          0.3233237564563751,
+          -0.09094786643981934,
+          0.6752902269363403,
+          0.8871116638183594
+        ],
+        "relative_camera_drift": 3.814697265625e-06
+      },
+      {
+        "frame": 123,
+        "height": 0.9778302907943726,
+        "bottom_crop_fraction": 0.09300999008245521,
+        "bounds": [
+          0.3236751854419708,
+          -0.09094798564910889,
+          0.6759307980537415,
+          0.8868823051452637
+        ],
+        "relative_camera_drift": 3.814697265625e-06
+      },
+      {
+        "frame": 124,
+        "height": 1.0120421051979065,
+        "bottom_crop_fraction": 0.08986569429543086,
+        "bounds": [
+          0.2995355427265167,
+          -0.09094786643981934,
+          0.6679850220680237,
+          0.9210942387580872
+        ],
+        "relative_camera_drift": 3.814697265625e-06
+      }
+    ],
+    "airborne_speeds": [
+      7.013043419288919,
+      7.013046699945565,
+      7.01305072002273,
+      7.013040827059136,
+      7.0130396711793175,
+      7.01305072002273,
+      7.013043648764952,
+      7.013053312248855,
+      7.01303707894815,
+      7.013047668843866,
+      7.013050949498524,
+      7.013039441703155
+    ],
+    "preserved_contact_launch_error": 0.0,
+    "negative_controls": {
+      "actual_round_04_solidity": "Rock interpenetration at f130: BK | foot L / model.011_Default OBJ.016_0 (40 triangle pairs)",
+      "actual_round_04_framing": "Beetle too small or oversized at f106: screen height 0.579",
+      "actual_round_04_airborne_speed": "Airborne collision path eases into hit",
+      "frozen_camera": "Camera does not fly with beetle at f116: relative drift 71.786",
+      "excessive_bottom_crop": "Bottom crop outside close framing at f106: 0.460",
+      "changed_launch_pose": "Approved contact or launch pose changed"
+    },
+    "negative_scene_sha256": "860accddab047cfcb4f5e79fffad84f74446b164cbcd0a027c3fe6e9271d4cad"
+  },
+  "negative_round04_slide_pixels": {
+    "status": "EXPECTED_FAILURE",
+    "assertion": "Rock hides beetle during slide: only 87.703% of unobstructed pixels visible",
+    "rows": {
+      "148": {
+        "beetle": 2567,
+        "face": 350,
+        "rock": 8751,
+        "fragment": 584,
+        "robot": 0,
+        "set": 117348,
+        "robot_in_action": 0
+      }
+    },
+    "unobstructed": {
+      "beetle": 2976,
+      "face": 350,
+      "rock": 0,
+      "fragment": 586,
+      "robot": 0,
+      "set": 125688,
+      "robot_in_action": 0
+    }
+  },
+  "negative_wrong_media_picture": "Encoded picture differs from graded frame: 29.990"
+}

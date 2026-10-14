@@ -8,6 +8,12 @@ Current review candidate:
 1080p/64 rendering remains pending Devin's approval; this task only delivers
 the revised impact excerpt.
 
+Delivered media: 81 frames / 3.375 seconds at 960×540, 24 fps. Full decode and all
+81 encoded/source comparisons pass (maximum mean absolute error 2.247); 162
+native/graded frame hashes are retained in `media_qa.json`. Durable Git evidence
+is `draft_328_results.json` and `draft_328_beats.jpg`. MP4 SHA-256:
+`1b52d8a0caafd58710b47325ad11bcc50a52ccb61a0461f2acc607c4fb5c0b57`.
+
 Round 05 patches the actual saved round 04. The frame-106 contact and frame-112
 launch transforms are identical. All original hinged poses, rocks, terrain,
 robot motion, and frame-124 debris timing remain. The camera travels at a fixed
