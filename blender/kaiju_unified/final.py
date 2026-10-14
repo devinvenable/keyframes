@@ -17,7 +17,7 @@ APPROVED = '2985346dbd6424a220b49640d74637c20e3c3974880676b7dd1e6b27a64f3770'
 BEATS = [1, 32, 64, 96, 106, 112, 123, 124, 130, 148, 160, 180, 192]
 
 
-def main(source, root):
+def main(source, root, rebalance=False):
     source = source.resolve(); root = root.resolve(); root.mkdir(parents=True, exist_ok=True)
     assert digest(source/'unified.blend') == APPROVED, 'Approved round_07 source changed'
     assert json.loads((source/'draft_plan.json').read_text())['scene_sha256'] == APPROVED
@@ -57,16 +57,36 @@ def main(source, root):
     exrs = root/'final_exr'; exrs.mkdir(exist_ok=True)
     expected = {f'frame_{f:04}.exr' for f in range(1, 193)}
     assert {p.name for p in exrs.glob('frame_*.exr')} <= expected
+    assignments = {device: list(range(first, last+1))
+                   for device, (first, last) in plan['devices'].items()}
+    allocation_path = root/'render_allocations.json'
+    allocations = json.loads(allocation_path.read_text()) if allocation_path.exists() else [
+        {'mode': 'initial', 'assignments': assignments}]
+    if rebalance:
+        pending = [f for f in range(1, 193) if not (exrs/f'frame_{f:04}.exr').exists()]
+        split = round(len(pending) * .67)
+        assignments = {'3060': pending[:split], '1050': pending[split:]}
+        assert sorted(assignments['3060'] + assignments['1050']) == pending
+        assert not set(assignments['3060']) & set(assignments['1050'])
+        allocations.append({'mode': 'rebalance', 'completed_frames': 192-len(pending),
+                            'assignments': assignments})
+    allocation_path.write_text(json.dumps(allocations, indent=2)+'\n')
 
-    def worker(device, first, last):
-        pending = [f for f in range(first, last+1) if not (exrs/f'frame_{f:04}.exr').exists()]
+    def worker(device, assigned):
+        pending = [f for f in assigned if not (exrs/f'frame_{f:04}.exr').exists()]
         if pending:
+            log = root/f'render_{device}.log'
+            if log.exists():
+                history = root/'render_history'; history.mkdir(exist_ok=True)
+                previous = history/f'{len(allocations):03}_{device}.log'
+                assert not previous.exists(), 'Render log archive already exists'
+                shutil.move(log, previous)
             run([BLENDER, '-t', '4', '-b', scene, '--python-exit-code', '1', '--python',
                  SCRIPTS.parent/'kaiju_arrival/render.py', '--', '--output', exrs,
                  '--frames', ','.join(map(str, pending)), '--samples', '64', '--percent', '100',
-                 '--device', device], root/f'render_{device}.log')
+                 '--device', device], log)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(worker, device, *span) for device, span in plan['devices'].items()]
+        futures = [pool.submit(worker, device, assigned) for device, assigned in assignments.items()]
         for future in futures:
             future.result()
     assert {p.name for p in exrs.glob('frame_*.exr')} == expected
@@ -92,6 +112,7 @@ def main(source, root):
         raise AssertionError('Wrong source passed encoded pixel check')
     assert digest(scene) == digest(source/'unified.blend') == APPROVED
     report.update(plan=plan, grade=grade, native_frame_sha256=hashes,
+                  render_allocations=allocations,
                   qa={name: json.loads((root/name).read_text()) for name in
                       ('parity_qa.json', 'scene_qa.json', 'revision_qa.json', 'pixel_qa.json',
                        'negative_round04/pixel_qa.json', 'negative_round05/pixel_qa.json')})
@@ -114,5 +135,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--directory', type=Path, required=True)
+    parser.add_argument('--rebalance', action='store_true',
+                        help='After stopping old workers, split missing frames between both GPUs')
     args = parser.parse_args()
-    main(args.source, args.directory)
+    main(args.source, args.directory, args.rebalance)
