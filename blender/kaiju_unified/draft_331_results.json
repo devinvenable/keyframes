@@ -1,0 +1,1630 @@
+{
+  "phase": "Impact choreography gate; full render pending Devin approval",
+  "directory": "/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_07",
+  "video_sha256": "3504c5f9ffdb4a2c15112ed4347d38c84abb074b1108d2439d2eb411245b4f0e",
+  "scene_sha256": "2985346dbd6424a220b49640d74637c20e3c3974880676b7dd1e6b27a64f3770",
+  "probe": {
+    "width": 960,
+    "height": 540,
+    "r_frame_rate": "24/1",
+    "duration": "3.875000",
+    "nb_read_frames": "93"
+  },
+  "max_encoded_pixel_mae": 2.2566416263580322,
+  "full_decode": "PASS",
+  "all_frames_compared": 93,
+  "hashed_native_and_graded_frames": 186,
+  "grade": {
+    "blender": "4.1.1",
+    "frames": 93,
+    "profile_sha256": "adf204f3cc23499a93616a5c8abc2ac73e9f106663fcf2b9c2d899f0a6952c38",
+    "exposure": -0.8,
+    "chain": "native scene-linear EXR -> recovered kaiju_1960s -> AgX; no inverse transform or salvage trim"
+  },
+  "launch_distance": 126.08013813805154,
+  "slide_drop": 24.71536636352539,
+  "final_approach_speed_range": [
+    10.257943680586141,
+    12.870274093068604
+  ],
+  "scene_negative_controls": {
+    "braking_approach": "Dive brakes before contact",
+    "grounded_tap": "Beetle not launched off both feet",
+    "late_debris": "Debris is late at rock impact",
+    "missed_rock": "Beetle misses rock at impact cue",
+    "actual_unfixed_T320_approach": "Dive brakes before contact"
+  },
+  "pixel_qa": {
+    "status": "PASS",
+    "rows": {
+      "64": {
+        "beetle": 749,
+        "face": 77,
+        "rock": 4986,
+        "fragment": 0,
+        "robot": 13335,
+        "set": 110453,
+        "robot_in_action": 13075
+      },
+      "106": {
+        "beetle": 22290,
+        "face": 7874,
+        "rock": 52431,
+        "fragment": 0,
+        "robot": 5965,
+        "set": 41040,
+        "robot_in_action": 2072
+      },
+      "112": {
+        "beetle": 21602,
+        "face": 5696,
+        "rock": 58043,
+        "fragment": 0,
+        "robot": 0,
+        "set": 44259,
+        "robot_in_action": 0
+      },
+      "123": {
+        "beetle": 20468,
+        "face": 5354,
+        "rock": 81239,
+        "fragment": 0,
+        "robot": 0,
+        "set": 22539,
+        "robot_in_action": 0
+      },
+      "124": {
+        "beetle": 21186,
+        "face": 6094,
+        "rock": 79570,
+        "fragment": 3660,
+        "robot": 0,
+        "set": 19090,
+        "robot_in_action": 0,
+        "rock_left_of_torso": 1572,
+        "rock_right_of_torso": 5005,
+        "torso_pixel_bounds": [
+          132,
+          0,
+          354,
+          50
+        ]
+      },
+      "130": {
+        "beetle": 19280,
+        "face": 6253,
+        "rock": 76572,
+        "fragment": 3917,
+        "robot": 0,
+        "set": 23578,
+        "robot_in_action": 0
+      },
+      "148": {
+        "beetle": 26111,
+        "face": 11250,
+        "rock": 72766,
+        "fragment": 5326,
+        "robot": 0,
+        "set": 14147,
+        "robot_in_action": 0
+      },
+      "180": {
+        "beetle": 45084,
+        "face": 13176,
+        "rock": 61930,
+        "fragment": 0,
+        "robot": 0,
+        "set": 9410,
+        "robot_in_action": 0
+      },
+      "192": {
+        "beetle": 45084,
+        "face": 13176,
+        "rock": 61930,
+        "fragment": 0,
+        "robot": 0,
+        "set": 9410,
+        "robot_in_action": 0
+      }
+    },
+    "slide_visible_fraction": 1.0,
+    "slide_without_sandstone": {
+      "beetle": 26111,
+      "face": 11250,
+      "rock": 0,
+      "fragment": 5326,
+      "robot": 0,
+      "set": 86913,
+      "robot_in_action": 0
+    },
+    "negative_rendered_late_debris": "Fragments invisible at contact"
+  },
+  "revision_qa": {
+    "status": "PASS",
+    "framing": [
+      {
+        "frame": 106,
+        "bottom_crop_fraction": 0.5911108652750651,
+        "height": 2.25,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 107,
+        "bottom_crop_fraction": 0.5903553095588009,
+        "height": 2.2376320362091064,
+        "camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 108,
+        "bottom_crop_fraction": 0.590531699692642,
+        "height": 2.1960933208465576,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 109,
+        "bottom_crop_fraction": 0.5919710273420097,
+        "height": 2.13248610496521,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 110,
+        "bottom_crop_fraction": 0.5894422446284379,
+        "height": 2.0780880451202393,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 111,
+        "bottom_crop_fraction": 0.5837555178636206,
+        "height": 2.0461787581443787,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 112,
+        "bottom_crop_fraction": 0.5818857489715501,
+        "height": 2.0312641859054565,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 113,
+        "bottom_crop_fraction": 0.5827332882233021,
+        "height": 2.028309464454651,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 114,
+        "bottom_crop_fraction": 0.5836598812686571,
+        "height": 2.025089204311371,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 115,
+        "bottom_crop_fraction": 0.5846485234497055,
+        "height": 2.0216649770736694,
+        "camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 116,
+        "bottom_crop_fraction": 0.5856809879391406,
+        "height": 2.0181010961532593,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 117,
+        "bottom_crop_fraction": 0.5867391005826867,
+        "height": 2.0144616961479187,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 118,
+        "bottom_crop_fraction": 0.5877988410227222,
+        "height": 2.0108296275138855,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 119,
+        "bottom_crop_fraction": 0.5888246828834158,
+        "height": 2.0073271989822388,
+        "camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 120,
+        "bottom_crop_fraction": 0.5897635420687883,
+        "height": 2.0041310787200928,
+        "camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 121,
+        "bottom_crop_fraction": 0.5905448224235363,
+        "height": 2.00147944688797,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 122,
+        "bottom_crop_fraction": 0.591080970745667,
+        "height": 1.9996647834777832,
+        "camera_drift": 0.0
+      },
+      {
+        "frame": 123,
+        "bottom_crop_fraction": 0.5912744571183236,
+        "height": 1.9990106225013733,
+        "camera_drift": 7.62939453125e-06
+      },
+      {
+        "frame": 124,
+        "bottom_crop_fraction": 0.5762026758567489,
+        "height": 2.0512980818748474,
+        "camera_drift": 7.62939453125e-06
+      }
+    ],
+    "post_impact_framing": [
+      {
+        "frame": 124,
+        "height": 2.0512980818748474,
+        "bottom_crop_fraction": 0.5762026758567489,
+        "head_bounds": [
+          0.37030935287475586,
+          0.11007924377918243,
+          0.6852613091468811,
+          0.8693346381187439
+        ]
+      },
+      {
+        "frame": 125,
+        "height": 2.051297962665558,
+        "bottom_crop_fraction": 0.5729508780005642,
+        "head_bounds": [
+          0.3637757897377014,
+          0.1034090518951416,
+          0.6983730792999268,
+          0.8760049939155579
+        ]
+      },
+      {
+        "frame": 126,
+        "height": 2.0512969493865967,
+        "bottom_crop_fraction": 0.5594401542673828,
+        "head_bounds": [
+          0.36020609736442566,
+          0.07569541782140732,
+          0.7148544192314148,
+          0.9037190675735474
+        ]
+      },
+      {
+        "frame": 127,
+        "height": 2.051297187805176,
+        "bottom_crop_fraction": 0.5642351417356404,
+        "head_bounds": [
+          0.3647115230560303,
+          0.08553057909011841,
+          0.7142059206962585,
+          0.893883228302002
+        ]
+      },
+      {
+        "frame": 128,
+        "height": 2.0512975454330444,
+        "bottom_crop_fraction": 0.5736235488984445,
+        "head_bounds": [
+          0.36984777450561523,
+          0.10478765517473221,
+          0.7074733972549438,
+          0.8746249675750732
+        ]
+      },
+      {
+        "frame": 129,
+        "height": 2.051298201084137,
+        "bottom_crop_fraction": 0.5824045760414339,
+        "head_bounds": [
+          0.37492433190345764,
+          0.12280154228210449,
+          0.7011874318122864,
+          0.8566127419471741
+        ]
+      },
+      {
+        "frame": 130,
+        "height": 2.0512980818748474,
+        "bottom_crop_fraction": 0.5837516941342356,
+        "head_bounds": [
+          0.3782885670661926,
+          0.1255646049976349,
+          0.6973815560340881,
+          0.8538493514060974
+        ]
+      },
+      {
+        "frame": 131,
+        "height": 2.0512980818748474,
+        "bottom_crop_fraction": 0.5838324726977898,
+        "head_bounds": [
+          0.3794061541557312,
+          0.12573036551475525,
+          0.6960921287536621,
+          0.8536836504936218
+        ]
+      },
+      {
+        "frame": 132,
+        "height": 2.051297962665558,
+        "bottom_crop_fraction": 0.5837793903594963,
+        "head_bounds": [
+          0.379228800535202,
+          0.12562142312526703,
+          0.6959682703018188,
+          0.8537924885749817
+        ]
+      },
+      {
+        "frame": 133,
+        "height": 2.0512980222702026,
+        "bottom_crop_fraction": 0.5838106968836617,
+        "head_bounds": [
+          0.3789977729320526,
+          0.12568575143814087,
+          0.696009635925293,
+          0.8537282943725586
+        ]
+      },
+      {
+        "frame": 134,
+        "height": 2.051298141479492,
+        "bottom_crop_fraction": 0.584045560038346,
+        "head_bounds": [
+          0.37878337502479553,
+          0.12616708874702454,
+          0.6963172554969788,
+          0.8532465696334839
+        ]
+      },
+      {
+        "frame": 135,
+        "height": 2.0512980818748474,
+        "bottom_crop_fraction": 0.5845004939841618,
+        "head_bounds": [
+          0.378572940826416,
+          0.12710072100162506,
+          0.6969086527824402,
+          0.8523133397102356
+        ]
+      },
+      {
+        "frame": 136,
+        "height": 2.0512980818748474,
+        "bottom_crop_fraction": 0.5852051271374683,
+        "head_bounds": [
+          0.3783523440361023,
+          0.12854599952697754,
+          0.6978147029876709,
+          0.8508679270744324
+        ]
+      },
+      {
+        "frame": 137,
+        "height": 2.0512980818748474,
+        "bottom_crop_fraction": 0.585905808533709,
+        "head_bounds": [
+          0.37810200452804565,
+          0.12998399138450623,
+          0.6990770101547241,
+          0.8494306206703186
+        ]
+      },
+      {
+        "frame": 138,
+        "height": 2.0512980222702026,
+        "bottom_crop_fraction": 0.5844537291366835,
+        "head_bounds": [
+          0.377797931432724,
+          0.12700483202934265,
+          0.700759768486023,
+          0.8524092435836792
+        ]
+      },
+      {
+        "frame": 139,
+        "height": 2.0512978434562683,
+        "bottom_crop_fraction": 0.5820471597512799,
+        "head_bounds": [
+          0.37744495272636414,
+          0.12206792086362839,
+          0.7028881907463074,
+          0.8573457598686218
+        ]
+      },
+      {
+        "frame": 140,
+        "height": 2.0512980222702026,
+        "bottom_crop_fraction": 0.5792805884166442,
+        "head_bounds": [
+          0.3770410120487213,
+          0.11639324575662613,
+          0.7055049538612366,
+          0.8630208969116211
+        ]
+      },
+      {
+        "frame": 141,
+        "height": 2.051297903060913,
+        "bottom_crop_fraction": 0.576175470581665,
+        "head_bounds": [
+          0.37658458948135376,
+          0.11002335697412491,
+          0.7086665034294128,
+          0.8693903684616089
+        ]
+      },
+      {
+        "frame": 142,
+        "height": 2.0512978434562683,
+        "bottom_crop_fraction": 0.5729020954688248,
+        "head_bounds": [
+          0.37611496448516846,
+          0.10330918431282043,
+          0.7123688459396362,
+          0.876105010509491
+        ]
+      },
+      {
+        "frame": 143,
+        "height": 2.051297605037689,
+        "bottom_crop_fraction": 0.5696286535927596,
+        "head_bounds": [
+          0.37560638785362244,
+          0.09659433364868164,
+          0.7167235016822815,
+          0.8828197121620178
+        ]
+      },
+      {
+        "frame": 144,
+        "height": 2.051297605037689,
+        "bottom_crop_fraction": 0.5664692811981776,
+        "head_bounds": [
+          0.37505975365638733,
+          0.09011311829090118,
+          0.7218096852302551,
+          0.889300525188446
+        ]
+      },
+      {
+        "frame": 145,
+        "height": 2.0512975454330444,
+        "bottom_crop_fraction": 0.5635337225311405,
+        "head_bounds": [
+          0.374482661485672,
+          0.08409135043621063,
+          0.727699339389801,
+          0.8953222036361694
+        ]
+      },
+      {
+        "frame": 146,
+        "height": 2.0512974858283997,
+        "bottom_crop_fraction": 0.5609391771817577,
+        "head_bounds": [
+          0.37388357520103455,
+          0.07876935601234436,
+          0.7344648838043213,
+          0.9006443619728088
+        ]
+      },
+      {
+        "frame": 147,
+        "height": 2.051297128200531,
+        "bottom_crop_fraction": 0.5588073591630175,
+        "head_bounds": [
+          0.3732699751853943,
+          0.07439648360013962,
+          0.7421756386756897,
+          0.9050171971321106
+        ]
+      },
+      {
+        "frame": 148,
+        "height": 2.0512967109680176,
+        "bottom_crop_fraction": 0.5572603588988165,
+        "head_bounds": [
+          0.37208613753318787,
+          0.07122386246919632,
+          0.7508938312530518,
+          0.9081903696060181
+        ]
+      },
+      {
+        "frame": 149,
+        "height": 2.051296055316925,
+        "bottom_crop_fraction": 0.556415150737743,
+        "head_bounds": [
+          0.36880820989608765,
+          0.06949050724506378,
+          0.7606675028800964,
+          0.9099238514900208
+        ]
+      },
+      {
+        "frame": 150,
+        "height": 2.051295220851898,
+        "bottom_crop_fraction": 0.5563251839175002,
+        "head_bounds": [
+          0.36536622047424316,
+          0.06930679082870483,
+          0.7715180516242981,
+          0.9101080298423767
+        ]
+      },
+      {
+        "frame": 151,
+        "height": 2.051287293434143,
+        "bottom_crop_fraction": 0.5548251933973928,
+        "head_bounds": [
+          0.362839937210083,
+          0.06623278558254242,
+          0.781451404094696,
+          0.9131814241409302
+        ]
+      },
+      {
+        "frame": 152,
+        "height": 2.0512850880622864,
+        "bottom_crop_fraction": 0.5497338605514311,
+        "head_bounds": [
+          0.3625611960887909,
+          0.055790014564991,
+          0.7878416180610657,
+          0.9236242175102234
+        ]
+      },
+      {
+        "frame": 153,
+        "height": 2.0512831807136536,
+        "bottom_crop_fraction": 0.5454050160539844,
+        "head_bounds": [
+          0.36250826716423035,
+          0.04691043123602867,
+          0.794363796710968,
+          0.9325030446052551
+        ]
+      },
+      {
+        "frame": 154,
+        "height": 2.051280915737152,
+        "bottom_crop_fraction": 0.5419161294726165,
+        "head_bounds": [
+          0.36267372965812683,
+          0.039754994213581085,
+          0.8008670210838318,
+          0.9396587014198303
+        ]
+      },
+      {
+        "frame": 155,
+        "height": 2.051278054714203,
+        "bottom_crop_fraction": 0.5392534912734327,
+        "head_bounds": [
+          0.36300525069236755,
+          0.03429460525512695,
+          0.8071762919425964,
+          0.9451192021369934
+        ]
+      },
+      {
+        "frame": 156,
+        "height": 2.0512754917144775,
+        "bottom_crop_fraction": 0.5373650881431686,
+        "head_bounds": [
+          0.36343857645988464,
+          0.030422393232584,
+          0.8130916357040405,
+          0.9489916563034058
+        ]
+      },
+      {
+        "frame": 157,
+        "height": 2.0512733459472656,
+        "bottom_crop_fraction": 0.5361694738427721,
+        "head_bounds": [
+          0.36394375562667847,
+          0.027971182018518448,
+          0.8183742165565491,
+          0.9514431953430176
+        ]
+      },
+      {
+        "frame": 158,
+        "height": 2.0512704253196716,
+        "bottom_crop_fraction": 0.535560438043067,
+        "head_bounds": [
+          0.3644876480102539,
+          0.026723528280854225,
+          0.8227579593658447,
+          0.9526911377906799
+        ]
+      },
+      {
+        "frame": 159,
+        "height": 2.0512691140174866,
+        "bottom_crop_fraction": 0.5354210140845808,
+        "head_bounds": [
+          0.36504220962524414,
+          0.02643926627933979,
+          0.8259730935096741,
+          0.9529765248298645
+        ]
+      },
+      {
+        "frame": 160,
+        "height": 2.0512683987617493,
+        "bottom_crop_fraction": 0.5356409332755633,
+        "head_bounds": [
+          0.365581750869751,
+          0.026889635249972343,
+          0.8277652263641357,
+          0.9525250792503357
+        ]
+      },
+      {
+        "frame": 161,
+        "height": 2.051267683506012,
+        "bottom_crop_fraction": 0.5359296025888577,
+        "head_bounds": [
+          0.36598142981529236,
+          0.027481840923428535,
+          0.8285340070724487,
+          0.9519326090812683
+        ]
+      },
+      {
+        "frame": 162,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 163,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 164,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 165,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 166,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 167,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 168,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 169,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 170,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 171,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 172,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 173,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 174,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 175,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 176,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 177,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 178,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 179,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 180,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 181,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 182,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 183,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 184,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 185,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 186,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 187,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 188,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 189,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 190,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 191,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      },
+      {
+        "frame": 192,
+        "height": 2.0512678027153015,
+        "bottom_crop_fraction": 0.5360326092183707,
+        "head_bounds": [
+          0.3661198914051056,
+          0.027693528681993484,
+          0.82880038022995,
+          0.9517213702201843
+        ]
+      }
+    ],
+    "centered_contact": {
+      "lateral_travel": 3.814697265625e-06,
+      "shell_distances": {
+        "BK | elytron L course 1": 6.363912105560303,
+        "BK | elytron L course 2": 3.616117238998413,
+        "BK | elytron L course 3": 0.9623135924339294,
+        "BK | elytron L course 4": 0.4239635765552521,
+        "BK | elytron R course 1": 6.49800443649292,
+        "BK | elytron R course 2": 3.7286782264709473,
+        "BK | elytron R course 3": 1.0557020902633667,
+        "BK | elytron R course 4": 0.5237526893615723
+      }
+    },
+    "solidity": [
+      {
+        "frame": 113,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 66.26458740234375
+      },
+      {
+        "frame": 114,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 59.41531753540039
+      },
+      {
+        "frame": 115,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 52.47366714477539
+      },
+      {
+        "frame": 116,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 45.5069580078125
+      },
+      {
+        "frame": 117,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 38.569644927978516
+      },
+      {
+        "frame": 118,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 31.73484992980957
+      },
+      {
+        "frame": 119,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 25.013500213623047
+      },
+      {
+        "frame": 120,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 18.555253982543945
+      },
+      {
+        "frame": 121,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 12.638938903808594
+      },
+      {
+        "frame": 122,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 7.122520446777344
+      },
+      {
+        "frame": 123,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 1.8004273176193237
+      },
+      {
+        "frame": 124,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2833058834075928
+      },
+      {
+        "frame": 125,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.36634427309036255
+      },
+      {
+        "frame": 126,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2996327877044678
+      },
+      {
+        "frame": 127,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29991841316223145
+      },
+      {
+        "frame": 128,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.28489574790000916
+      },
+      {
+        "frame": 129,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.3832227885723114
+      },
+      {
+        "frame": 130,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2578356862068176
+      },
+      {
+        "frame": 131,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.28326067328453064
+      },
+      {
+        "frame": 132,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.28327491879463196
+      },
+      {
+        "frame": 133,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2613850235939026
+      },
+      {
+        "frame": 134,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2832832634449005
+      },
+      {
+        "frame": 135,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.26304736733436584
+      },
+      {
+        "frame": 136,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2848818004131317
+      },
+      {
+        "frame": 137,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2848474979400635
+      },
+      {
+        "frame": 138,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.28976938128471375
+      },
+      {
+        "frame": 139,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29168543219566345
+      },
+      {
+        "frame": 140,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2997080385684967
+      },
+      {
+        "frame": 141,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29959142208099365
+      },
+      {
+        "frame": 142,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.299584299325943
+      },
+      {
+        "frame": 143,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29963353276252747
+      },
+      {
+        "frame": 144,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.30000555515289307
+      },
+      {
+        "frame": 145,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2999441623687744
+      },
+      {
+        "frame": 146,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.3000413179397583
+      },
+      {
+        "frame": 147,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29997795820236206
+      },
+      {
+        "frame": 148,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.3000677824020386
+      },
+      {
+        "frame": 149,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29115816950798035
+      },
+      {
+        "frame": 150,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29114630818367004
+      },
+      {
+        "frame": 151,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2970261573791504
+      },
+      {
+        "frame": 152,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2981668710708618
+      },
+      {
+        "frame": 153,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2982102036476135
+      },
+      {
+        "frame": 154,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29864370822906494
+      },
+      {
+        "frame": 155,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2994764745235443
+      },
+      {
+        "frame": 156,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941174387931824
+      },
+      {
+        "frame": 157,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2994222044944763
+      },
+      {
+        "frame": 158,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29934701323509216
+      },
+      {
+        "frame": 159,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29936859011650085
+      },
+      {
+        "frame": 160,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29939013719558716
+      },
+      {
+        "frame": 161,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.2994333803653717
+      },
+      {
+        "frame": 162,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 163,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 164,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 165,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 166,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 167,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 168,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 169,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 170,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 171,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 172,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 173,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 174,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 175,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 176,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 177,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 178,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 179,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 180,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 181,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 182,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 183,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 184,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 185,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 186,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 187,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 188,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 189,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 190,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 191,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      },
+      {
+        "frame": 192,
+        "evaluated_vertices": 7286,
+        "intersections": 0,
+        "contained_vertices": 0,
+        "nearest_surface": 0.29941168427467346
+      }
+    ],
+    "airborne_speeds": [
+      6.85167873201334,
+      6.851688944955825,
+      6.851668249377667,
+      6.851689684393149,
+      6.851677992574835,
+      6.8516789668937905,
+      6.8516789668937905,
+      6.851677757694352,
+      6.8516743301782395,
+      6.851683603606203,
+      6.851689919273222,
+      6.851677757694352
+    ],
+    "debris_min_ground_clearance": -3.84256932717264e-07,
+    "preserved_round06": {
+      "performance_sha256": "eeb7603547cf6e5ae1e599b36b62415bc22d24a8c56da37340e48f9468e04f9a",
+      "geometry_sha256": "835ab41cc11dfc972342a3b75a098751d9d0e0b70bc218aa0892bcd6d3e0f4b2",
+      "camera_max_error_f1_124": 0.0
+    },
+    "negative_controls": {
+      "actual_round06_pullback": "Post-impact beetle too small or oversized at f130: 1.750",
+      "post_impact_excessive_crop": "Post-impact crop outside tight band at f124: 0.923",
+      "post_impact_head_cropped": "Post-impact head outside frame at f124",
+      "final_frame_opens_out": "Post-impact beetle too small or oversized at f192: 0.977",
+      "changed_slide_pose": "Approved non-camera performance changed",
+      "changed_approved_camera": "Approved camera through f124 changed: 1.0",
+      "changed_geometry": "Approved scene geometry changed"
+    },
+    "negative_round06_sha256": "0e35ec2f1ca2c1bf5e767aa4285bfeaeef9258c313502d3c5d147dca8e11d184"
+  },
+  "negative_round04_slide_pixels": null,
+  "negative_round05_flank_pixels": null,
+  "negative_wrong_media_picture": "Encoded picture differs from graded frame: 23.076"
+}

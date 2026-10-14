@@ -33,6 +33,13 @@ Camera preservation error through frame 124 is exactly zero. The rendered
 frame-124 torso band retains 1,572 left and 5,005 right rock pixels; mid-slide
 beetle visibility is 100% of the otherwise identical no-sandstone render.
 
+Delivered media QA passes: full decode, all 93 encoded/source comparisons
+(maximum MAE 2.257), and 186 native/graded frame hashes.
+The decoded beat sheet and every-third-frame motion strip were reviewed through
+frame 192. Durable Git evidence: `draft_331_results.json` and
+`draft_331_beats.jpg`. MP4 SHA-256:
+`3504c5f9ffdb4a2c15112ed4347d38c84abb074b1108d2439d2eb411245b4f0e`.
+
 ## Reproduce round 07
 
 ```bash
