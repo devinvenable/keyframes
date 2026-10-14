@@ -83,8 +83,12 @@ def revise(source, performance, output):
         s.frame_set(124); old = o.location.copy()
         s.frame_set(125); velocity = (o.location-old)*24+Vector((0,0,90/24))
         original_effect = {}
-        for f in range(1,193):
-            s.frame_set(f); original_effect[f]=o.location.copy()
+        if o.name.startswith('Reaction | powder'):
+            assert o.parent is None, 'Powder trajectory must be in world space'
+            curves={fc.array_index:fc for layer in o.animation_data.action.layers
+                    for strip in layer.strips for bag in strip.channelbags
+                    for fc in bag.fcurves if fc.data_path=='location'}
+            original_effect={f:Vector(tuple(curves[i].evaluate(f) for i in range(3))) for f in range(1,193)}
         x = (-1 if i % 2 else 1)*(20+(i%13)*1.5)
         z = 44+(i%17)*2.1
         origin = original[124]+rotation @ Vector((x,-100,z))
