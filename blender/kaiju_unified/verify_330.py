@@ -43,9 +43,21 @@ def centered():
     return {'lateral_travel':lateral,'shell_distances':distances}
 
 
+def debris_floor():
+    s=bpy.context.scene; lowest=float('inf')
+    for f in range(124,193):
+        s.frame_set(f)
+        for o in s.objects:
+            if o.name.startswith('Reaction | fragment'):
+                clearance=o.location.z-o['radius']; lowest=min(lowest,clearance)
+                assert clearance>-.001, f'Debris penetrates ground at f{f}: {o.name}'
+    return lowest
+
+
 def main(a):
     result={'status':'PASS','framing':framing(),'centered_contact':centered(),
             'solidity':solidity(range(113,193)), 'airborne_speeds':flight(),
+            'debris_min_ground_clearance':debris_floor(),
             'preserved_contact_launch_error':preserved(a.baseline)}
     if a.negative_checks:
         saved=bpy.data.filepath; failures={}
@@ -60,6 +72,8 @@ def main(a):
         rejects('actual_round05_edge_strike',centered,'Flight veers')
         bpy.ops.wm.open_mainfile(filepath=str(a.baseline.parent.parent/'round_04/unified.blend'))
         rejects('actual_round04_solidity',lambda:solidity(range(130,131)),'Rock interpenetration')
+        bpy.ops.wm.open_mainfile(filepath=str(a.directory.parent/'round_06_pre_effects/unified.blend'))
+        rejects('unfixed_translated_debris',debris_floor,'Debris penetrates ground')
         bpy.ops.wm.open_mainfile(filepath=saved)
         root=bpy.data.objects['BK | ROOT | placement']; s=bpy.context.scene; s.frame_set(124)
         root.location+=root.rotation_euler.to_matrix()@Vector((0,8,0)); root.keyframe_insert(data_path='location',frame=124)

@@ -81,19 +81,28 @@ def revise(source, performance, output):
     # Redistribute the same effects across both shoulders on the new rock face.
     for i, o in enumerate(o for o in s.objects if o.name.startswith(('Reaction | fragment', 'Reaction | powder'))):
         s.frame_set(124); old = o.location.copy()
+        s.frame_set(125); velocity = (o.location-old)*24+Vector((0,0,90/24))
+        original_effect = {}
+        for f in range(1,193):
+            s.frame_set(f); original_effect[f]=o.location.copy()
         x = (-1 if i % 2 else 1)*(20+(i%13)*1.5)
         z = 44+(i%17)*2.1
         origin = original[124]+rotation @ Vector((x,-100,z))
         hit, _, _, _ = cliff.ray_cast(origin, back, 600)
         assert hit is not None, 'Effect origin misses sandstone'
         delta = hit-back*.8-old
-        for layer in o.animation_data.action.layers:
-            for strip in layer.strips:
-                for bag in strip.channelbags:
-                    for fc in bag.fcurves:
-                        if fc.data_path == 'location':
-                            for k in fc.keyframe_points:
-                                k.co.y += delta[fc.array_index]
+        position = hit-back*.8
+        for f in range(1,193):
+            if o.name.startswith('Reaction | fragment'):
+                if f>124:
+                    velocity.z-=90/24; position+=velocity/24
+                    if position.z<o['radius']:
+                        position.z=o['radius']; velocity.z=abs(velocity.z)*.30
+                        velocity.x*=.64; velocity.y*=.64
+                value=position.copy()
+            else:
+                value=original_effect[f]+delta; value.z=max(1.8,value.z)
+            key(o,'location',value,f)
 
     camera = s.camera; old = {}
     for f in range(1, 193):
