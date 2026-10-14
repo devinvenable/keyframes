@@ -447,7 +447,8 @@ def main() -> None:
     assert sha256(source) == input_hash, "Input changed during processing"
 
     stills = []
-    for label, number in (("a", max(1, count // 3)), ("b", max(1, 2 * count // 3))):
+    sample_frames = [max(1, count * numerator // 5) for numerator in range(1, 5)]
+    for label, number in zip("abcd", sample_frames):
         before = output.parent / f"{output.stem}_before_{label}.png"
         after = output.parent / f"{output.stem}_after_{label}.png"
         shutil.copy2(source_frames / f"frame_{number:06}.png", before)
