@@ -88,6 +88,8 @@ def main(a):
         mutation('grounded_tap',root,'location',116,lambda v:Vector((v.x,v.y,0)),'Beetle not launched off both feet')
         fragment=bpy.data.objects['Reaction | fragment 000']
         mutation('late_debris',fragment,'scale',HIT,lambda v:Vector((.001,)*3),'Debris is late at rock impact')
+        front=root.rotation_euler.to_matrix() @ Vector((0,-10,0))
+        mutation('missed_rock',root,'location',HIT,lambda v:v+front,'Beetle misses rock at impact cue')
         verify()
         # The actual unfixed approved dive must fail the same speed assertion.
         saved=bpy.data.filepath

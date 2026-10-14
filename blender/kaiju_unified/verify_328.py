@@ -147,6 +147,13 @@ def main(a):
             failures['frozen_camera']=str(error)
         else: raise AssertionError('Frozen camera passed tracking assertion')
         bpy.ops.wm.open_mainfile(filepath=saved)
+        bpy.context.scene.camera.data.shift_y+=.2
+        try: framing()
+        except AssertionError as error:
+            assert str(error).startswith('Bottom crop outside'), f'Wrong crop assertion: {error}'
+            failures['excessive_bottom_crop']=str(error)
+        else: raise AssertionError('Excessive crop passed framing assertion')
+        bpy.ops.wm.open_mainfile(filepath=saved)
         root=bpy.data.objects['BK | ROOT | placement']; action=root.animation_data.action.copy()
         root.animation_data.action=action; root.animation_data.action_slot=action.slots[0]
         bpy.context.scene.frame_set(112); root.location.x+=1; root.keyframe_insert(data_path='location',frame=112)
