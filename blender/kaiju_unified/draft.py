@@ -103,7 +103,8 @@ def package(directory):
 
 def main(directory):
     scene=directory/'unified.blend'
-    plan={'scene':str(scene),'scene_sha256':digest(scene),'range':[START,STOP],'fps':24,'resolution':[960,540],'samples':8,'render_blender':BLENDER,'grade_blender':GRADE,'draft_only':True,'devices':{'3060':[START,164],'1050':[165,STOP]}}
+    split=153 if json.loads((directory/'manifest.json').read_text()).get('revision')==330 else 164
+    plan={'scene':str(scene),'scene_sha256':digest(scene),'range':[START,STOP],'fps':24,'resolution':[960,540],'samples':8,'render_blender':BLENDER,'grade_blender':GRADE,'draft_only':True,'devices':{'3060':[START,split],'1050':[split+1,STOP]}}
     path=directory/'draft_plan.json'
     if path.exists(): assert json.loads(path.read_text())==plan,'Draft plan changed'
     else: path.write_text(json.dumps(plan,indent=2)+'\n')

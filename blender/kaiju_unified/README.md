@@ -26,6 +26,11 @@ Additional scene mutations exercise penetration, missing torso contact, a frozen
 camera, excessive bottom crop, and a cropped head. These controls run after the
 implementation commits; scenes are never saved by verification.
 
+Relocated fragments are integrated again against the ground plane, preserving
+gravity and damped bounces. The internal `round_06_pre_effects/unified.blend`
+captures the unfixed translated trajectories and must fail the ground-clearance
+check. Keep that negative baseline alongside round 06 when reproducing QA.
+
 Only the 81-frame 540p/eight-sample review excerpt is rendered. The full
 1080p/64-sample render remains pending Devin's impact approval.
 
