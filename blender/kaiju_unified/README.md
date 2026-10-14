@@ -1,4 +1,62 @@
-# T328 — solid-rock slide and close fly-with camera
+# T330 — centered torso smash and head/torso fly-with
+
+Current review candidate:
+`/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_06/`.
+
+Round 06 removes the 26-unit lateral detour. It restores the original centered
+strike station, broadens the sandstone formation, and recesses the lower ledges
+so the rear torso reaches the face with both feet clear. The original sandstone
+UVs and materials remain; its geometry is deliberately reshaped for this revision.
+The background rocks are restaged behind the face and stay fixed from frame 1.
+All contact/launch actor transforms and hinge timing remain unchanged.
+
+The camera frames head and torso with about 60% bottom crop throughout frames
+106–124, follows at a fixed beetle-relative offset, then opens out over 30 frames
+to reveal the outside slide and slump. The elevated shoulder-side position clears
+the robot's raised hatches at first contact. At frame 124, rock pixels are visible
+on both sides of the torso, and fragments appear on that same frame.
+
+`verify_330.py` reuses the independent whole-mesh BVH/parity checks for every frame
+113–192, and checks centered flight, bilateral rear-shell proximity, head bounds,
+bottom crop, constant airborne speed, and preserved contact/launch transforms.
+The actual round 05 fails the crop and centered-flight assertions. Its rendered
+impact mask also fails the bilateral-rock assertion: zero rock pixels appear to
+the left of its torso. Actual round 04 still fails solidity and slide visibility.
+Additional scene mutations exercise penetration, missing torso contact, a frozen
+camera, excessive bottom crop, and a cropped head. These controls run after the
+implementation commits; scenes are never saved by verification.
+
+Only the 81-frame 540p/eight-sample review excerpt is rendered. The full
+1080p/64-sample render remains pending Devin's impact approval.
+
+## Reproduce round 06
+
+```bash
+BLENDER=/home/devin/bin/blender-5.1.2-linux-x64/blender
+ROOT=/home/devin/src/2026/videdit/work/kaiju_flight_unified_325
+SHOT="$ROOT/round_06"
+"$BLENDER" -t 6 -b --python-exit-code 1 \
+  --python blender/kaiju_unified/revise_330.py -- \
+  --source "$ROOT/round_05/unified.blend" \
+  --performance "$ROOT/round_04/unified.blend" --output "$SHOT"
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/verify_330.py -- --directory "$SHOT" \
+  --baseline "$ROOT/round_05/unified.blend" --negative-checks
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/verify.py -- --directory "$SHOT" --negative-checks
+"$BLENDER" -t 6 -b "$SHOT/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/pixel_contract.py -- --directory "$SHOT" --negative-checks
+"$BLENDER" -t 6 -b "$ROOT/round_05/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/pixel_contract.py -- \
+  --directory "$SHOT/negative_round05" --flanks-only --expect-flanks-failure
+"$BLENDER" -t 6 -b "$ROOT/round_04/unified.blend" --python-exit-code 1 \
+  --python blender/kaiju_unified/pixel_contract.py -- \
+  --directory "$SHOT/negative_round04" --slide-only --expect-slide-failure
+setsid -f /home/devin/src/2026/videdit/venv/bin/python blender/kaiju_unified/draft.py \
+  --directory "$SHOT" > "$SHOT/pipeline.log" 2>&1 < /dev/null
+```
+
+## Historical round 05 (T328)
 
 Current review candidate:
 `/home/devin/src/2026/videdit/work/kaiju_flight_unified_325/round_05/`.
