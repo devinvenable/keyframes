@@ -213,6 +213,13 @@ editor (or let the `--autostart` countdown run).
 - macOS will ask for **microphone / input-monitoring / accessibility**
   permissions on first run — do a full-path rehearsal run on the Mac mini
   well before the gig so every permission prompt is already answered.
+- **Deployment + hardware session**: the mini is deployed with
+  `scripts/deploy-mac.sh`; the at-the-machine verification steps (quiet-mini
+  clock gate, thru box, KeyStep, projector, permissions) are
+  [docs/mac-mini-gig-checklist.md](mac-mini-gig-checklist.md). Note the
+  mini's `/usr/local` is Intel Homebrew — the venv interpreter is
+  lipo-thinned to arm64 by the deploy script; see the checklist before
+  rebuilding the venv by hand.
 
 ## Smoke test
 

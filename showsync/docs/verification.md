@@ -61,6 +61,8 @@ logic, including that a genuine send-side spike still fails.
 | Linux quiet host, rtprio 95, SCHED_RR granted | 60 s | 3360 / 3360 | 0.010 / 0.245 | 0.251 / 7.289 | 0 / 0 | **Pass** |
 | Linux quiet host, rtprio 95, SCHED_RR granted | 30 s | 1680 / 1680 | 0.025 / 0.633 | 0.096 / 1.182 | 0 / 0 | **Pass** |
 | Mac / CoreMIDI, independent receiver, GC frozen | 30 s | 1679 / 1679 | 0.171 / 1.481 | 0.650 / 20.847 | 0 / 0 | **Pass** (restated) |
+| **Gig Mac mini** (M2), loaded host (EOS Utility core pin + Logic, load 3.3), `--mirror-ports 3`, GC frozen | 30 s | 1680 / 1680 | 0.526 / 16.917 | 1.126 / 32.877 | 0 / 0 | Fail (one mid-run send spike, tick 427) |
+| **Gig Mac mini** (M2), same loaded host, repeat | 30 s | 1680 / 1680 | 0.169 / 1.498 | 1.238 / 41.013 | 0 / 0 | **Pass** |
 | Mac / CoreMIDI, independent receiver | 15 s | 836 / 836 | 0.436 / 8.812 | 1.113 / 20.843 | 0 / 3 | Fail (real send spike + drops) |
 | Mac / same-process receiver, longer run | 15 s | 839 / 839 | 0.211 / 1.426 | 1.627 / 38.003 | 0 / 0 | Diagnostic only (same-process) |
 | Mac / same-process receiver, initial short run | 8 s | 447 / 447 | 0.174 / 1.074 | 0.183 / 1.042 | 0 / 0 | Pass, short run only |
@@ -82,8 +84,16 @@ outputs) on the quiet Linux host, 30 s, rtprio granted:
 | 4 outputs (`--mirror-ports 3`, `linux-mirror3.json`) | 1680 / 1680 | 0.022 / 0.581 | 0 / 0 | **Pass** |
 
 Fan-out to four ports stays an order of magnitude inside the σ < 0.5 ms /
-worst < 2 ms gate. Re-run on the gig Mac mini with the real port set before
-the dress rehearsal.
+worst < 2 ms gate. First re-run on the gig Mac mini happened 2026-10-17
+(task 248, `measurements/macmini-gig-mirror3*.json`, rows above): the mini
+was **not quiet** (EOS Utility pinning a core, Logic Pro X and ffmpeg
+running, load 3.3) and the two runs split — one genuine 16.9 ms mid-run
+send spike failed run 1, run 2 passed with worst 1.498 ms. In both runs the
+task-67 receiver cold-start pattern reappeared exactly (20–41 ms delivery
+spikes confined to ticks 3–5, send error there ≤ 10 µs). The quiet-mini
+repeat is the go/no-go step in
+[docs/mac-mini-gig-checklist.md](../../docs/mac-mini-gig-checklist.md),
+followed by a run with David's actual gear attached.
 
 The restated gate changes no failed-run bookkeeping: both loaded-Linux runs
 fail on send-side error alone, and the 15 s independent-receiver Mac run fails

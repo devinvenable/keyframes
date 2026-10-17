@@ -189,7 +189,7 @@ check "caller's --midi-transport reaches showsync" \
 # Grep the showsync line rather than head -n1: this run has no settle, so
 # under load the keyframes stub can win the race to write the first line.
 check "caller's --midi-transport appears exactly once" \
-    bash -c 'test "$(grep "^showsync" "$1" | grep -o -- "--midi-transport" | wc -l)" = 1' _ "$STUB_LOG"
+    bash -c 'test "$(grep "^showsync" "$1" | grep -o -- "--midi-transport" | wc -l | tr -d "[:space:]")" = 1' _ "$STUB_LOG"
 end_live
 check "pass-through run teardown clean" test "$rc" = 0
 
